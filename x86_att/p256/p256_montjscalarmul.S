@@ -86,12 +86,12 @@ S2N_BN_SYMBOL(p256_montjscalarmul):
         movq    %rcx, %rdi
         movq    %rdx, %rsi
         movq    %r8, %rdx
-        callq   p256_montjscalarmul_standard
+        callq   p256_montjscalarmul_p256_montjscalarmul_standard
         popq   %rsi
         popq   %rdi
         ret
 
-p256_montjscalarmul_standard:
+p256_montjscalarmul_p256_montjscalarmul_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -225,34 +225,34 @@ p256_montjscalarmul_standard:
 
         leaq    TAB+96*1(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         leaq    TAB+96*2(%rsp), %rdi
         leaq    TAB+96*1(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p256_montjscalarmul_p256_montjadd
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjadd
 
         leaq    TAB+96*3(%rsp), %rdi
         leaq    TAB+96*1(%rsp), %rsi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         leaq    TAB+96*4(%rsp), %rdi
         leaq    TAB+96*3(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p256_montjscalarmul_p256_montjadd
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjadd
 
         leaq    TAB+96*5(%rsp), %rdi
         leaq    TAB+96*2(%rsp), %rsi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         leaq    TAB+96*6(%rsp), %rdi
         leaq    TAB+96*5(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p256_montjscalarmul_p256_montjadd
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjadd
 
         leaq    TAB+96*7(%rsp), %rdi
         leaq    TAB+96*3(%rsp), %rsi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
 // Set up accumulator as table entry for top 4 bits (constant-time indexing)
 
@@ -298,24 +298,24 @@ p256_montjscalarmul_standard:
 
         movl    $252, %ebp
 
-p256_montjscalarmul_mainloop:
+p256_montjscalarmul_p256_montjscalarmul_mainloop:
         subq    $4, %rbp
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p256_montjscalarmul_p256_montjdouble
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble
 
         movq    %rbp, %rax
         shrq    $6, %rax
@@ -396,10 +396,10 @@ p256_montjscalarmul_mainloop:
         leaq    TABENT(%rsp), %rdx
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p256_montjscalarmul_p256_montjadd
+        callq   p256_montjscalarmul_p256_montjscalarmul_p256_montjadd
 
         testq   %rbp, %rbp
-        jne     p256_montjscalarmul_mainloop
+        jne     p256_montjscalarmul_p256_montjscalarmul_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -445,7 +445,7 @@ p256_montjscalarmul_mainloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-p256_montjscalarmul_p256_montjadd:
+p256_montjscalarmul_p256_montjscalarmul_p256_montjadd:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -2427,7 +2427,7 @@ p256_montjscalarmul_p256_montjadd:
         popq    %rbx
         ret
 
-p256_montjscalarmul_p256_montjdouble:
+p256_montjscalarmul_p256_montjscalarmul_p256_montjdouble:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12

@@ -80,12 +80,12 @@ S2N_BN_SYMBOL(p256_scalarmulbase_alt):
         movq    %rdx, %rsi
         movq    %r8, %rdx
         movq    %r9, %rcx
-        callq   p256_scalarmulbase_alt_standard
+        callq   p256_scalarmulbase_alt_p256_scalarmulbase_alt_standard
         popq   %rsi
         popq   %rdi
         ret
 
-p256_scalarmulbase_alt_standard:
+p256_scalarmulbase_alt_p256_scalarmulbase_alt_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -160,7 +160,7 @@ p256_scalarmulbase_alt_standard:
 
         movq    %rax, i
 
-loop:
+p256_scalarmulbase_alt_loop:
 
 // The next raw bitfield is bf = bitfield(blocksize * i,blocksize) + cf,
 // adding in the deferred carry cf. We then shift the whole scalar right
@@ -219,7 +219,7 @@ loop:
         movq    j, %r12
         movq    table, %rbp
 
-tabloop:
+p256_scalarmulbase_alt_tabloop:
         subq    $1, %r12
         cmovzq  (%rbp), %rax
         cmovzq  8(%rbp), %rbx
@@ -232,7 +232,7 @@ tabloop:
 
         addq    $64, %rbp
         decq    %rsi
-        jnz     tabloop
+        jnz     tabp256_scalarmulbase_alt_loop
 
         movq    %rbp, table
 
@@ -271,7 +271,7 @@ tabloop:
         leaq    NACC(%rsp), %rdi
         leaq    ACC(%rsp), %rsi
         leaq    TABENT(%rsp), %rdx
-        callq   local_p256_montjmixadd
+        callq   p256_scalarmulbase_alt_local_p256_montjmixadd
 
 // However, only commit that update to the accumulator if j is nonzero,
 // because the mixed addition function does not handle this case directly,
@@ -336,7 +336,7 @@ tabloop:
 
         imulq   blocksize, %rax
         cmpq    $257, %rax
-        jc      loop
+        jc      p256_scalarmulbase_alt_loop
 
 // That's the end of the main loop, and we just need to translate
 // back from the Jacobian representation to affine. First of all,
@@ -344,25 +344,25 @@ tabloop:
 
         leaq    Z2(%rsp), %rdi
         leaq    ACC+64(%rsp), %rsi
-        callq   local_montsqr_p256
+        callq   p256_scalarmulbase_alt_local_montsqr_p256
 
         leaq    Z3(%rsp), %rdi
         leaq    ACC+64(%rsp), %rsi
         leaq    Z2(%rsp), %rdx
-        callq   local_montmul_p256
+        callq   p256_scalarmulbase_alt_local_montmul_p256
 
         leaq    Z2(%rsp), %rdi
         leaq    Z3(%rsp), %rsi
-        callq   local_demont_p256
+        callq   p256_scalarmulbase_alt_local_demont_p256
 
         leaq    Z3(%rsp), %rdi
         leaq    Z2(%rsp), %rsi
-        callq   local_inv_p256
+        callq   p256_scalarmulbase_alt_local_inv_p256
 
         leaq    Z2(%rsp), %rdi
         leaq    ACC+64(%rsp), %rsi
         leaq    Z3(%rsp), %rdx
-        callq   local_montmul_p256
+        callq   p256_scalarmulbase_alt_local_montmul_p256
 
 // Convert back from Jacobian (X, Y, Z) |-> (X/Z^2, Y/Z^3)
 
@@ -370,12 +370,12 @@ tabloop:
         leaq    ACC(%rsp), %rsi
         leaq    Z2(%rsp), %rdx
         movq    %rdi, %rbx
-        callq   local_montmul_p256
+        callq   p256_scalarmulbase_alt_local_montmul_p256
 
         leaq    32(%rbx), %rdi
         leaq    ACC+32(%rsp), %rsi
         leaq    Z3(%rsp), %rdx
-        callq   local_montmul_p256
+        callq   p256_scalarmulbase_alt_local_montmul_p256
 
 // Restore stack and registers and return
 
@@ -390,7 +390,7 @@ tabloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-local_demont_p256:
+p256_scalarmulbase_alt_local_demont_p256:
         movq    (%rsi), %r8
         movq    0x8(%rsi), %r9
         movq    0x10(%rsi), %r10
@@ -452,7 +452,7 @@ local_demont_p256:
         movq    %r10, 0x18(%rdi)
         ret
 
-local_inv_p256:
+p256_scalarmulbase_alt_local_inv_p256:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -505,8 +505,8 @@ local_inv_p256:
         movq    %rax, 0x90(%rsp)
         movq    $0xa,  0xb0(%rsp)
         movq    $0x1,  0xb8(%rsp)
-        jmp     p256_scalarmulbase_alt_inv_midloop
-p256_scalarmulbase_alt_inv_loop:
+        jmp     p256_scalarmulbase_alt_inv_midp256_scalarmulbase_alt_loop
+p256_scalarmulbase_alt_p256_scalarmulbase_alt_inv_loop:
         movq    %r8, %r9
         sarq    $0x3f, %r9
         xorq    %r9, %r8
@@ -831,7 +831,7 @@ p256_scalarmulbase_alt_inv_loop:
         movq    %r11, 0x88(%rsp)
         sbbq    %rdx, %r12
         movq    %r12, 0x90(%rsp)
-p256_scalarmulbase_alt_inv_midloop:
+p256_scalarmulbase_alt_p256_scalarmulbase_alt_inv_midloop:
         movq    0xb8(%rsp), %rsi
         movq    (%rsp), %rdx
         movq    0x28(%rsp), %rcx
@@ -1732,7 +1732,7 @@ p256_scalarmulbase_alt_inv_midloop:
         leaq    (%rax,%rdx), %r12
         movq    %rsi, 0xb8(%rsp)
         decq     0xb0(%rsp)
-        jne     p256_scalarmulbase_alt_inv_loop
+        jne     p256_scalarmulbase_alt_inv_p256_scalarmulbase_alt_loop
         movq    (%rsp), %rax
         movq    0x28(%rsp), %rcx
         imulq   %r8, %rax
@@ -1880,7 +1880,7 @@ p256_scalarmulbase_alt_inv_midloop:
         popq    %rbx
         ret
 
-local_montmul_p256:
+p256_scalarmulbase_alt_local_montmul_p256:
         pushq   %rbx
         pushq   %r12
         pushq   %r13
@@ -2060,7 +2060,7 @@ local_montmul_p256:
         popq    %rbx
         ret
 
-local_montsqr_p256:
+p256_scalarmulbase_alt_local_montsqr_p256:
         pushq   %rbx
         pushq   %r12
         pushq   %r13
@@ -2210,7 +2210,7 @@ local_montsqr_p256:
         popq    %rbx
         ret
 
-local_p256_montjmixadd:
+p256_scalarmulbase_alt_local_p256_montjmixadd:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12

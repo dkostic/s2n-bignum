@@ -65,12 +65,12 @@ S2N_BN_SYMBOL(p256_scalarmul):
         movq    %rcx, %rdi
         movq    %rdx, %rsi
         movq    %r8, %rdx
-        callq   p256_scalarmul_standard
+        callq   p256_scalarmul_p256_scalarmul_standard
         popq   %rsi
         popq   %rdi
         ret
 
-p256_scalarmul_standard:
+p256_scalarmul_p256_scalarmul_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -150,11 +150,11 @@ p256_scalarmul_standard:
 
         leaq    TAB(%rsp), %rdi
         movq    %rbx, %rsi
-        callq   local_tomont_p256
+        callq   p256_scalarmul_local_tomont_p256
 
         leaq    32(%rbx), %rsi
         leaq    TAB+32(%rsp), %rdi
-        callq   local_tomont_p256
+        callq   p256_scalarmul_local_tomont_p256
 
         movl    $1, %eax
         movq    %rax, TAB+64(%rsp)
@@ -198,34 +198,34 @@ p256_scalarmul_standard:
 
         leaq    TAB+96*1(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         leaq    TAB+96*2(%rsp), %rdi
         leaq    TAB+96*1(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   local_p256_montjmixadd
+        callq   p256_scalarmul_local_p256_montjmixadd
 
         leaq    TAB+96*3(%rsp), %rdi
         leaq    TAB+96*1(%rsp), %rsi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         leaq    TAB+96*4(%rsp), %rdi
         leaq    TAB+96*3(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   local_p256_montjmixadd
+        callq   p256_scalarmul_local_p256_montjmixadd
 
         leaq    TAB+96*5(%rsp), %rdi
         leaq    TAB+96*2(%rsp), %rsi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         leaq    TAB+96*6(%rsp), %rdi
         leaq    TAB+96*5(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   local_p256_montjmixadd
+        callq   p256_scalarmul_local_p256_montjmixadd
 
         leaq    TAB+96*7(%rsp), %rdi
         leaq    TAB+96*3(%rsp), %rsi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
 // Set up accumulator as table entry for top 4 bits (constant-time indexing)
 
@@ -280,24 +280,24 @@ p256_scalarmul_standard:
 
         movl    $252, %ebp
 
-loop:
+p256_scalarmul_loop:
         subq    $4, %rbp
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   local_p256_montjdouble
+        callq   p256_scalarmul_local_p256_montjdouble
 
         movq    %rbp, %rax
         shrq    $6, %rax
@@ -378,34 +378,34 @@ loop:
         leaq    TABENT(%rsp), %rdx
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   local_p256_montjadd
+        callq   p256_scalarmul_local_p256_montjadd
 
         testq   %rbp, %rbp
-        jne     loop
+        jne     p256_scalarmul_loop
 
 // Let z2 = 1/z^2 and z3 = 1/z^3, both without Montgomery form
 
         leaq    Z2(%rsp), %rdi
         leaq    ACC+64(%rsp), %rsi
-        callq   local_montsqr_p256
+        callq   p256_scalarmul_local_montsqr_p256
 
         leaq    Z3(%rsp), %rdi
         leaq    ACC+64(%rsp), %rsi
         leaq    Z2(%rsp), %rdx
-        callq   local_montmul_p256
+        callq   p256_scalarmul_local_montmul_p256
 
         leaq    Z2(%rsp), %rdi
         leaq    Z3(%rsp), %rsi
-        callq   local_demont_p256
+        callq   p256_scalarmul_local_demont_p256
 
         leaq    Z3(%rsp), %rdi
         leaq    Z2(%rsp), %rsi
-        callq   local_inv_p256
+        callq   p256_scalarmul_local_inv_p256
 
         leaq    Z2(%rsp), %rdi
         leaq    ACC+64(%rsp), %rsi
         leaq    Z3(%rsp), %rdx
-        callq   local_montmul_p256
+        callq   p256_scalarmul_local_montmul_p256
 
 // Convert back from Jacobian (X, Y, Z) |-> (X/Z^2, Y/Z^3)
 
@@ -413,12 +413,12 @@ loop:
         leaq    ACC(%rsp), %rsi
         leaq    Z2(%rsp), %rdx
         movq    %rdi, %rbx
-        callq   local_montmul_p256
+        callq   p256_scalarmul_local_montmul_p256
 
         leaq    32(%rbx), %rdi
         leaq    ACC+32(%rsp), %rsi
         leaq    Z3(%rsp), %rdx
-        callq   local_montmul_p256
+        callq   p256_scalarmul_local_montmul_p256
 
 // Restore stack and registers and return
 
@@ -433,7 +433,7 @@ loop:
 
 // Local copies of subroutines, complete clones at the moment
 
-local_demont_p256:
+p256_scalarmul_local_demont_p256:
         pushq   %rbx
         movq    (%rsi), %r8
         movq    0x8(%rsi), %r9
@@ -481,7 +481,7 @@ local_demont_p256:
         popq    %rbx
         ret
 
-local_inv_p256:
+p256_scalarmul_local_inv_p256:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -534,8 +534,8 @@ local_inv_p256:
         movq    %rax, 0x90(%rsp)
         movq    $0xa,  0xb0(%rsp)
         movq    $0x1,  0xb8(%rsp)
-        jmp     p256_scalarmul_inv_midloop
-p256_scalarmul_inv_loop:
+        jmp     p256_scalarmul_inv_midp256_scalarmul_loop
+p256_scalarmul_p256_scalarmul_inv_loop:
         movq    %r8, %r9
         sarq    $0x3f, %r9
         xorq    %r9, %r8
@@ -860,7 +860,7 @@ p256_scalarmul_inv_loop:
         movq    %r11, 0x88(%rsp)
         sbbq    %rdx, %r12
         movq    %r12, 0x90(%rsp)
-p256_scalarmul_inv_midloop:
+p256_scalarmul_p256_scalarmul_inv_midloop:
         movq    0xb8(%rsp), %rsi
         movq    (%rsp), %rdx
         movq    0x28(%rsp), %rcx
@@ -1761,7 +1761,7 @@ p256_scalarmul_inv_midloop:
         leaq    (%rax,%rdx), %r12
         movq    %rsi, 0xb8(%rsp)
         decq     0xb0(%rsp)
-        jne     p256_scalarmul_inv_loop
+        jne     p256_scalarmul_inv_p256_scalarmul_loop
         movq    (%rsp), %rax
         movq    0x28(%rsp), %rcx
         imulq   %r8, %rax
@@ -1909,7 +1909,7 @@ p256_scalarmul_inv_midloop:
         popq    %rbx
         ret
 
-local_montmul_p256:
+p256_scalarmul_local_montmul_p256:
         pushq   %rbx
         pushq   %r12
         pushq   %r13
@@ -2036,7 +2036,7 @@ local_montmul_p256:
         popq    %rbx
         ret
 
-local_montsqr_p256:
+p256_scalarmul_local_montsqr_p256:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -2151,7 +2151,7 @@ local_montsqr_p256:
         popq    %rbx
         ret
 
-local_tomont_p256:
+p256_scalarmul_local_tomont_p256:
         pushq   %r12
         pushq   %r13
         pushq   %r14
@@ -2279,7 +2279,7 @@ local_tomont_p256:
         popq    %r12
         ret
 
-local_p256_montjadd:
+p256_scalarmul_local_p256_montjadd:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -4261,7 +4261,7 @@ local_p256_montjadd:
         popq    %rbx
         ret
 
-local_p256_montjdouble:
+p256_scalarmul_local_p256_montjdouble:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -5378,7 +5378,7 @@ local_p256_montjdouble:
         popq    %rbx
         ret
 
-local_p256_montjmixadd:
+p256_scalarmul_local_p256_montjmixadd:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12

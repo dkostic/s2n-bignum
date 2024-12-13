@@ -421,12 +421,12 @@ S2N_BN_SYMBOL(edwards25519_scalarmulbase_alt):
         pushq   %rsi
         movq    %rcx, %rdi
         movq    %rdx, %rsi
-        callq   edwards25519_scalarmulbase_alt_standard
+        callq   edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_standard
         popq    %rsi
         popq    %rdi
         ret
 
-edwards25519_scalarmulbase_alt_standard:
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_standard:
 #endif
 
 // Save registers, make room for temps, preserve input arguments.
@@ -512,8 +512,8 @@ edwards25519_scalarmulbase_alt_standard:
 // Initialize accumulator "acc" to either 0 or 2^251 * B depending on
 // bit 251 of the (reduced) scalar. That leaves bits 0..250 to handle.
 
-        leaq    edwards25519_scalarmulbase_alt_0g(%rip), %r10
-        leaq    edwards25519_scalarmulbase_alt_251g(%rip), %r11
+        leaq    edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_0g(%rip), %r10
+        leaq    edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_251g(%rip), %r11
 
         movq    (%r10), %rax
         movq    (%r11), %rcx
@@ -596,13 +596,13 @@ edwards25519_scalarmulbase_alt_standard:
 // end because we made sure bit 251 is clear in the reduced scalar.
 
         movq    $0, i
-        leaq    edwards25519_scalarmulbase_alt_gtable(%rip), %rax
+        leaq    edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_gtable(%rip), %rax
         movq    %rax, tab
         movq    $0, bias
 
 // Start of the main loop, repeated 63 times for i = 4, 8, ..., 252
 
-edwards25519_scalarmulbase_alt_scalarloop:
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_scalarloop:
 
 // Look at the next 4-bit field "bf", adding the previous bias as well.
 // Choose the table index "ix" as bf when bf <= 8 and 16 - bf for bf >= 9,
@@ -959,7 +959,7 @@ edwards25519_scalarmulbase_alt_scalarloop:
 
         addq    $4, i
         cmpq    $252, i
-        jc      edwards25519_scalarmulbase_alt_scalarloop
+        jc      edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_scalarloop
 
 // Insert the optional negation of the projective X coordinate, and
 // so by extension the final affine x coordinate x = X/Z and thus
@@ -1054,8 +1054,8 @@ edwards25519_scalarmulbase_alt_scalarloop:
         movq    %rax, 0x78(%rsp)
         movq    $0xa,  0x90(%rsp)
         movq    $0x1,  0x98(%rsp)
-        jmp     edwards25519_scalarmulbase_alt_midloop
-edwards25519_scalarmulbase_alt_inverseloop:
+        jmp     edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_midloop
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_inverseloop:
         movq    %r8, %r9
         sarq    $0x3f, %r9
         xorq    %r9, %r8
@@ -1346,7 +1346,7 @@ edwards25519_scalarmulbase_alt_inverseloop:
         shlq    $0x3f, %rax
         addq    %rax, %rsi
         movq    %rsi, 0x78(%rsp)
-edwards25519_scalarmulbase_alt_midloop:
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_midloop:
         movq    0x98(%rsp), %rsi
         movq    (%rsp), %rdx
         movq    0x20(%rsp), %rcx
@@ -2247,7 +2247,7 @@ edwards25519_scalarmulbase_alt_midloop:
         leaq    (%rax,%rdx), %r12
         movq    %rsi, 0x98(%rsp)
         decq     0x90(%rsp)
-        jne     edwards25519_scalarmulbase_alt_inverseloop
+        jne     edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_inverseloop
         movq    (%rsp), %rax
         movq    0x20(%rsp), %rcx
         imulq   %r8, %rax
@@ -2384,7 +2384,7 @@ edwards25519_scalarmulbase_alt_midloop:
 // 0 * B = 0 and 2^251 * B in extended-projective coordinates
 // but with Z = 1 assumed and hence left out, so they are (X,Y,T) only.
 
-edwards25519_scalarmulbase_alt_0g:
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_0g:
 
         .quad   0x0000000000000000
         .quad   0x0000000000000000
@@ -2401,7 +2401,7 @@ edwards25519_scalarmulbase_alt_0g:
         .quad   0x0000000000000000
         .quad   0x0000000000000000
 
-edwards25519_scalarmulbase_alt_251g:
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_251g:
 
         .quad   0x525f946d7c7220e7
         .quad   0x4636b0b2f1e35444
@@ -2419,7 +2419,7 @@ edwards25519_scalarmulbase_alt_251g:
 // Precomputed table of multiples of generator for edwards25519
 // all in precomputed extended-projective (y-x,x+y,2*d*x*y) triples.
 
-edwards25519_scalarmulbase_alt_gtable:
+edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_edwards25519_scalarmulbase_alt_gtable:
 
         // 2^0 * 1 * G
 

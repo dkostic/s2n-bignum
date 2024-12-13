@@ -65,6 +65,15 @@ if __name__ == '__main__':
   append_labels_with_file_name('./x86/curve25519/', '*.S')
   append_labels_with_file_name('./x86_att/curve25519/', '*.S')
   append_labels_with_file_name('./arm/curve25519/', '*.S')
+  append_labels_with_file_name('./x86/p256/', '*.S')
+  append_labels_with_file_name('./x86_att/p256/', '*.S')
+  append_labels_with_file_name('./arm/p256/', '*.S')
+  append_labels_with_file_name('./x86/p384/', '*.S')
+  append_labels_with_file_name('./x86_att/p384/', '*.S')
+  append_labels_with_file_name('./arm/p384/', '*.S')
+  append_labels_with_file_name('./x86/p521/', '*.S')
+  append_labels_with_file_name('./x86_att/p521/', '*.S')
+  append_labels_with_file_name('./arm/p521/', '*.S')
 
   # For test
   #append_labels_with_file_name('./x86/curve25519/', 'curve25519_x25519_alt.S')

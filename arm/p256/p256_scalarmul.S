@@ -129,11 +129,11 @@ S2N_BN_SYMBOL(p256_scalarmul):
 
         add     x0, tab
         mov     x1, point
-        bl      local_tomont_p256
+        bl      p256_scalarmul_local_tomont_p256
 
         add     x1, point, #32
         add     x0, tab+32
-        bl      local_tomont_p256
+        bl      p256_scalarmul_local_tomont_p256
 
         mov     x0, #0x0000000000000001
         mov     x1, #0xffffffff00000000
@@ -168,34 +168,34 @@ S2N_BN_SYMBOL(p256_scalarmul):
 
         add     x0, tab+96*1
         add     x1, tab
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         add     x0, tab+96*2
         add     x1, tab+96*1
         add     x2, tab
-        bl      local_p256_montjmixadd
+        bl      p256_scalarmul_local_p256_montjmixadd
 
         add     x0, tab+96*3
         add     x1, tab+96*1
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         add     x0, tab+96*4
         add     x1, tab+96*3
         add     x2, tab
-        bl      local_p256_montjmixadd
+        bl      p256_scalarmul_local_p256_montjmixadd
 
         add     x0, tab+96*5
         add     x1, tab+96*2
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         add     x0, tab+96*6
         add     x1, tab+96*5
         add     x2, tab
-        bl      local_p256_montjmixadd
+        bl      p256_scalarmul_local_p256_montjmixadd
 
         add     x0, tab+96*7
         add     x1, tab+96*3
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
 // Initialize the accumulator as a table entry for top 4 bits (unrecoded)
 
@@ -251,24 +251,24 @@ S2N_BN_SYMBOL(p256_scalarmul):
 
 // Main loop over size-4 bitfields: double 4 times then add signed digit
 
-loop:
+p256_scalarmul_loop:
         sub     j, j, #4
 
         add     x0, acc
         add     x1, acc
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      local_p256_montjdouble
+        bl      p256_scalarmul_local_p256_montjdouble
 
         lsr     x2, j, #6
         ldr     x14, [sp, x2, lsl #3]   // Exploits scalarb = sp exactly
@@ -346,9 +346,9 @@ loop:
         add     x0, acc
         add     x1, acc
         add     x2, tabent
-        bl      local_p256_montjadd
+        bl      p256_scalarmul_local_p256_montjadd
 
-        cbnz    j, loop
+        cbnz    j, p256_scalarmul_loop
 
 // That's the end of the main loop, and we just need to translate
 // back from the Jacobian representation to affine. First of all,
@@ -356,37 +356,37 @@ loop:
 
         add     x0, z2
         add     x1, acc+64
-        bl      local_montsqr_p256_neon
+        bl      p256_scalarmul_local_montsqr_p256_neon
 
         add     x0, z3
         add     x2, z2
         add     x1, acc+64
-        bl      local_montmul_p256_neon
+        bl      p256_scalarmul_local_montmul_p256_neon
 
         add     x0, z2
         add     x1, z3
-        bl      local_demont_p256
+        bl      p256_scalarmul_local_demont_p256
 
         add     x0, z3
         add     x1, z2
-        bl      local_inv_p256
+        bl      p256_scalarmul_local_inv_p256
 
         add     x0, z2
         add     x2, z3
         add     x1, acc+64
-        bl      local_montmul_p256_neon
+        bl      p256_scalarmul_local_montmul_p256_neon
 
 // Convert back from Jacobian (X,Y,Z) |-> (X/Z^2, Y/Z^3)
 
         add     x1, acc
         add     x2, z2
         mov     x0, res
-        bl      local_montmul_p256_neon
+        bl      p256_scalarmul_local_montmul_p256_neon
 
         add     x0, res, #32
         add     x1, acc+32
         add     x2, z3
-        bl      local_montmul_p256_neon
+        bl      p256_scalarmul_local_montmul_p256_neon
 
 // Restore stack and registers and return
 
@@ -397,7 +397,7 @@ loop:
 
 // Local copies of subroutines, complete clones at the moment
 
-local_demont_p256:
+p256_scalarmul_local_demont_p256:
         ldp     x2, x3, [x1]
         ldp     x4, x5, [x1, #16]
         lsl     x7, x2, #32
@@ -436,7 +436,7 @@ local_demont_p256:
         stp     x4, x5, [x0, #16]
         ret
 
-local_inv_p256:
+p256_scalarmul_local_inv_p256:
         stp     x19, x20, [sp, #-16]!
         stp     x21, x22, [sp, #-16]!
         stp     x23, x24, [sp, #-16]!
@@ -468,8 +468,8 @@ local_inv_p256:
         stp     xzr, xzr, [sp, #144]
         mov     x21, #0xa
         mov     x22, #0x1
-        b       p256_scalarmul_inv_midloop
-p256_scalarmul_inv_loop:
+        b       p256_scalarmul_inv_midp256_scalarmul_loop
+p256_scalarmul_p256_scalarmul_inv_loop:
         cmp     x10, xzr
         csetm   x14, mi
         cneg    x10, x10, mi
@@ -774,7 +774,7 @@ p256_scalarmul_inv_loop:
         sbc     x5, x5, x10
         stp     x1, x3, [sp, #128]
         stp     x2, x5, [sp, #144]
-p256_scalarmul_inv_midloop:
+p256_scalarmul_p256_scalarmul_inv_midloop:
         mov     x1, x22
         ldr     x2, [sp]
         ldr     x3, [sp, #48]
@@ -1385,7 +1385,7 @@ p256_scalarmul_inv_midloop:
         msub    x13, x15, x17, x5
         mov     x22, x1
         subs    x21, x21, #0x1
-        b.ne    p256_scalarmul_inv_loop
+        b.ne    p256_scalarmul_inv_p256_scalarmul_loop
         ldr     x0, [sp]
         ldr     x1, [sp, #48]
         mul     x0, x0, x10
@@ -1513,7 +1513,7 @@ p256_scalarmul_inv_midloop:
         ldp     x19, x20, [sp], #16
         ret
 
-local_montmul_p256_neon:
+p256_scalarmul_local_montmul_p256_neon:
         ldr q20, [x2]
         ldp x7, x17, [x1]
         ldr q0, [x1]
@@ -1720,7 +1720,7 @@ local_montmul_p256_neon:
         stp x4, x1, [x0, #16]
         ret
 
-local_montsqr_p256_neon:
+p256_scalarmul_local_montsqr_p256_neon:
         ldr q19, [x1]
         ldp x9, x13, [x1]
         ldr q23, [x1, #16]
@@ -1859,7 +1859,7 @@ local_montsqr_p256_neon:
         stp x16, x2, [x0]
         ret
 
-local_tomont_p256:
+p256_scalarmul_local_tomont_p256:
         ldp     x2, x3, [x1]
         ldp     x4, x5, [x1, #16]
         mov     x1, #0xffffffffffffffff
@@ -1985,7 +1985,7 @@ local_tomont_p256:
         stp     x5, x6, [x0, #16]
         ret
 
-local_p256_montjadd:
+p256_scalarmul_local_p256_montjadd:
         stp	x19, x20, [sp, #-16]!
         stp	x21, x22, [sp, #-16]!
         stp	x23, x24, [sp, #-16]!
@@ -5105,7 +5105,7 @@ local_p256_montjadd:
         ldp	x19, x20, [sp], #16
         ret
 
-local_p256_montjdouble:
+p256_scalarmul_local_p256_montjdouble:
         sub	sp, sp, #0x110
         stp	x19, x20, [sp, #192]
         stp	x21, x22, [sp, #208]
@@ -6616,7 +6616,7 @@ local_p256_montjdouble:
         add	sp, sp, #0x110
         ret
 
-local_p256_montjmixadd:
+p256_scalarmul_local_p256_montjmixadd:
         stp     x19, x20, [sp, #-16]!
         sub     sp, sp, #0xc0
         mov     x17, x0

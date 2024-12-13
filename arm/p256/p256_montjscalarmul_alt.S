@@ -198,34 +198,34 @@ S2N_BN_SYMBOL(p256_montjscalarmul_alt):
 
         add     x0, tab+96*1
         add     x1, tab
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         add     x0, tab+96*2
         add     x1, tab+96*1
         add     x2, tab
-        bl      p256_montjscalarmul_alt_p256_montjadd
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         add     x0, tab+96*3
         add     x1, tab+96*1
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         add     x0, tab+96*4
         add     x1, tab+96*3
         add     x2, tab
-        bl      p256_montjscalarmul_alt_p256_montjadd
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         add     x0, tab+96*5
         add     x1, tab+96*2
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         add     x0, tab+96*6
         add     x1, tab+96*5
         add     x2, tab
-        bl      p256_montjscalarmul_alt_p256_montjadd
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         add     x0, tab+96*7
         add     x1, tab+96*3
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
 // Initialize the accumulator as a table entry for top 4 bits (unrecoded)
 
@@ -266,24 +266,24 @@ S2N_BN_SYMBOL(p256_montjscalarmul_alt):
 
 // Main loop over size-4 bitfields: double 4 times then add signed digit
 
-p256_montjscalarmul_alt_mainloop:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_mainloop:
         sub     j, j, #4
 
         add     x0, acc
         add     x1, acc
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p256_montjscalarmul_alt_p256_montjdouble
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lsr     x2, j, #6
         ldr     x14, [sp, x2, lsl #3]   // Exploits scalarb = sp exactly
@@ -352,9 +352,9 @@ p256_montjscalarmul_alt_mainloop:
         add     x0, acc
         add     x1, acc
         add     x2, tabent
-        bl      p256_montjscalarmul_alt_p256_montjadd
+        bl      p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
-        cbnz    j, p256_montjscalarmul_alt_mainloop
+        cbnz    j, p256_montjscalarmul_alt_p256_montjscalarmul_alt_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -381,7 +381,7 @@ p256_montjscalarmul_alt_mainloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-p256_montjscalarmul_alt_p256_montjadd:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd:
         sub     sp, sp, #0xe0
         mov     x15, x0
         mov     x16, x1
@@ -2311,7 +2311,7 @@ p256_montjscalarmul_alt_p256_montjadd:
         add     sp, sp, #0xe0
         ret
 
-p256_montjscalarmul_alt_p256_montjdouble:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble:
         sub     sp, sp, #0xc0
         mov     x15, x0
         mov     x16, x1

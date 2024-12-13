@@ -70,13 +70,13 @@
         add     x0, dest;                                               \
         add     x1, src1;                                               \
         add     x2, src2;                                               \
-        bl      edwards25519_decode_mul_p25519
+        bl      edwards25519_decode_edwards25519_decode_edwards25519_decode_mul_p25519
 
 #define nsqr(dest,n,src)                                                \
         add     x0, dest;                                               \
         mov     x1, n;                                                  \
         add     x2, src;                                                \
-        bl      edwards25519_decode_nsqr_p25519
+        bl      edwards25519_decode_edwards25519_decode_edwards25519_decode_nsqr_p25519
 
 S2N_BN_SYMBOL(edwards25519_decode):
 
@@ -344,7 +344,7 @@ S2N_BN_SYMBOL(edwards25519_decode):
 // Local z = x * y
 // *************************************************************
 
-edwards25519_decode_mul_p25519:
+edwards25519_decode_edwards25519_decode_edwards25519_decode_mul_p25519:
         ldp     x3, x4, [x1]
         ldp     x5, x6, [x2]
         umull   x7, w3, w5
@@ -531,7 +531,7 @@ edwards25519_decode_mul_p25519:
 // Local z = 2^n * x
 // *************************************************************
 
-edwards25519_decode_nsqr_p25519:
+edwards25519_decode_edwards25519_decode_edwards25519_decode_nsqr_p25519:
 
 // Copy input argument into [x13;x12;x11;x10]
 
@@ -541,7 +541,7 @@ edwards25519_decode_nsqr_p25519:
 // Main squaring loop, accumulating in [x13;x12;x11;x10] consistently and
 // only ensuring the intermediates are < 2 * p_25519 = 2^256 - 38
 
-edwards25519_decode_loop:
+edwards25519_decode_edwards25519_decode_edwards25519_decode_loop:
         umull   x2, w10, w10
         lsr     x14, x10, #32
         umull   x3, w14, w14
@@ -672,7 +672,7 @@ edwards25519_decode_loop:
 // Loop as applicable
 
         subs    x1, x1, #1
-        bne     edwards25519_decode_loop
+        bne     edwards25519_decode_edwards25519_decode_edwards25519_decode_loop
 
 // We know the intermediate result x < 2^256 - 38, and now we do strict
 // modular reduction mod 2^255 - 19. Note x < 2^255 - 19 <=> x + 19 < 2^255

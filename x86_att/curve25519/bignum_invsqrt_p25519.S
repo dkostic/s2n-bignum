@@ -68,12 +68,12 @@ S2N_BN_SYMBOL(bignum_invsqrt_p25519):
         pushq   %rsi
         movq    %rcx, %rdi
         movq    %rdx, %rsi
-        callq   bignum_invsqrt_p25519_standard
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_standard
         popq    %rsi
         popq    %rdi
         ret
 
-bignum_invsqrt_p25519_standard:
+bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_standard:
 #endif
 
 // Save registers and make room for temporaries
@@ -124,132 +124,132 @@ bignum_invsqrt_p25519_standard:
         leaq    T(%rsp), %rdi
         movq    $1, %rsi
         leaq    A(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    T(%rsp), %rsi
         leaq    A(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^4 - 1 = 15
 
         leaq    S(%rsp), %rdi
         movq    $2, %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^5 - 1 = 31
 
         leaq    S(%rsp), %rdi
         movq    $1, %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    B(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    A(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^10 - 1
 
         leaq    S(%rsp), %rdi
         movq    $5, %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^20 - 1
 
         leaq    S(%rsp), %rdi
         movq    $10, %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^25 - 1
 
         leaq    S(%rsp), %rdi
         movq    $5, %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    B(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^50 - 1
 
         leaq    S(%rsp), %rdi
         movq    $25, %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^100 - 1
 
         leaq    S(%rsp), %rdi
         movq    $50, %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^125 - 1
 
         leaq    S(%rsp), %rdi
         movq    $25, %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    B(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^250 - 1
 
         leaq    S(%rsp), %rdi
         movq    $125, %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    B(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
   // Power 2^252 - 3
 
         leaq    S(%rsp), %rdi
         movq    $2, %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    S(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    A(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
 // s = a^{2^252-3} is now one candidate inverse square root.
 // Generate the other one t = s * j_25519 where j_25519 = sqrt(-1)
@@ -266,19 +266,19 @@ bignum_invsqrt_p25519_standard:
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
 // Now multiplex between them according to whether a * s^2 = 1
 
         leaq    B(%rsp), %rdi
         movq    $1, %rsi
         leaq    S(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    B(%rsp), %rdi
         leaq    A(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
         movq    B(%rsp), %rax
         xorq    $1, %rax
@@ -333,12 +333,12 @@ bignum_invsqrt_p25519_standard:
 
         leaq    B(%rsp), %rdi
         movq    $1, %rsi
-        callq   bignum_invsqrt_p25519_nsqr_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519
 
         leaq    B(%rsp), %rdi
         leaq    A(%rsp), %rsi
         leaq    B(%rsp), %rdx
-        callq   bignum_invsqrt_p25519_mul_p25519
+        callq   bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519
 
         movq    $1, %rax
         movq    B(%rsp), %rbp
@@ -375,7 +375,7 @@ bignum_invsqrt_p25519_standard:
 // Local z = x * y
 // *************************************************************
 
-bignum_invsqrt_p25519_mul_p25519:
+bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_mul_p25519:
         movq    %rdx, %rcx
         xorl    %ebp, %ebp
         movq    (%rcx), %rdx
@@ -472,7 +472,7 @@ bignum_invsqrt_p25519_mul_p25519:
 // Local z = 2^n * x
 // *************************************************************
 
-bignum_invsqrt_p25519_nsqr_p25519:
+bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_nsqr_p25519:
 
 // Copy input argument into u
 
@@ -488,7 +488,7 @@ bignum_invsqrt_p25519_nsqr_p25519:
 // Main squaring loop, accumulating in u consistently  and
 // only ensuring the intermediates are < 2 * p_25519 = 2^256 - 38
 
-bignum_invsqrt_p25519_loop:
+bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_loop:
         movq   U8(%rsp), %rdx
         mulxq  %rdx, %r8, %r15
         mulxq  U8+0x8(%rsp), %r9, %r10
@@ -561,7 +561,7 @@ bignum_invsqrt_p25519_loop:
 // Loop as applicable
 
         decq    %rsi
-        jnz     bignum_invsqrt_p25519_loop
+        jnz     bignum_invsqrt_p25519_bignum_invsqrt_p25519_bignum_invsqrt_p25519_loop
 
 // We know the intermediate result x < 2^256 - 38, and now we do strict
 // modular reduction mod 2^255 - 19. Note x < 2^255 - 19 <=> x + 19 < 2^255

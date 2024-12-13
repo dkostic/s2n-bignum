@@ -562,12 +562,12 @@ S2N_BN_SYMBOL(edwards25519_scalarmuldouble_alt):
         movq    %rdx, %rsi
         movq    %r8, %rdx
         movq    %r9, %rcx
-        callq   edwards25519_scalarmuldouble_alt_standard
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_standard
         popq    %rsi
         popq    %rdi
         ret
 
-edwards25519_scalarmuldouble_alt_standard:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_standard:
 #endif
 
 // Save registers, make room for temps, preserve input arguments.
@@ -712,46 +712,46 @@ edwards25519_scalarmuldouble_alt_standard:
 
         leaq    TAB+1*128(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_epdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epdouble
 
 // Multiple 3
 
         leaq    TAB+2*128(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
         leaq    TAB+1*128(%rsp), %rbp
-        callq   edwards25519_scalarmuldouble_alt_epadd
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epadd
 
 // Multiple 4
 
         leaq    TAB+3*128(%rsp), %rdi
         leaq    TAB+1*128(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_epdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epdouble
 
 // Multiple 5
 
         leaq    TAB+4*128(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
         leaq    TAB+3*128(%rsp), %rbp
-        callq   edwards25519_scalarmuldouble_alt_epadd
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epadd
 
 // Multiple 6
 
         leaq    TAB+5*128(%rsp), %rdi
         leaq    TAB+2*128(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_epdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epdouble
 
 // Multiple 7
 
         leaq    TAB+6*128(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
         leaq    TAB+5*128(%rsp), %rbp
-        callq   edwards25519_scalarmuldouble_alt_epadd
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epadd
 
 // Multiple 8
 
         leaq    TAB+7*128(%rsp), %rdi
         leaq    TAB+3*128(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_epdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epdouble
 
 // Handle the initialization, starting the loop counter at i = 252
 // and initializing acc to the sum of the table entries for the
@@ -781,7 +781,7 @@ edwards25519_scalarmuldouble_alt_standard:
         xorl    %r14d, %r14d
         xorl    %r15d, %r15d
 
-        leaq    edwards25519_scalarmuldouble_alt_table(%rip), %rbp
+        leaq    edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_table(%rip), %rbp
 
         cmpq    $1, bf
         movq    (%rbp), %rsi
@@ -1369,12 +1369,12 @@ edwards25519_scalarmuldouble_alt_standard:
         leaq    ACC(%rsp), %rdi
         leaq    TABENT(%rsp), %rsi
         leaq    BTABENT(%rsp), %rbp
-        callq   edwards25519_scalarmuldouble_alt_pepadd
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pepadd
 
 // Main loop with acc = [scalar/2^i] * point + [bscalar/2^i] * basepoint
 // Start with i = 252 for bits 248..251 and go down four at a time to 3..0
 
-edwards25519_scalarmuldouble_alt_loop:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_loop:
 
         movq    i, %rax
         subq    $4, %rax
@@ -1384,7 +1384,7 @@ edwards25519_scalarmuldouble_alt_loop:
 
         leaq    ACC(%rsp), %rdi
         leaq    ACC(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_pdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pdouble
 
 // Get btable entry, first getting the adjusted bitfield...
 
@@ -1417,7 +1417,7 @@ edwards25519_scalarmuldouble_alt_loop:
         xorl    %r14d, %r14d
         xorl    %r15d, %r15d
 
-        leaq    edwards25519_scalarmuldouble_alt_table(%rip), %rbp
+        leaq    edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_table(%rip), %rbp
 
         cmpq    $1, bf
         movq    (%rbp), %rsi
@@ -2095,39 +2095,39 @@ edwards25519_scalarmuldouble_alt_loop:
 
         leaq    ACC(%rsp), %rdi
         leaq    ACC(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_pdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pdouble
 
 // Add tabent := tabent + btabent
 
         leaq    TABENT(%rsp), %rdi
         leaq    TABENT(%rsp), %rsi
         leaq    BTABENT(%rsp), %rbp
-        callq   edwards25519_scalarmuldouble_alt_pepadd
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pepadd
 
 // Double to acc' = 8 * acc
 
         leaq    ACC(%rsp), %rdi
         leaq    ACC(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_pdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pdouble
 
 // Double to acc' = 16 * acc
 
         leaq    ACC(%rsp), %rdi
         leaq    ACC(%rsp), %rsi
-        callq   edwards25519_scalarmuldouble_alt_epdouble
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epdouble
 
 // Add table entry, acc := acc + tabent
 
         leaq    ACC(%rsp), %rdi
         leaq    ACC(%rsp), %rsi
         leaq    TABENT(%rsp), %rbp
-        callq   edwards25519_scalarmuldouble_alt_epadd
+        callq   edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epadd
 
 // Loop down
 
         movq    i, %rax
         testq   %rax, %rax
-        jnz     edwards25519_scalarmuldouble_alt_loop
+        jnz     edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_loop
 
 // Prepare to call the modular inverse function to get tab = 1/z
 
@@ -2189,8 +2189,8 @@ edwards25519_scalarmuldouble_alt_loop:
         movq    %rax, 0x78(%rsp)
         movq    $0xa,  0x90(%rsp)
         movq    $0x1,  0x98(%rsp)
-        jmp     edwards25519_scalarmuldouble_alt_midloop
-edwards25519_scalarmuldouble_alt_inverseloop:
+        jmp     edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_midloop
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_inverseloop:
         movq    %r8, %r9
         sarq    $0x3f, %r9
         xorq    %r9, %r8
@@ -2481,7 +2481,7 @@ edwards25519_scalarmuldouble_alt_inverseloop:
         shlq    $0x3f, %rax
         addq    %rax, %rsi
         movq    %rsi, 0x78(%rsp)
-edwards25519_scalarmuldouble_alt_midloop:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_midloop:
         movq    0x98(%rsp), %rsi
         movq    (%rsp), %rdx
         movq    0x20(%rsp), %rcx
@@ -3382,7 +3382,7 @@ edwards25519_scalarmuldouble_alt_midloop:
         leaq    (%rax,%rdx), %r12
         movq    %rsi, 0x98(%rsp)
         decq     0x90(%rsp)
-        jne     edwards25519_scalarmuldouble_alt_inverseloop
+        jne     edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_inverseloop
         movq    (%rsp), %rax
         movq    0x20(%rsp), %rcx
         imulq   %r8, %rax
@@ -3518,7 +3518,7 @@ edwards25519_scalarmuldouble_alt_midloop:
 // but are only maintaining reduction modulo 2^256 - 38, not 2^255 - 19.
 // ****************************************************************************
 
-edwards25519_scalarmuldouble_alt_epdouble:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epdouble:
         sub $(5*NUMSIZE), %rsp
         add_twice4(t0,x_1,y_1)
         sqr_4(t1,z_1)
@@ -3537,7 +3537,7 @@ edwards25519_scalarmuldouble_alt_epdouble:
         add $(5*NUMSIZE), %rsp
         ret
 
-edwards25519_scalarmuldouble_alt_pdouble:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pdouble:
         sub $(5*NUMSIZE), %rsp
         add_twice4(t0,x_1,y_1)
         sqr_4(t1,z_1)
@@ -3555,7 +3555,7 @@ edwards25519_scalarmuldouble_alt_pdouble:
         add $(5*NUMSIZE), %rsp
         ret
 
-edwards25519_scalarmuldouble_alt_epadd:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_epadd:
         sub $(6*NUMSIZE), %rsp
         mul_4(t0,w_1,w_2)
         sub_twice4(t1,y_1,x_1)
@@ -3579,7 +3579,7 @@ edwards25519_scalarmuldouble_alt_epadd:
         add $(6*NUMSIZE), %rsp
         ret
 
-edwards25519_scalarmuldouble_alt_pepadd:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_pepadd:
         sub $(6*NUMSIZE), %rsp
         double_twice4(t0,z_1);
         sub_twice4(t1,y_1,x_1);
@@ -3609,7 +3609,7 @@ edwards25519_scalarmuldouble_alt_pepadd:
 // Precomputed table of multiples of generator for edwards25519
 // all in precomputed extended-projective (y-x,x+y,2*d*x*y) triples.
 
-edwards25519_scalarmuldouble_alt_table:
+edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_edwards25519_scalarmuldouble_alt_table:
 
         // 1 * G
 

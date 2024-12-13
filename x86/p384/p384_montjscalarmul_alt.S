@@ -97,12 +97,12 @@ S2N_BN_SYMBOL(p384_montjscalarmul_alt):
         mov     rdi, rcx
         mov     rsi, rdx
         mov     rdx, r8
-        call    p384_montjscalarmul_alt_standard
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_standard
         pop    rsi
         pop    rdi
         ret
 
-p384_montjscalarmul_alt_standard:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -199,70 +199,70 @@ p384_montjscalarmul_alt_standard:
 
         lea     rdi, [rsp+TAB+JACSIZE*1]
         lea     rsi, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*2]
         lea     rsi, [rsp+TAB+JACSIZE*1]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*3]
         lea     rsi, [rsp+TAB+JACSIZE*1]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*4]
         lea     rsi, [rsp+TAB+JACSIZE*3]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*5]
         lea     rsi, [rsp+TAB+JACSIZE*2]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*6]
         lea     rsi, [rsp+TAB+JACSIZE*5]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*7]
         lea     rsi, [rsp+TAB+JACSIZE*3]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*8]
         lea     rsi, [rsp+TAB+JACSIZE*7]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*9]
         lea     rsi, [rsp+TAB+JACSIZE*4]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*10]
         lea     rsi, [rsp+TAB+JACSIZE*9]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*11]
         lea     rsi, [rsp+TAB+JACSIZE*5]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*12]
         lea     rsi, [rsp+TAB+JACSIZE*11]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*13]
         lea     rsi, [rsp+TAB+JACSIZE*6]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rdi, [rsp+TAB+JACSIZE*14]
         lea     rsi, [rsp+TAB+JACSIZE*13]
         lea     rdx, [rsp+TAB]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         lea     rdi, [rsp+TAB+JACSIZE*15]
         lea     rsi, [rsp+TAB+JACSIZE*7]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
 // Add the recoding constant sum_i(16 * 32^i) to the scalar to allow signed
 // digits. The digits of the constant, in lowest-to-highest order, are as
@@ -401,28 +401,28 @@ p384_montjscalarmul_alt_standard:
 
         mov     ebp, 380
 
-p384_montjscalarmul_alt_mainloop:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_mainloop:
         sub     rbp, 5
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p384_montjscalarmul_alt_p384_montjdouble
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
 // Choose the bitfield and adjust it to sign and magnitude
 
@@ -574,10 +574,10 @@ selectblock_xz(1)
         lea     rdx, [rsp+TABENT]
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p384_montjscalarmul_alt_p384_montjadd
+        call    p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         test    rbp, rbp
-        jne     p384_montjscalarmul_alt_mainloop
+        jne     p384_montjscalarmul_alt_p384_montjscalarmul_alt_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -633,7 +633,7 @@ selectblock_xz(1)
 
 // Local copies of subroutines, complete clones at the moment
 
-p384_montjscalarmul_alt_p384_montjadd:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd:
         push    rbx
         push    rbp
         push    r12
@@ -6464,7 +6464,7 @@ p384_montjscalarmul_alt_p384_montjadd:
         pop     rbx
         ret
 
-p384_montjscalarmul_alt_p384_montjdouble:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble:
         push    rbx
         push    rbp
         push    r12

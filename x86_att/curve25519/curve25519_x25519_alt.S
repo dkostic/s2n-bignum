@@ -842,7 +842,7 @@ S2N_BN_SYMBOL(curve25519_x25519_byte_alt):
         movl    $253, %eax
         movq    %rax, i
 
-curve25519_x25519_alt_scalarloop:
+curve25519_x25519_alt_curve25519_x25519_alt_curve25519_x25519_alt_scalarloop:
 
 // sm = xm + zm; sn = xn + zn; dm = xm - zm; dn = xn - zn
 
@@ -912,7 +912,7 @@ curve25519_x25519_alt_scalarloop:
         subq    $1, %rax
         movq    %rax, i
         cmpq    $3, %rax
-        jnc     curve25519_x25519_alt_scalarloop
+        jnc     curve25519_x25519_alt_curve25519_x25519_alt_curve25519_x25519_alt_scalarloop
 
 // Multiplex directly into (xn,zn) then do three pure doubling steps;
 // this accounts for the implicit zeroing of the three lowest bits
@@ -1011,8 +1011,8 @@ curve25519_x25519_alt_scalarloop:
         movq    %rax, 0x78(%rsp)
         movq    $0xa,  0x90(%rsp)
         movq    $0x1,  0x98(%rsp)
-        jmp     curve25519_x25519_alt_midloop
-curve25519_x25519_alt_inverseloop:
+        jmp     curve25519_x25519_alt_curve25519_x25519_alt_curve25519_x25519_alt_midloop
+curve25519_x25519_alt_curve25519_x25519_alt_curve25519_x25519_alt_inverseloop:
         movq    %r8, %r9
         sarq    $0x3f, %r9
         xorq    %r9, %r8
@@ -1303,7 +1303,7 @@ curve25519_x25519_alt_inverseloop:
         shlq    $0x3f, %rax
         addq    %rax, %rsi
         movq    %rsi, 0x78(%rsp)
-curve25519_x25519_alt_midloop:
+curve25519_x25519_alt_curve25519_x25519_alt_curve25519_x25519_alt_midloop:
         movq    0x98(%rsp), %rsi
         movq    (%rsp), %rdx
         movq    0x20(%rsp), %rcx
@@ -2204,7 +2204,7 @@ curve25519_x25519_alt_midloop:
         leaq    (%rax,%rdx), %r12
         movq    %rsi, 0x98(%rsp)
         decq     0x90(%rsp)
-        jne     curve25519_x25519_alt_inverseloop
+        jne     curve25519_x25519_alt_curve25519_x25519_alt_curve25519_x25519_alt_inverseloop
         movq    (%rsp), %rax
         movq    0x20(%rsp), %rcx
         imulq   %r8, %rax

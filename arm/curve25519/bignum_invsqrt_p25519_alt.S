@@ -61,13 +61,13 @@
         add     x0, dest;                                               \
         add     x1, src1;                                               \
         add     x2, src2;                                               \
-        bl      bignum_invsqrt_p25519_alt_mul_p25519
+        bl      bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_mul_p25519
 
 #define nsqr(dest,n,src)                                                \
         add     x0, dest;                                               \
         mov     x1, n;                                                  \
         add     x2, src;                                                \
-        bl      bignum_invsqrt_p25519_alt_nsqr_p25519
+        bl      bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_nsqr_p25519
 
 S2N_BN_SYMBOL(bignum_invsqrt_p25519_alt):
 
@@ -215,7 +215,7 @@ S2N_BN_SYMBOL(bignum_invsqrt_p25519_alt):
 
         add     x0, b
         mov     x1, #1
-        bl      bignum_invsqrt_p25519_alt_nsqr_p25519
+        bl      bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_nsqr_p25519
         mulp(b,a,b)
 
         ldp     x10, x11, [b]
@@ -244,7 +244,7 @@ S2N_BN_SYMBOL(bignum_invsqrt_p25519_alt):
 // Local z = x * y
 // *************************************************************
 
-bignum_invsqrt_p25519_alt_mul_p25519:
+bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_mul_p25519:
         ldp     x3, x4, [x1]
         ldp     x7, x8, [x2]
         mul     x12, x3, x7
@@ -351,7 +351,7 @@ bignum_invsqrt_p25519_alt_mul_p25519:
 // Local z = 2^n * x
 // *************************************************************
 
-bignum_invsqrt_p25519_alt_nsqr_p25519:
+bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_nsqr_p25519:
 
 // Copy input argument into [x5;x4;x3;x2] (overwriting input pointer x20
 
@@ -362,7 +362,7 @@ bignum_invsqrt_p25519_alt_nsqr_p25519:
 // Main squaring loop, accumulating in [x5;x4;x3;x2] consistently and
 // only ensuring the intermediates are < 2 * p_25519 = 2^256 - 38
 
-bignum_invsqrt_p25519_alt_loop:
+bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_loop:
         mul     x9, x2, x3
         umulh   x10, x2, x3
         mul     x11, x2, x5
@@ -435,7 +435,7 @@ bignum_invsqrt_p25519_alt_loop:
 // Loop as applicable
 
         subs    x1, x1, #1
-        bne     bignum_invsqrt_p25519_alt_loop
+        bne     bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_bignum_invsqrt_p25519_alt_loop
 
 // We know the intermediate result x < 2^256 - 38, and now we do strict
 // modular reduction mod 2^255 - 19. Note x < 2^255 - 19 <=> x + 19 < 2^255

@@ -83,12 +83,12 @@ S2N_BN_SYMBOL(p521_jscalarmul_alt):
         movq    %rcx, %rdi
         movq    %rdx, %rsi
         movq    %r8, %rdx
-        callq   p521_jscalarmul_alt_standard
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_standard
         popq   %rsi
         popq   %rdi
         ret
 
-p521_jscalarmul_alt_standard:
+p521_jscalarmul_alt_p521_jscalarmul_alt_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -110,7 +110,7 @@ p521_jscalarmul_alt_standard:
 
         movq    %rdx, %rbx
         leaq    SCALARB(%rsp), %rdi
-        callq   p521_jscalarmul_alt_bignum_mod_n521_9
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_bignum_mod_n521_9
 
 // Set the tab[0] table entry to the input point = 1 * P, but also
 // reduce all coordinates modulo p. In principle we assume reduction
@@ -120,15 +120,15 @@ p521_jscalarmul_alt_standard:
 
         leaq    TAB(%rsp), %rdi
         movq    %rbx, %rsi
-        callq   p521_jscalarmul_alt_bignum_mod_p521_9
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_bignum_mod_p521_9
 
         leaq    TAB+NUMSIZE(%rsp), %rdi
         leaq    NUMSIZE(%rbx), %rsi
-        callq   p521_jscalarmul_alt_bignum_mod_p521_9
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_bignum_mod_p521_9
 
         leaq    TAB+2*NUMSIZE(%rsp), %rdi
         leaq    2*NUMSIZE(%rbx), %rsi
-        callq   p521_jscalarmul_alt_bignum_mod_p521_9
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_bignum_mod_p521_9
 
 // If bit 520 of the scalar is set, then negate the scalar mod n_521,
 // i.e. do scalar |-> n_521 - scalar, and also the point to compensate
@@ -230,70 +230,70 @@ p521_jscalarmul_alt_standard:
 
         leaq    TAB+JACSIZE*1(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*2(%rsp), %rdi
         leaq    TAB+JACSIZE*1(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*3(%rsp), %rdi
         leaq    TAB+JACSIZE*1(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*4(%rsp), %rdi
         leaq    TAB+JACSIZE*3(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*5(%rsp), %rdi
         leaq    TAB+JACSIZE*2(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*6(%rsp), %rdi
         leaq    TAB+JACSIZE*5(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*7(%rsp), %rdi
         leaq    TAB+JACSIZE*3(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*8(%rsp), %rdi
         leaq    TAB+JACSIZE*7(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*9(%rsp), %rdi
         leaq    TAB+JACSIZE*4(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*10(%rsp), %rdi
         leaq    TAB+JACSIZE*9(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*11(%rsp), %rdi
         leaq    TAB+JACSIZE*5(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*12(%rsp), %rdi
         leaq    TAB+JACSIZE*11(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*13(%rsp), %rdi
         leaq    TAB+JACSIZE*6(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    TAB+JACSIZE*14(%rsp), %rdi
         leaq    TAB+JACSIZE*13(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         leaq    TAB+JACSIZE*15(%rsp), %rdi
         leaq    TAB+JACSIZE*7(%rsp), %rsi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
 // Add the recoding constant sum_i(16 * 32^i) to the scalar to allow signed
 // digits. The digits of the constant, in lowest-to-highest order, are as
@@ -457,28 +457,28 @@ p521_jscalarmul_alt_standard:
 
         movl    $520, %ebp
 
-p521_jscalarmul_alt_mainloop:
+p521_jscalarmul_alt_p521_jscalarmul_alt_mainloop:
         subq    $5, %rbp
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p521_jscalarmul_alt_jdouble
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble
 
 // Choose the bitfield and adjust it to sign and magnitude
 
@@ -664,10 +664,10 @@ p521_jscalarmul_alt_mainloop:
         leaq    TABENT(%rsp), %rdx
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p521_jscalarmul_alt_jadd
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_jadd
 
         testq   %rbp, %rbp
-        jne     p521_jscalarmul_alt_mainloop
+        jne     p521_jscalarmul_alt_p521_jscalarmul_alt_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -741,7 +741,7 @@ p521_jscalarmul_alt_mainloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-p521_jscalarmul_alt_bignum_mod_p521_9:
+p521_jscalarmul_alt_p521_jscalarmul_alt_bignum_mod_p521_9:
         pushq   %rbx
         movq    0x40(%rsi), %rax
         movl    $0x1ff, %edx
@@ -787,7 +787,7 @@ p521_jscalarmul_alt_bignum_mod_p521_9:
         popq    %rbx
         ret
 
-p521_jscalarmul_alt_bignum_mod_n521_9:
+p521_jscalarmul_alt_p521_jscalarmul_alt_bignum_mod_n521_9:
         movq    0x40(%rsi), %rcx
         movq    $0xfffffffffffffe00, %rax
         orq     %rcx, %rax
@@ -860,7 +860,7 @@ p521_jscalarmul_alt_bignum_mod_n521_9:
         movq    %rcx, 0x40(%rdi)
         ret
 
-p521_jscalarmul_alt_jadd:
+p521_jscalarmul_alt_p521_jscalarmul_alt_jadd:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -874,41 +874,41 @@ p521_jscalarmul_alt_jadd:
         movq    0x200(%rsp), %rsi
         leaq    0x90(%rsi), %rsi
         leaq    (%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    0x208(%rsp), %rdi
         leaq    0x90(%rdi), %rsi
         leaq    0x168(%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    0x200(%rsp), %rsi
         movq    0x208(%rsp), %rdi
         leaq    0x48(%rsi), %rdx
         leaq    0x90(%rdi), %rsi
         leaq    0x1b0(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x200(%rsp), %rsi
         movq    0x208(%rsp), %rdi
         leaq    0x48(%rdi), %rdx
         leaq    0x90(%rsi), %rsi
         leaq    0x48(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x208(%rsp), %rdi
         leaq    (%rdi), %rdx
         leaq    (%rsp), %rsi
         leaq    0x90(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x200(%rsp), %rsi
         leaq    (%rsi), %rdx
         leaq    0x168(%rsp), %rsi
         leaq    0x120(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         leaq    0x48(%rsp), %rdx
         leaq    (%rsp), %rsi
         leaq    0x48(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         leaq    0x1b0(%rsp), %rdx
         leaq    0x168(%rsp), %rsi
         leaq    0x1b0(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x90(%rsp), %rax
         subq    0x120(%rsp), %rax
         movq    0x98(%rsp), %rdx
@@ -985,18 +985,18 @@ p521_jscalarmul_alt_jadd:
         movq    %r14, 0x88(%rsp)
         leaq    0x168(%rsp), %rsi
         leaq    0xd8(%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         leaq    0x48(%rsp), %rsi
         leaq    (%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         leaq    0x120(%rsp), %rdx
         leaq    0xd8(%rsp), %rsi
         leaq    0x120(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         leaq    0x90(%rsp), %rdx
         leaq    0xd8(%rsp), %rsi
         leaq    0x90(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    (%rsp), %rax
         subq    0x120(%rsp), %rax
         movq    0x8(%rsp), %rdx
@@ -1075,7 +1075,7 @@ p521_jscalarmul_alt_jadd:
         leaq    0x90(%rsi), %rdx
         leaq    0x168(%rsp), %rsi
         leaq    0x168(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    (%rsp), %rax
         subq    0x90(%rsp), %rax
         movq    0x8(%rsp), %rdx
@@ -1153,16 +1153,16 @@ p521_jscalarmul_alt_jadd:
         leaq    0x1b0(%rsp), %rdx
         leaq    0xd8(%rsp), %rsi
         leaq    0xd8(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x208(%rsp), %rdi
         leaq    0x90(%rdi), %rdx
         leaq    0x168(%rsp), %rsi
         leaq    0x168(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         leaq    0x120(%rsp), %rdx
         leaq    0x48(%rsp), %rsi
         leaq    0x120(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x120(%rsp), %rax
         subq    0xd8(%rsp), %rax
         movq    0x128(%rsp), %rdx
@@ -1395,7 +1395,7 @@ p521_jscalarmul_alt_jadd:
         popq    %rbx
         ret
 
-p521_jscalarmul_alt_jdouble:
+p521_jscalarmul_alt_p521_jscalarmul_alt_jdouble:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -1408,11 +1408,11 @@ p521_jscalarmul_alt_jdouble:
         movq    0x200(%rsp), %rdi
         leaq    0x90(%rdi), %rsi
         leaq    (%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    0x200(%rsp), %rdi
         leaq    0x48(%rdi), %rsi
         leaq    0x48(%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    0x200(%rsp), %rdi
         stc
         movq    (%rdi), %rax
@@ -1495,7 +1495,7 @@ p521_jscalarmul_alt_jdouble:
         leaq    0x120(%rsp), %rdx
         leaq    0x168(%rsp), %rsi
         leaq    0x90(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x200(%rsp), %rdi
         stc
         movq    0x48(%rdi), %rax
@@ -1539,15 +1539,15 @@ p521_jscalarmul_alt_jdouble:
         movq    %r14, 0x1a8(%rsp)
         leaq    0x90(%rsp), %rsi
         leaq    0x1b0(%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    0x200(%rsp), %rdi
         leaq    0x48(%rsp), %rdx
         leaq    (%rdi), %rsi
         leaq    0xd8(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         leaq    0x168(%rsp), %rsi
         leaq    0x120(%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    $0x9, %rcx
         movq    0x1b0(%rsp), %rax
         notq    %rax
@@ -1725,7 +1725,7 @@ p521_jscalarmul_alt_jdouble:
         movq    %r14, 0x1a8(%rsp)
         leaq    0x48(%rsp), %rsi
         leaq    0x120(%rsp), %rdi
-        callq   p521_jscalarmul_alt_sqr_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521
         movq    0x1f8(%rsp), %rdi
         movq    0x168(%rsp), %rax
         subq    0x48(%rsp), %rax
@@ -1767,7 +1767,7 @@ p521_jscalarmul_alt_jdouble:
         leaq    0x90(%rsp), %rdx
         leaq    0x1b0(%rsp), %rsi
         leaq    0x168(%rsp), %rdi
-        callq   p521_jscalarmul_alt_mul_p521
+        callq   p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521
         movq    0x1f8(%rsp), %rdi
         movq    0x118(%rsp), %rbx
         movq    0x110(%rsp), %r15
@@ -1971,7 +1971,7 @@ p521_jscalarmul_alt_jdouble:
         popq    %rbx
         ret
 
-p521_jscalarmul_alt_mul_p521:
+p521_jscalarmul_alt_p521_jscalarmul_alt_mul_p521:
         subq    $0x48, %rsp
         movq    %rdx, %rcx
         movq    (%rsi), %rax
@@ -2442,7 +2442,7 @@ p521_jscalarmul_alt_mul_p521:
         addq    $0x48, %rsp
         ret
 
-p521_jscalarmul_alt_sqr_p521:
+p521_jscalarmul_alt_p521_jscalarmul_alt_sqr_p521:
         subq    $0x48, %rsp
         movq    (%rsi), %rax
         mulq    %rax

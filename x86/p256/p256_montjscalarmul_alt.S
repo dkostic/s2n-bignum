@@ -86,12 +86,12 @@ S2N_BN_SYMBOL(p256_montjscalarmul_alt):
         mov     rdi, rcx
         mov     rsi, rdx
         mov     rdx, r8
-        call    p256_montjscalarmul_alt_standard
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_standard
         pop    rsi
         pop    rdi
         ret
 
-p256_montjscalarmul_alt_standard:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -225,34 +225,34 @@ p256_montjscalarmul_alt_standard:
 
         lea     rdi, [rsp+TAB+96*1]
         lea     rsi, [rsp+TAB]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lea     rdi, [rsp+TAB+96*2]
         lea     rsi, [rsp+TAB+96*1]
         lea     rdx, [rsp+TAB]
-        call    p256_montjscalarmul_alt_p256_montjadd
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         lea     rdi, [rsp+TAB+96*3]
         lea     rsi, [rsp+TAB+96*1]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lea     rdi, [rsp+TAB+96*4]
         lea     rsi, [rsp+TAB+96*3]
         lea     rdx, [rsp+TAB]
-        call    p256_montjscalarmul_alt_p256_montjadd
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         lea     rdi, [rsp+TAB+96*5]
         lea     rsi, [rsp+TAB+96*2]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lea     rdi, [rsp+TAB+96*6]
         lea     rsi, [rsp+TAB+96*5]
         lea     rdx, [rsp+TAB]
-        call    p256_montjscalarmul_alt_p256_montjadd
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         lea     rdi, [rsp+TAB+96*7]
         lea     rsi, [rsp+TAB+96*3]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
 // Set up accumulator as table entry for top 4 bits (constant-time indexing)
 
@@ -298,24 +298,24 @@ p256_montjscalarmul_alt_standard:
 
         mov     ebp, 252
 
-p256_montjscalarmul_alt_mainloop:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_mainloop:
         sub     rbp, 4
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p256_montjscalarmul_alt_p256_montjdouble
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble
 
         mov     rax, rbp
         shr     rax, 6
@@ -396,10 +396,10 @@ p256_montjscalarmul_alt_mainloop:
         lea     rdx, [rsp+TABENT]
         lea     rsi, [rsp+ACC]
         lea     rdi, [rsp+ACC]
-        call    p256_montjscalarmul_alt_p256_montjadd
+        call    p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd
 
         test    rbp, rbp
-        jne     p256_montjscalarmul_alt_mainloop
+        jne     p256_montjscalarmul_alt_p256_montjscalarmul_alt_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -445,7 +445,7 @@ p256_montjscalarmul_alt_mainloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-p256_montjscalarmul_alt_p256_montjadd:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjadd:
         push    rbx
         push    rbp
         push    r12
@@ -3217,7 +3217,7 @@ p256_montjscalarmul_alt_p256_montjadd:
         pop     rbx
         ret
 
-p256_montjscalarmul_alt_p256_montjdouble:
+p256_montjscalarmul_alt_p256_montjscalarmul_alt_p256_montjdouble:
         push    rbx
         push    r12
         push    r13

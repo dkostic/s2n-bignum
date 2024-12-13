@@ -166,70 +166,70 @@ S2N_BN_SYMBOL(p384_montjscalarmul_alt):
 
         add     x0, tab+JACSIZE*1
         add     x1, tab
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*2
         add     x1, tab+JACSIZE*1
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*3
         add     x1, tab+JACSIZE*1
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*4
         add     x1, tab+JACSIZE*3
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*5
         add     x1, tab+JACSIZE*2
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*6
         add     x1, tab+JACSIZE*5
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*7
         add     x1, tab+JACSIZE*3
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*8
         add     x1, tab+JACSIZE*7
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*9
         add     x1, tab+JACSIZE*4
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*10
         add     x1, tab+JACSIZE*9
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*11
         add     x1, tab+JACSIZE*5
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*12
         add     x1, tab+JACSIZE*11
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*13
         add     x1, tab+JACSIZE*6
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, tab+JACSIZE*14
         add     x1, tab+JACSIZE*13
         add     x2, tab
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
         add     x0, tab+JACSIZE*15
         add     x1, tab+JACSIZE*7
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
 // Add the recoding constant sum_i(16 * 32^i) to the scalar to allow signed
 // digits. The digits of the constant, in lowest-to-highest order, are as
@@ -330,28 +330,28 @@ S2N_BN_SYMBOL(p384_montjscalarmul_alt):
 // At each stage we shift the scalar left by 5 bits so we can simply pick
 // the top 5 bits as the bitfield, saving some fiddle over indexing.
 
-p384_montjscalarmul_alt_mainloop:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_mainloop:
         sub     j, j, #5
 
         add     x0, acc
         add     x1, acc
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
         add     x0, acc
         add     x1, acc
-        bl      p384_montjscalarmul_alt_p384_montjdouble
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble
 
 // Choose the bitfield and adjust it to sign and magnitude
 
@@ -460,9 +460,9 @@ p384_montjscalarmul_alt_mainloop:
         add     x0, acc
         add     x1, acc
         add     x2, tabent
-        bl      p384_montjscalarmul_alt_p384_montjadd
+        bl      p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd
 
-        cbnz    j, p384_montjscalarmul_alt_mainloop
+        cbnz    j, p384_montjscalarmul_alt_p384_montjscalarmul_alt_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -497,7 +497,7 @@ p384_montjscalarmul_alt_mainloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-p384_montjscalarmul_alt_p384_montjadd:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjadd:
         stp     x19, x20, [sp, #-16]!
         stp     x21, x22, [sp, #-16]!
         stp     x23, x24, [sp, #-16]!
@@ -4883,7 +4883,7 @@ p384_montjscalarmul_alt_p384_montjadd:
         ldp     x19, x20, [sp], #16
         ret
 
-p384_montjscalarmul_alt_p384_montjdouble:
+p384_montjscalarmul_alt_p384_montjscalarmul_alt_p384_montjdouble:
         stp     x19, x20, [sp, #-16]!
         stp     x21, x22, [sp, #-16]!
         stp     x23, x24, [sp, #-16]!

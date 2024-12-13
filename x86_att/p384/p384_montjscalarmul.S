@@ -97,12 +97,12 @@ S2N_BN_SYMBOL(p384_montjscalarmul):
         movq    %rcx, %rdi
         movq    %rdx, %rsi
         movq    %r8, %rdx
-        callq   p384_montjscalarmul_standard
+        callq   p384_montjscalarmul_p384_montjscalarmul_standard
         popq   %rsi
         popq   %rdi
         ret
 
-p384_montjscalarmul_standard:
+p384_montjscalarmul_p384_montjscalarmul_standard:
 #endif
 
 // Real start of the standard ABI code.
@@ -199,70 +199,70 @@ p384_montjscalarmul_standard:
 
         leaq    TAB+JACSIZE*1(%rsp), %rdi
         leaq    TAB(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*2(%rsp), %rdi
         leaq    TAB+JACSIZE*1(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*3(%rsp), %rdi
         leaq    TAB+JACSIZE*1(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*4(%rsp), %rdi
         leaq    TAB+JACSIZE*3(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*5(%rsp), %rdi
         leaq    TAB+JACSIZE*2(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*6(%rsp), %rdi
         leaq    TAB+JACSIZE*5(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*7(%rsp), %rdi
         leaq    TAB+JACSIZE*3(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*8(%rsp), %rdi
         leaq    TAB+JACSIZE*7(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*9(%rsp), %rdi
         leaq    TAB+JACSIZE*4(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*10(%rsp), %rdi
         leaq    TAB+JACSIZE*9(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*11(%rsp), %rdi
         leaq    TAB+JACSIZE*5(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*12(%rsp), %rdi
         leaq    TAB+JACSIZE*11(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*13(%rsp), %rdi
         leaq    TAB+JACSIZE*6(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    TAB+JACSIZE*14(%rsp), %rdi
         leaq    TAB+JACSIZE*13(%rsp), %rsi
         leaq    TAB(%rsp), %rdx
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         leaq    TAB+JACSIZE*15(%rsp), %rdi
         leaq    TAB+JACSIZE*7(%rsp), %rsi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
 // Add the recoding constant sum_i(16 * 32^i) to the scalar to allow signed
 // digits. The digits of the constant, in lowest-to-highest order, are as
@@ -401,28 +401,28 @@ p384_montjscalarmul_standard:
 
         movl    $380, %ebp
 
-p384_montjscalarmul_mainloop:
+p384_montjscalarmul_p384_montjscalarmul_mainloop:
         subq    $5, %rbp
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p384_montjscalarmul_p384_montjdouble
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble
 
 // Choose the bitfield and adjust it to sign and magnitude
 
@@ -574,10 +574,10 @@ p384_montjscalarmul_mainloop:
         leaq    TABENT(%rsp), %rdx
         leaq    ACC(%rsp), %rsi
         leaq    ACC(%rsp), %rdi
-        callq   p384_montjscalarmul_p384_montjadd
+        callq   p384_montjscalarmul_p384_montjscalarmul_p384_montjadd
 
         testq   %rbp, %rbp
-        jne     p384_montjscalarmul_mainloop
+        jne     p384_montjscalarmul_p384_montjscalarmul_mainloop
 
 // That's the end of the main loop, and we just need to copy the
 // result in "acc" to the output.
@@ -633,7 +633,7 @@ p384_montjscalarmul_mainloop:
 
 // Local copies of subroutines, complete clones at the moment
 
-p384_montjscalarmul_p384_montjadd:
+p384_montjscalarmul_p384_montjscalarmul_p384_montjadd:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12
@@ -5048,7 +5048,7 @@ p384_montjscalarmul_p384_montjadd:
         popq    %rbx
         ret
 
-p384_montjscalarmul_p384_montjdouble:
+p384_montjscalarmul_p384_montjscalarmul_p384_montjdouble:
         pushq   %rbx
         pushq   %rbp
         pushq   %r12

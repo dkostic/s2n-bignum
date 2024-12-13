@@ -78,12 +78,12 @@ S2N_BN_SYMBOL(edwards25519_decode_alt):
         pushq   %rsi
         movq    %rcx, %rdi
         movq    %rdx, %rsi
-        callq   edwards25519_decode_alt_standard
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_standard
         popq    %rsi
         popq    %rdi
         ret
 
-edwards25519_decode_alt_standard:
+edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_standard:
 #endif
 
 // Save registers and make room for temporaries
@@ -132,7 +132,7 @@ edwards25519_decode_alt_standard:
         leaq    V(%rsp), %rdi
         movq    $1, %rsi
         leaq    Y(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
         movq    V(%rsp), %rax
         subq    $20, %rax
         movq    V+8(%rsp), %rbx
@@ -158,7 +158,7 @@ edwards25519_decode_alt_standard:
         leaq    V(%rsp), %rdi
         leaq    W(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
         movq    V(%rsp), %rax
         addq    $1, %rax
         movq    V+8(%rsp), %rbx
@@ -175,7 +175,7 @@ edwards25519_decode_alt_standard:
         leaq    W(%rsp), %rdi
         leaq    U(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
 // Get s = w^{252-3} as a candidate inverse square root 1/sqrt(w).
 // This power tower computation is the same as bignum_invsqrt_p25519
@@ -183,112 +183,112 @@ edwards25519_decode_alt_standard:
         leaq    T(%rsp), %rdi
         movq    $1, %rsi
         leaq    W(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    T(%rsp), %rsi
         leaq    W(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $2, %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $1, %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    V(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    W(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $5, %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $10, %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $5, %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    V(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $25, %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $50, %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $25, %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    V(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $125, %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    V(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
         leaq    S(%rsp), %rdi
         movq    $2, %rsi
         leaq    V(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    S(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    W(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
 // Compute v' = s^2 * w to discriminate whether the square root sqrt(u/v)
 // exists, in which case we should get 0, 1 or -1.
@@ -296,12 +296,12 @@ edwards25519_decode_alt_standard:
         leaq    V(%rsp), %rdi
         movq    $1, %rsi
         leaq    S(%rsp), %rdx
-        callq   edwards25519_decode_alt_nsqr_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519
 
         leaq    V(%rsp), %rdi
         leaq    V(%rsp), %rsi
         leaq    W(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
 // Get the two candidates for sqrt(u / v), one being s = u * w^{252-3}
 // and the other being t = s * j_25519 where j_25519 = sqrt(-1).
@@ -309,7 +309,7 @@ edwards25519_decode_alt_standard:
         leaq    S(%rsp), %rdi
         leaq    U(%rsp), %rsi
         leaq    S(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
         movq    $0xc4ee1b274a0ea0b0, %rax
         movq    %rax, T(%rsp)
         movq    $0x2f431806ad2fe478, %rax
@@ -321,7 +321,7 @@ edwards25519_decode_alt_standard:
         leaq    T(%rsp), %rdi
         leaq    S(%rsp), %rsi
         leaq    T(%rsp), %rdx
-        callq   edwards25519_decode_alt_mul_p25519
+        callq   edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519
 
 // %rax = 0 <=> s^2 * w = 0 or 1
 
@@ -452,7 +452,7 @@ edwards25519_decode_alt_standard:
 // Local z = x * y
 // *************************************************************
 
-edwards25519_decode_alt_mul_p25519:
+edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_mul_p25519:
         movq    %rdx, %rcx
         movq    (%rsi), %rax
         mulq     (%rcx)
@@ -589,7 +589,7 @@ edwards25519_decode_alt_mul_p25519:
 // Local z = 2^n * x
 // *************************************************************
 
-edwards25519_decode_alt_nsqr_p25519:
+edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_nsqr_p25519:
 
 // Copy input argument into q
 
@@ -605,7 +605,7 @@ edwards25519_decode_alt_nsqr_p25519:
 // Main squaring loop, accumulating in u consistently  and
 // only ensuring the intermediates are < 2 * p_25519 = 2^256 - 38
 
-edwards25519_decode_alt_loop:
+edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_loop:
         movq    Q8(%rsp), %rax
         mulq    %rax
         movq    %rax, %r8
@@ -719,7 +719,7 @@ edwards25519_decode_alt_loop:
 // Loop as applicable
 
         decq    %rsi
-        jnz     edwards25519_decode_alt_loop
+        jnz     edwards25519_decode_alt_edwards25519_decode_alt_edwards25519_decode_alt_loop
 
 // We know the intermediate result x < 2^256 - 38, and now we do strict
 // modular reduction mod 2^255 - 19. Note x < 2^255 - 19 <=> x + 19 < 2^255

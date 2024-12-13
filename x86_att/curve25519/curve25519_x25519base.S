@@ -347,12 +347,12 @@ S2N_BN_SYMBOL(curve25519_x25519base_byte):
         pushq   %rsi
         movq    %rcx, %rdi
         movq    %rdx, %rsi
-        callq   curve25519_x25519base_curve25519_x25519base_standard
+        callq   curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_standard
         popq    %rsi
         popq    %rdi
         ret
 
-curve25519_x25519base_curve25519_x25519base_standard:
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_standard:
 #endif
 
 // Save registers, make room for temps, preserve input arguments.
@@ -399,8 +399,8 @@ curve25519_x25519base_curve25519_x25519base_standard:
         movq    (%rsp), %rax
         andq    $8, %rax
 
-        leaq    curve25519_x25519base_edwards25519_0g(%rip), %r10
-        leaq    curve25519_x25519base_edwards25519_8g(%rip), %r11
+        leaq    curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_edwards25519_0g(%rip), %r10
+        leaq    curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_edwards25519_8g(%rip), %r11
 
         movq    (%r10), %rax
         movq    (%r11), %rcx
@@ -484,13 +484,13 @@ curve25519_x25519base_curve25519_x25519base_standard:
 // l >= 9 case cannot arise on the last iteration.
 
         movq    $4, i
-        leaq    curve25519_x25519base_edwards25519_gtable(%rip), %rax
+        leaq    curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_edwards25519_gtable(%rip), %rax
         movq    %rax, tab
         movq    $0, bias
 
 // Start of the main loop, repeated 63 times for i = 4, 8, ..., 252
 
-curve25519_x25519base_scalarloop:
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_scalarloop:
 
 // Look at the next 4-bit field "bf", adding the previous bias as well.
 // Choose the table index "ix" as bf when bf <= 8 and 16 - bf for bf >= 9,
@@ -847,7 +847,7 @@ curve25519_x25519base_scalarloop:
 
         addq    $4, i
         cmpq    $256, i
-        jc      curve25519_x25519base_scalarloop
+        jc      curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_scalarloop
 
 // Now we need to translate from Edwards curve edwards25519 back
 // to the Montgomery form curve25519. The mapping in the affine
@@ -939,8 +939,8 @@ curve25519_x25519base_scalarloop:
         movq    %rax, 0x78(%rsp)
         movq    $0xa,  0x90(%rsp)
         movq    $0x1,  0x98(%rsp)
-        jmp     curve25519_x25519base_midloop
-curve25519_x25519base_inverseloop:
+        jmp     curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_midloop
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_inverseloop:
         movq    %r8, %r9
         sarq    $0x3f, %r9
         xorq    %r9, %r8
@@ -1231,7 +1231,7 @@ curve25519_x25519base_inverseloop:
         shlq    $0x3f, %rax
         addq    %rax, %rsi
         movq    %rsi, 0x78(%rsp)
-curve25519_x25519base_midloop:
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_midloop:
         movq    0x98(%rsp), %rsi
         movq    (%rsp), %rdx
         movq    0x20(%rsp), %rcx
@@ -2132,7 +2132,7 @@ curve25519_x25519base_midloop:
         leaq    (%rax,%rdx), %r12
         movq    %rsi, 0x98(%rsp)
         decq     0x90(%rsp)
-        jne     curve25519_x25519base_inverseloop
+        jne     curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_inverseloop
         movq    (%rsp), %rax
         movq    0x20(%rsp), %rcx
         imulq   %r8, %rax
@@ -2268,7 +2268,7 @@ curve25519_x25519base_midloop:
 // 2^254 * G and (2^254 + 8) * G in extended-projective coordinates
 // but with z = 1 assumed and hence left out, so they are (X,Y,T) only.
 
-curve25519_x25519base_edwards25519_0g:
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_edwards25519_0g:
 
         .quad   0x251037f7cf4e861d
         .quad   0x10ede0fb19fb128f
@@ -2285,7 +2285,7 @@ curve25519_x25519base_edwards25519_0g:
         .quad   0x72e302a348492870
         .quad   0x1253c19e53dbe1bc
 
-curve25519_x25519base_edwards25519_8g:
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_edwards25519_8g:
 
         .quad   0x331d086e0d9abcaa
         .quad   0x1e23c96d311a10c9
@@ -2305,7 +2305,7 @@ curve25519_x25519base_edwards25519_8g:
 // Precomputed table of multiples of generator for edwards25519
 // all in precomputed extended-projective (y-x,x+y,2*d*x*y) triples.
 
-curve25519_x25519base_edwards25519_gtable:
+curve25519_x25519base_curve25519_x25519base_curve25519_x25519base_edwards25519_gtable:
 
         // 2^4 * 1 * G
 
