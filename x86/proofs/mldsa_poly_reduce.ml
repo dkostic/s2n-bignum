@@ -507,122 +507,13 @@ let MLDSA_POLY_REDUCE_SUBROUTINE_CORRECT = prove
               MAYCHANGE [memory :> bytes(a,1024)])`,
   MATCH_ACCEPT_TAC(ADD_IBT_RULE MLDSA_POLY_REDUCE_NOIBT_SUBROUTINE_CORRECT));;
 
-(* ------------------------------------------------------------------------- *)
-(* General lemmas to eventually put elsewhere.                               *)
-(* ------------------------------------------------------------------------- *)
 
-let READ_ZMM_BOTTOM_QUARTER = prove
- (`!zmmx:(S,512 word)component s.
-     read (zmmx :> bottomhalf :> bottomhalf) s = word_zx (read zmmx s)`,
-  REWRITE_TAC[READ_COMPONENT_COMPOSE; bottomhalf; READ_SUBWORD] THEN
-  REWRITE_TAC[DIMINDEX_512; DIMINDEX_256; DIMINDEX_128] THEN
-  CONV_TAC WORD_BLAST);;
-
-let READ_ZMM_BOTTOM_QUARTER' = prove
- (`!zmmx:(S,512 word)component s.
-     read (zmmx :> bottomhalf :> bottomhalf) s =
-     word_zx (read (zmmx :> zerotop_256) s)`,
-  REWRITE_TAC[READ_COMPONENT_COMPOSE; bottomhalf; READ_SUBWORD;
-              READ_ZEROTOP_256] THEN
-  REWRITE_TAC[DIMINDEX_512; DIMINDEX_256; DIMINDEX_128] THEN
-  CONV_TAC WORD_BLAST);;
-
-let MAYCHANGE_ZMM_QUARTER = prove
- (`MAYCHANGE [ZMM6] =
-   MAYCHANGE [ZMM6 :> tophalf] ,,
-   MAYCHANGE [ZMM6 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM6 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [ZMM7] =
-   MAYCHANGE [ZMM7 :> tophalf] ,,
-   MAYCHANGE [ZMM7 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM7 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM8] =
-   MAYCHANGE [ZMM8 :> tophalf] ,,
-   MAYCHANGE [ZMM8 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM8 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM9] =
-   MAYCHANGE [ZMM9 :> tophalf] ,,
-   MAYCHANGE [ZMM9 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM9 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM10] =
-   MAYCHANGE [ZMM10 :> tophalf] ,,
-   MAYCHANGE [ZMM10 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM10 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM11] =
-   MAYCHANGE [ZMM11 :> tophalf] ,,
-   MAYCHANGE [ZMM11 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM11 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM12] =
-   MAYCHANGE [ZMM12 :> tophalf] ,,
-   MAYCHANGE [ZMM12 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM12 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM13] =
-   MAYCHANGE [ZMM13 :> tophalf] ,,
-   MAYCHANGE [ZMM13 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM13 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM14] =
-   MAYCHANGE [ZMM14 :> tophalf] ,,
-   MAYCHANGE [ZMM14 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM14 :> bottomhalf :> bottomhalf] /\
-  MAYCHANGE [ZMM15] =
-   MAYCHANGE [ZMM15 :> tophalf] ,,
-   MAYCHANGE [ZMM15 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM15 :> bottomhalf :> bottomhalf]`,
-  REPEAT STRIP_TAC THEN REWRITE_TAC[MAYCHANGE_SING] THEN
-  (W(MP_TAC o PART_MATCH (rand o rand) ASSIGNS_TOPHALF_BOTTOMHALF o
-    lhand o snd) THEN
-  ANTS_TAC THENL
-   [CONV_TAC VALID_COMPONENT_CONV ; DISCH_THEN(SUBST1_TAC o SYM)] THEN
-  AP_TERM_TAC THEN
-  W(MP_TAC o PART_MATCH (rand o rand) ASSIGNS_TOPHALF_BOTTOMHALF o
-    lhand o snd) THEN
-  ANTS_TAC THENL
-   [CONV_TAC VALID_COMPONENT_CONV ; DISCH_THEN(SUBST1_TAC o SYM)] THEN
-  REWRITE_TAC[COMPONENT_COMPOSE_ASSOC]));;
-
-let MAYCHANGE_YMM_SSE_QUARTER = prove
- (`MAYCHANGE [YMM6_SSE] =
-   MAYCHANGE [ZMM6 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM6 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM7_SSE] =
-   MAYCHANGE [ZMM7 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM7 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM8_SSE] =
-   MAYCHANGE [ZMM8 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM8 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM9_SSE] =
-   MAYCHANGE [ZMM9 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM9 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM10_SSE] =
-   MAYCHANGE [ZMM10 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM10 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM11_SSE] =
-   MAYCHANGE [ZMM11 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM11 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM12_SSE] =
-   MAYCHANGE [ZMM12 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM12 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM13_SSE] =
-   MAYCHANGE [ZMM13 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM13 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM14_SSE] =
-   MAYCHANGE [ZMM14 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM14 :> bottomhalf :> bottomhalf] /\
-   MAYCHANGE [YMM15_SSE] =
-   MAYCHANGE [ZMM15 :> bottomhalf :> tophalf] ,,
-   MAYCHANGE [ZMM15 :> bottomhalf :> bottomhalf]`,
-  REPEAT STRIP_TAC THEN
-  REWRITE_TAC[bottom_256; YMM6_SSE; YMM7_SSE; YMM8_SSE; YMM9_SSE;
-    YMM10_SSE; YMM11_SSE; YMM12_SSE; YMM13_SSE;
-    YMM14_SSE; YMM15_SSE] THEN
-  CONV_TAC SYM_CONV THEN
-  REWRITE_TAC[MAYCHANGE_SING; COMPONENT_COMPOSE_ASSOC] THEN
-  MATCH_MP_TAC ASSIGNS_TOPHALF_BOTTOMHALF THEN
-  CONV_TAC VALID_COMPONENT_CONV);;
 
 (* ------------------------------------------------------------------------- *)
 (* Correctness of Windows ABI version.                                       *)
 (* ------------------------------------------------------------------------- *)
+
+print_literal_from_elf "x86/mldsa/mldsa_poly_reduce.obj";; 
 
 let mldsa_poly_reduce_windows_mc = define_from_elf
    "mldsa_poly_reduce_windows_mc" "x86/mldsa/mldsa_poly_reduce.obj";;
@@ -660,7 +551,8 @@ let MLDSA_POLY_REDUCE_NOIBT_WINDOWS_SUBROUTINE_CORRECT = prove
                MAYCHANGE [memory :> bytes(word_sub stackpointer (word 176),176)] ,,
                MAYCHANGE [memory :> bytes(a,1024)])`,
   REPLICATE_TAC 3 GEN_TAC THEN
-  WORD_FORALL_OFFSET_TAC 176 THEN REPEAT GEN_TAC THEN
+  WORD_FORALL_OFFSET_TAC 176 THEN
+  REPEAT GEN_TAC THEN
 
   REWRITE_TAC[fst MLDSA_POLY_REDUCE_WINDOWS_TMC_EXEC] THEN
   REPEAT STRIP_TAC THEN REWRITE_TAC[WINDOWS_C_ARGUMENTS] THEN
@@ -711,7 +603,7 @@ let MLDSA_POLY_REDUCE_NOIBT_WINDOWS_SUBROUTINE_CORRECT = prove
       (AP_TERM `BUTLAST:byte list->byte list` mldsa_poly_reduce_tmc))
      81));
     RULE_ASSUM_TAC(CONV_RULE(TRY_CONV RIP_PLUS_CONV))] THEN
-
+    
   MAP_EVERY ABBREV_TAC
    [`ymm6_epilog = read YMM6 s14`;
     `ymm7_epilog = read YMM7 s14`;

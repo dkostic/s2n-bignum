@@ -30,7 +30,7 @@ S2N_BN_SYMBOL(mlkem_reduce):
         _CET_ENDBR
 
 #if WINDOWS_ABI
-        CFI_DEC_RSP(88)
+        CFI_DEC_RSP(96)
         CFI_STACKSAVEU(xmm6,0)
         CFI_STACKSAVEU(xmm7,16)
         CFI_STACKSAVEU(xmm8,32)
@@ -228,7 +228,7 @@ S2N_BN_SYMBOL(mlkem_reduce):
         CFI_STACKLOADU(xmm9,48)
         CFI_STACKLOADU(xmm12,64)
         CFI_STACKLOAD(rdi,80)
-        CFI_INC_RSP(88)
+        CFI_INC_RSP(96)
 #endif
         CFI_RET
 
