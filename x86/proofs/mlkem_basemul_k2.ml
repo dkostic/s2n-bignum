@@ -7,13 +7,13 @@
 (* Scalar multiplication of 2-element polynomial vectors in NTT domain.      *)
 (* ========================================================================= *)
 
-needs "arm/proofs/base.ml";;
+needs "x86/proofs/base.ml";;
 needs "common/mlkem_mldsa.ml";;
 
 print_literal_from_elf "x86/mlkem/mlkem_basemul_k2.o";;
 
-let mlkem_basemul_k2_mc4 =
-  define_assert_from_elf "mlkem_basemul_k2_mc4" "x86/mlkem/mlkem_basemul_k2.o"
+let mlkem_basemul_k2_mc =
+  define_assert_from_elf "mlkem_basemul_k2_mc" "x86/mlkem/mlkem_basemul_k2.o"
 [
   0xf3; 0x0f; 0x1e; 0xfa;  (* ENDBR64 *)
   0xb8; 0x01; 0x0d; 0x01; 0x0d;
@@ -70,8 +70,8 @@ let mlkem_basemul_k2_mc4 =
   0xc3                     (* RET *)
 ];;
 
-let mlkem_basemul_k2_tmc4 = define_trimmed "mlkem_basemul_k2_tmc4" mlkem_basemul_k2_mc4;;
-let mlkem_basemul_k2_tmc4_EXEC = X86_MK_CORE_EXEC_RULE mlkem_basemul_k2_tmc4;;
+let mlkem_basemul_k2_tmc = define_trimmed "mlkem_basemul_k2_tmc" mlkem_basemul_k2_mc;;
+let mlkem_basemul_k2_tmc_EXEC = X86_MK_CORE_EXEC_RULE mlkem_basemul_k2_tmc;;
 
 (* Enable simplification of word_subwords by default.
    Nedded to prevent the symbolic simulation to explode
@@ -98,13 +98,6 @@ let montmuladd_x86 = define
                                 YMM7           YMM9
 *)
 
-(* (!i. i < 16
-+                        ==> read(memory :> bytes16
-+                             (word_add dst (word (2*i)))) s = part1) /\
-+                   (!i. i < 16
-+                        ==> read(memory :> bytes16
-+                             (word_add dst (word (32 + 2*i)))) s = part2)) *)
-
 let SIMPLE_SPEC = prove(
   `!src1 src2 src2t dst a b c d dz pc.
         aligned 32 src1 /\
@@ -115,7 +108,7 @@ let SIMPLE_SPEC = prove(
             [(word pc, 150);
              (src1, 1024); (src2, 1024); (src2t, 512)]
         ==> ensures x86
-              (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc4) /\
+              (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc) /\
                    read RIP s = word pc /\
                    C_ARGUMENTS [dst; src1; src2; src2t] s /\
                    (!i. i < 16
@@ -134,22 +127,26 @@ let SIMPLE_SPEC = prove(
                         ==> read(memory :> bytes16
                              (word_add src2t (word (2*i)))) s = dz i))
               (\s. read RIP s = word (pc+150) /\
-                   read YMM7 s = part1 /\
-                   read YMM9 s = part2)
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add dst (word (2*i)))) s = montmuladd_x86 (b i) (dz i) (a i) (c i)) /\
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add dst (word (2*i)))) s = montmuladd_x86 (b i) (c i) (a i) (d i)))
               (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,,
                MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14] ,,
                MAYCHANGE [memory :> bytes(dst, 512)])`,
 
   REWRITE_TAC [MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
-    NONOVERLAPPING_CLAUSES; ALL; C_ARGUMENTS; fst mlkem_basemul_k2_tmc4_EXEC] THEN
+    NONOVERLAPPING_CLAUSES; ALL; C_ARGUMENTS; fst mlkem_basemul_k2_tmc_EXEC] THEN
   REPEAT STRIP_TAC THEN
 
   GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
   GHOST_INTRO_TAC `init_ymm1:int256` `read YMM1` THEN
 
-  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
-  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV THENC
-           ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
+  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV
+   (EXPAND_CASES_CONV THENC
+    ONCE_DEPTH_CONV NUM_MULT_CONV)))) THEN
 
   ENSURES_INIT_TAC "s0" THEN
 
@@ -162,12 +159,18 @@ let SIMPLE_SPEC = prove(
   REPEAT STRIP_TAC THEN
 
   (* Symbolically run one instruction *)
-  X86_STEPS_TAC mlkem_basemul_k2_tmc4_EXEC (1--33) THEN
+  X86_STEPS_TAC mlkem_basemul_k2_tmc_EXEC (1--33) THEN
     
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
 
   REWRITE_TAC [WORD_BLAST `(word_zx:int256->int128) x = word_subword x (0,128)`] THEN
+
+  REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
+  CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
+  CONV_RULE(READ_MEMORY_SPLIT_CONV 4) o
+  check (can (term_match [] `read qqq s:int256 = xxx`) o concl))) THEN
+
   CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
   CONV_TAC(WORD_REDUCE_CONV) THEN
 
