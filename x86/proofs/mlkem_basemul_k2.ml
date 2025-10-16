@@ -12,8 +12,8 @@ needs "common/mlkem_mldsa.ml";;
 
 print_literal_from_elf "x86/mlkem/mlkem_basemul_k2.o";;
 
-let mlkem_basemul_k2_mc2 =
-  define_assert_from_elf "mlkem_basemul_k2_mc2" "x86/mlkem/mlkem_basemul_k2.o"
+let mlkem_basemul_k2_mc3 =
+  define_assert_from_elf "mlkem_basemul_k2_mc3" "x86/mlkem/mlkem_basemul_k2.o"
 [
   0xf3; 0x0f; 0x1e; 0xfa;  (* ENDBR64 *)
   0xb8; 0x01; 0x0d; 0x01; 0x0d;
@@ -26,6 +26,13 @@ let mlkem_basemul_k2_mc2 =
   0x66; 0x0f; 0x6e; 0xc8;  (* MOVD (%_% xmm1) (% eax) *)
   0xc4; 0xe2; 0x7d; 0x58; 0xc9;
                            (* VPBROADCASTD (%_% ymm1) (%_% xmm1) *)
+  0xc5; 0xfd; 0x6f; 0x16;  (* VMOVDQA (%_% ymm2) (Memop Word256 (%% (rsi,0))) *)
+  0xc5; 0xfd; 0x6f; 0x5e; 0x20;
+                           (* VMOVDQA (%_% ymm3) (Memop Word256 (%% (rsi,32))) *)
+  0xc5; 0xfd; 0x6f; 0x22;  (* VMOVDQA (%_% ymm4) (Memop Word256 (%% (rdx,0))) *)
+  0xc5; 0xfd; 0x6f; 0x6a; 0x20;
+                           (* VMOVDQA (%_% ymm5) (Memop Word256 (%% (rdx,32))) *)
+  0xc5; 0xfd; 0x6f; 0x31;  (* VMOVDQA (%_% ymm6) (Memop Word256 (%% (rcx,0))) *)
   0xc5; 0x75; 0xd5; 0xea;  (* VPMULLW (%_% ymm13) (%_% ymm1) (%_% ymm2) *)
   0xc5; 0x75; 0xd5; 0xf3;  (* VPMULLW (%_% ymm14) (%_% ymm1) (%_% ymm3) *)
   0xc4; 0xc1; 0x5d; 0xd5; 0xfd;
@@ -60,8 +67,8 @@ let mlkem_basemul_k2_mc2 =
   0xc3                     (* RET *)
 ];;
 
-let mlkem_basemul_k2_tmc2 = define_trimmed "mlkem_basemul_k2_tmc2" mlkem_basemul_k2_mc2;;
-let mlkem_basemul_k2_tmc2_EXEC = X86_MK_CORE_EXEC_RULE mlkem_basemul_k2_tmc2;;
+let mlkem_basemul_k2_tmc3 = define_trimmed "mlkem_basemul_k2_tmc3" mlkem_basemul_k2_mc3;;
+let mlkem_basemul_k2_tmc3_EXEC = X86_MK_CORE_EXEC_RULE mlkem_basemul_k2_tmc3;;
 
 (* Enable simplification of word_subwords by default.
    Nedded to prevent the symbolic simulation to explode
@@ -84,33 +91,61 @@ let montmul_x86 = define
 *)
 
 let SIMPLE_SPEC = prove(
-  `!a b c d dz x pc.
-  ensures x86
-    // Precondition
-    (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc2) /\
-         read RIP s = word pc /\
-         read YMM2 s = word a /\
-         read YMM3 s = word b /\
-         read YMM4 s = word c /\
-         read YMM5 s = word d /\
-         read YMM6 s = word dz)
-    // Postcondition
-    (\s. read RIP s = word (pc+119) /\
-         read YMM7 s = part1 /\
-         read YMM9 s = part2
-         )
-    // Registers (and memory locations) that may change after execution
-    (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,, MAYCHANGE[ZMM0; ZMM1; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14])`,
+  `!src1 src2 src2t dst a b c d dz pc.
+        aligned 32 src1 /\
+        aligned 32 src2 /\
+        aligned 32 src2t /\
+        aligned 32 dst /\
+        ALL (nonoverlapping (dst, 512))
+            [(word pc, 141);
+             (src1, 1024); (src2, 1024); (src2t, 512)]
+        ==> ensures x86
+              (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc3) /\
+                   read RIP s = word pc /\
+                   C_ARGUMENTS [dst; src1; src2; src2t] s /\
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add src1 (word (2*i)))) s = a i) /\
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add src1 (word (32 + 2*i)))) s = b i) /\
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add src2 (word (2*i)))) s = c i) /\
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add src2 (word (32 + 2*i)))) s = d i) /\
+                   (!i. i < 16
+                        ==> read(memory :> bytes16
+                             (word_add src2t (word (2*i)))) s = dz i))
+              (\s. read RIP s = word (pc+141) /\
+                   read YMM7 s = part1 /\
+                   read YMM9 s = part2)
+              (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,, MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14])`,
 
+  REWRITE_TAC [MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+    NONOVERLAPPING_CLAUSES; ALL; C_ARGUMENTS; fst mlkem_basemul_k2_tmc3_EXEC] THEN
   REPEAT STRIP_TAC THEN
 
   GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
   GHOST_INTRO_TAC `init_ymm1:int256` `read YMM1` THEN
 
+  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
+  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV THENC
+           ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
+
   ENSURES_INIT_TAC "s0" THEN
 
+  MEMORY_256_FROM_16_TAC "src1" 32 THEN
+  MEMORY_256_FROM_16_TAC "src2" 32 THEN
+  MEMORY_256_FROM_16_TAC "src2t" 16 THEN
+  ASM_REWRITE_TAC [WORD_ADD_0] THEN
+  (* Forget original shape of assumption *)
+  DISCARD_MATCHING_ASSUMPTIONS [`read (memory :> bytes16 any) s = x`] THEN
+  REPEAT STRIP_TAC THEN
+
   (* Symbolically run one instruction *)
-  X86_STEPS_TAC mlkem_basemul_k2_tmc2_EXEC (1--26) THEN 
+  X86_STEPS_TAC mlkem_basemul_k2_tmc3_EXEC (1--31) THEN 
     
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN

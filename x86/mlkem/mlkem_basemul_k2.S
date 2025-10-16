@@ -16,6 +16,13 @@ S2N_BN_SYMBOL(mlkem_basemul_k2):
         movl	$0xf301f301, %eax       # imm = 0xF301F301
         movd	%eax, %xmm1
         vpbroadcastd	%xmm1, %ymm1
+
+        vmovdqa	(%rsi), %ymm2
+        vmovdqa	0x20(%rsi), %ymm3
+        vmovdqa	(%rdx), %ymm4
+        vmovdqa	0x20(%rdx), %ymm5
+        vmovdqa	(%rcx), %ymm6
+
         vpmullw	%ymm2, %ymm1, %ymm13
         vpmullw	%ymm3, %ymm1, %ymm14
         vpmullw	%ymm13, %ymm4, %ymm7
