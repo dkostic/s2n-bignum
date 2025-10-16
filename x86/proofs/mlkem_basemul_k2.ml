@@ -12,8 +12,8 @@ needs "common/mlkem_mldsa.ml";;
 
 print_literal_from_elf "x86/mlkem/mlkem_basemul_k2.o";;
 
-let mlkem_basemul_k2_mc3 =
-  define_assert_from_elf "mlkem_basemul_k2_mc3" "x86/mlkem/mlkem_basemul_k2.o"
+let mlkem_basemul_k2_mc4 =
+  define_assert_from_elf "mlkem_basemul_k2_mc4" "x86/mlkem/mlkem_basemul_k2.o"
 [
   0xf3; 0x0f; 0x1e; 0xfa;  (* ENDBR64 *)
   0xb8; 0x01; 0x0d; 0x01; 0x0d;
@@ -64,11 +64,14 @@ let mlkem_basemul_k2_mc3 =
   0xc5; 0xbd; 0xfd; 0xff;  (* VPADDW (%_% ymm7) (%_% ymm8) (%_% ymm7) *)
   0xc4; 0x41; 0x2d; 0xfd; 0xc9;
                            (* VPADDW (%_% ymm9) (%_% ymm10) (%_% ymm9) *)
+  0xc5; 0xfd; 0x7f; 0x3f;  (* VMOVDQA (Memop Word256 (%% (rdi,0))) (%_% ymm7) *)
+  0xc5; 0x7d; 0x7f; 0x4f; 0x20;
+                           (* VMOVDQA (Memop Word256 (%% (rdi,32))) (%_% ymm9) *)
   0xc3                     (* RET *)
 ];;
 
-let mlkem_basemul_k2_tmc3 = define_trimmed "mlkem_basemul_k2_tmc3" mlkem_basemul_k2_mc3;;
-let mlkem_basemul_k2_tmc3_EXEC = X86_MK_CORE_EXEC_RULE mlkem_basemul_k2_tmc3;;
+let mlkem_basemul_k2_tmc4 = define_trimmed "mlkem_basemul_k2_tmc4" mlkem_basemul_k2_mc4;;
+let mlkem_basemul_k2_tmc4_EXEC = X86_MK_CORE_EXEC_RULE mlkem_basemul_k2_tmc4;;
 
 (* Enable simplification of word_subwords by default.
    Nedded to prevent the symbolic simulation to explode
@@ -85,10 +88,22 @@ let montmul_x86 = define
      (16,16))
   `;;
 
+let montmuladd_x86 = define
+  `montmuladd_x86 (x0 : int16) (x1 : int16) (y0 : int16) (y1 : int16) =
+    word_add (montmul_x86 x0 x1) (montmul_x86 y0 y1)
+  `;;
+
 (*  
       (a + bX) * (c + dX) = (a*c + b*dz) + (a*d + b*c)X
                                 YMM7           YMM9
 *)
+
+(* (!i. i < 16
++                        ==> read(memory :> bytes16
++                             (word_add dst (word (2*i)))) s = part1) /\
++                   (!i. i < 16
++                        ==> read(memory :> bytes16
++                             (word_add dst (word (32 + 2*i)))) s = part2)) *)
 
 let SIMPLE_SPEC = prove(
   `!src1 src2 src2t dst a b c d dz pc.
@@ -97,10 +112,10 @@ let SIMPLE_SPEC = prove(
         aligned 32 src2t /\
         aligned 32 dst /\
         ALL (nonoverlapping (dst, 512))
-            [(word pc, 141);
+            [(word pc, 150);
              (src1, 1024); (src2, 1024); (src2t, 512)]
         ==> ensures x86
-              (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc3) /\
+              (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc4) /\
                    read RIP s = word pc /\
                    C_ARGUMENTS [dst; src1; src2; src2t] s /\
                    (!i. i < 16
@@ -118,13 +133,15 @@ let SIMPLE_SPEC = prove(
                    (!i. i < 16
                         ==> read(memory :> bytes16
                              (word_add src2t (word (2*i)))) s = dz i))
-              (\s. read RIP s = word (pc+141) /\
+              (\s. read RIP s = word (pc+150) /\
                    read YMM7 s = part1 /\
                    read YMM9 s = part2)
-              (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,, MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14])`,
+              (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,,
+               MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14] ,,
+               MAYCHANGE [memory :> bytes(dst, 512)])`,
 
   REWRITE_TAC [MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
-    NONOVERLAPPING_CLAUSES; ALL; C_ARGUMENTS; fst mlkem_basemul_k2_tmc3_EXEC] THEN
+    NONOVERLAPPING_CLAUSES; ALL; C_ARGUMENTS; fst mlkem_basemul_k2_tmc4_EXEC] THEN
   REPEAT STRIP_TAC THEN
 
   GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
@@ -145,7 +162,7 @@ let SIMPLE_SPEC = prove(
   REPEAT STRIP_TAC THEN
 
   (* Symbolically run one instruction *)
-  X86_STEPS_TAC mlkem_basemul_k2_tmc3_EXEC (1--31) THEN 
+  X86_STEPS_TAC mlkem_basemul_k2_tmc4_EXEC (1--33) THEN
     
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
@@ -155,5 +172,6 @@ let SIMPLE_SPEC = prove(
   CONV_TAC(WORD_REDUCE_CONV) THEN
 
   ASM_REWRITE_TAC[GSYM montmul_x86] THEN
+  ASM_REWRITE_TAC[GSYM montmuladd_x86] THEN
 
     );;
