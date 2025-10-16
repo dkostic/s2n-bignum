@@ -44,6 +44,9 @@ S2N_BN_SYMBOL(mlkem_basemul_k2):
         vpaddw	%ymm7, %ymm8, %ymm7
         vpaddw	%ymm9, %ymm10, %ymm9
 
+        vmovdqa	%ymm7, (%rdi)
+        vmovdqa	%ymm9, 0x20(%rdi)
+
         CFI_RET
 
   S2N_BN_SIZE_DIRECTIVE(mlkem_basemul_k2)
