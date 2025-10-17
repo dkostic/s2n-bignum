@@ -130,8 +130,6 @@ let SIMPLE_SPEC = prove(
                         ==> read(memory :> bytes16
                              (word_add src2t (word (2*i)))) s = dz i))
               (\s. read RIP s = word (pc+150) /\
-                   read YMM7 s = part1 /\
-
                    (!i. i < 16
                         ==> read(memory :> bytes16
                              (word_add dst (word (2*i)))) s =
@@ -169,15 +167,14 @@ let SIMPLE_SPEC = prove(
   (let lemma = WORD_BLAST
   `(word_zx:int256->int128) x = word_subword x (0,128)` in
   MAP_EVERY (fun n -> X86_STEPS_TAC mlkem_basemul_k2_tmc_EXEC [n] THEN
-                      RULE_ASSUM_TAC(REWRITE_RULE[lemma]) THEN
-                      SIMD_SIMPLIFY_TAC_LOCAL[montmul_x86; montmuladd_x86])
+                      RULE_ASSUM_TAC(REWRITE_RULE[lemma]))
             (1--33)) THEN
 
-    
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
 
-  REWRITE_TAC [WORD_BLAST `(word_zx:int256->int128) x = word_subword x (0,128)`] THEN
+  SIMD_SIMPLIFY_TAC_LOCAL[montmul_x86; montmuladd_x86] THEN
+
 
   REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
   CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
@@ -189,7 +186,4 @@ let SIMPLE_SPEC = prove(
 
   ASM_REWRITE_TAC[GSYM montmul_x86] THEN
   ASM_REWRITE_TAC[GSYM montmuladd_x86] THEN
-
-  RULE_ASSUM_TAC(REWRITE_RULE[GSYM montmul_x86; GSYM montmuladd_x86]) THEN
-
-    );;
+);;
