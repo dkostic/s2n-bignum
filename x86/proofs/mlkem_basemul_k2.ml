@@ -98,9 +98,6 @@ let montmuladd_x86 = define
                                 YMM7           YMM9
 *)
 
-let SIMD_SIMPLIFY_TAC_LOCAL unfold_defs =
-  RULE_ASSUM_TAC(CONV_RULE(SIMD_SIMPLIFY_CONV unfold_defs));;
-
 let SIMPLE_SPEC = prove(
   `!src1 src2 src2t dst a b c d dz pc.
         aligned 32 src1 /\
@@ -136,9 +133,9 @@ let SIMPLE_SPEC = prove(
                                 montmuladd_x86 (b i) (dz i) (a i) (c i)) /\
                    (!i. i < 16
                         ==> read(memory :> bytes16
-                             (word_add dst (word (2*i)))) s =
+                             (word_add dst (word (32 + 2*i)))) s =
                                 montmuladd_x86 (b i) (c i) (a i) (d i)))
-              (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,,
+              (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,, MAYCHANGE [events] ,,
                MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14] ,,
                MAYCHANGE [memory :> bytes(dst, 512)])`,
 
@@ -152,6 +149,11 @@ let SIMPLE_SPEC = prove(
   CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
   CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV THENC
            ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
+(* 
+  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV
+   (EXPAND_CASES_CONV THENC
+    ONCE_DEPTH_CONV NUM_MULT_CONV THENC
+    ONCE_DEPTH_CONV NUM_ADD_CONV)))) THEN *)
 
   ENSURES_INIT_TAC "s0" THEN
 
@@ -167,23 +169,20 @@ let SIMPLE_SPEC = prove(
   (let lemma = WORD_BLAST
   `(word_zx:int256->int128) x = word_subword x (0,128)` in
   MAP_EVERY (fun n -> X86_STEPS_TAC mlkem_basemul_k2_tmc_EXEC [n] THEN
-                      RULE_ASSUM_TAC(REWRITE_RULE[lemma]))
+                      RULE_ASSUM_TAC(REWRITE_RULE[lemma]) THEN
+                      SIMD_SIMPLIFY_TAC [montmul_x86; montmuladd_x86])
             (1--33)) THEN
 
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
-
-  SIMD_SIMPLIFY_TAC_LOCAL[montmul_x86; montmuladd_x86] THEN
-
 
   REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
   CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
   CONV_RULE(READ_MEMORY_SPLIT_CONV 4) o
   check (can (term_match [] `read qqq s:int256 = xxx`) o concl))) THEN
 
-  CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
-  CONV_TAC(WORD_REDUCE_CONV) THEN
-
-  ASM_REWRITE_TAC[GSYM montmul_x86] THEN
-  ASM_REWRITE_TAC[GSYM montmuladd_x86] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EXPAND_CASES_CONV) THEN
+  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV THENC
+           ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
+  ASM_REWRITE_TAC[WORD_ADD_0]
 );;
