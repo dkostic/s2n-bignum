@@ -47,6 +47,37 @@ S2N_BN_SYMBOL(mlkem_basemul_k2):
         vmovdqa	%ymm7, (%rdi)
         vmovdqa	%ymm9, 0x20(%rdi)
 
+
+        vmovdqa	0x40(%rsi), %ymm2
+        vmovdqa	0x60(%rsi), %ymm3
+        vmovdqa	0x40(%rdx), %ymm4
+        vmovdqa	0x60(%rdx), %ymm5
+        vmovdqa	0x20(%rcx), %ymm6
+
+        vpmullw	%ymm2, %ymm1, %ymm13
+        vpmullw	%ymm3, %ymm1, %ymm14
+        vpmullw	%ymm13, %ymm4, %ymm7
+        vpmullw	%ymm13, %ymm5, %ymm9
+        vpmullw	%ymm14, %ymm6, %ymm8
+        vpmullw	%ymm14, %ymm4, %ymm10
+        vpmulhw	%ymm7, %ymm0, %ymm7
+        vpmulhw	%ymm9, %ymm0, %ymm9
+        vpmulhw	%ymm8, %ymm0, %ymm8
+        vpmulhw	%ymm10, %ymm0, %ymm10
+        vpmulhw	%ymm2, %ymm4, %ymm11
+        vpmulhw	%ymm2, %ymm5, %ymm12
+        vpmulhw	%ymm3, %ymm6, %ymm13
+        vpmulhw	%ymm3, %ymm4, %ymm14
+        vpsubw	%ymm7, %ymm11, %ymm7
+        vpsubw	%ymm9, %ymm12, %ymm9
+        vpsubw	%ymm13, %ymm8, %ymm8
+        vpsubw	%ymm10, %ymm14, %ymm10
+        vpaddw	%ymm7, %ymm8, %ymm7
+        vpaddw	%ymm9, %ymm10, %ymm9
+
+        vmovdqa	%ymm7, 0x40(%rdi)
+        vmovdqa	%ymm9, 0x60(%rdi)
+
         CFI_RET
 
   S2N_BN_SIZE_DIRECTIVE(mlkem_basemul_k2)
