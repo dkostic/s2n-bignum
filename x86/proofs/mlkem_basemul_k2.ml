@@ -67,6 +67,51 @@ let mlkem_basemul_k2_mc =
   0xc5; 0xfd; 0x7f; 0x3f;  (* VMOVDQA (Memop Word256 (%% (rdi,0))) (%_% ymm7) *)
   0xc5; 0x7d; 0x7f; 0x4f; 0x20;
                            (* VMOVDQA (Memop Word256 (%% (rdi,32))) (%_% ymm9) *)
+  0xc5; 0xfd; 0x6f; 0x56; 0x40;
+                           (* VMOVDQA (%_% ymm2) (Memop Word256 (%% (rsi,64))) *)
+  0xc5; 0xfd; 0x6f; 0x5e; 0x60;
+                           (* VMOVDQA (%_% ymm3) (Memop Word256 (%% (rsi,96))) *)
+  0xc5; 0xfd; 0x6f; 0x62; 0x40;
+                           (* VMOVDQA (%_% ymm4) (Memop Word256 (%% (rdx,64))) *)
+  0xc5; 0xfd; 0x6f; 0x6a; 0x60;
+                           (* VMOVDQA (%_% ymm5) (Memop Word256 (%% (rdx,96))) *)
+  0xc5; 0xfd; 0x6f; 0x71; 0x20;
+                           (* VMOVDQA (%_% ymm6) (Memop Word256 (%% (rcx,32))) *)
+  0xc5; 0x75; 0xd5; 0xea;  (* VPMULLW (%_% ymm13) (%_% ymm1) (%_% ymm2) *)
+  0xc5; 0x75; 0xd5; 0xf3;  (* VPMULLW (%_% ymm14) (%_% ymm1) (%_% ymm3) *)
+  0xc4; 0xc1; 0x5d; 0xd5; 0xfd;
+                           (* VPMULLW (%_% ymm7) (%_% ymm4) (%_% ymm13) *)
+  0xc4; 0x41; 0x55; 0xd5; 0xcd;
+                           (* VPMULLW (%_% ymm9) (%_% ymm5) (%_% ymm13) *)
+  0xc4; 0x41; 0x4d; 0xd5; 0xc6;
+                           (* VPMULLW (%_% ymm8) (%_% ymm6) (%_% ymm14) *)
+  0xc4; 0x41; 0x5d; 0xd5; 0xd6;
+                           (* VPMULLW (%_% ymm10) (%_% ymm4) (%_% ymm14) *)
+  0xc5; 0xfd; 0xe5; 0xff;  (* VPMULHW (%_% ymm7) (%_% ymm0) (%_% ymm7) *)
+  0xc4; 0x41; 0x7d; 0xe5; 0xc9;
+                           (* VPMULHW (%_% ymm9) (%_% ymm0) (%_% ymm9) *)
+  0xc4; 0x41; 0x7d; 0xe5; 0xc0;
+                           (* VPMULHW (%_% ymm8) (%_% ymm0) (%_% ymm8) *)
+  0xc4; 0x41; 0x7d; 0xe5; 0xd2;
+                           (* VPMULHW (%_% ymm10) (%_% ymm0) (%_% ymm10) *)
+  0xc5; 0x5d; 0xe5; 0xda;  (* VPMULHW (%_% ymm11) (%_% ymm4) (%_% ymm2) *)
+  0xc5; 0x55; 0xe5; 0xe2;  (* VPMULHW (%_% ymm12) (%_% ymm5) (%_% ymm2) *)
+  0xc5; 0x4d; 0xe5; 0xeb;  (* VPMULHW (%_% ymm13) (%_% ymm6) (%_% ymm3) *)
+  0xc5; 0x5d; 0xe5; 0xf3;  (* VPMULHW (%_% ymm14) (%_% ymm4) (%_% ymm3) *)
+  0xc5; 0xa5; 0xf9; 0xff;  (* VPSUBW (%_% ymm7) (%_% ymm11) (%_% ymm7) *)
+  0xc4; 0x41; 0x1d; 0xf9; 0xc9;
+                           (* VPSUBW (%_% ymm9) (%_% ymm12) (%_% ymm9) *)
+  0xc4; 0x41; 0x3d; 0xf9; 0xc5;
+                           (* VPSUBW (%_% ymm8) (%_% ymm8) (%_% ymm13) *)
+  0xc4; 0x41; 0x0d; 0xf9; 0xd2;
+                           (* VPSUBW (%_% ymm10) (%_% ymm14) (%_% ymm10) *)
+  0xc5; 0xbd; 0xfd; 0xff;  (* VPADDW (%_% ymm7) (%_% ymm8) (%_% ymm7) *)
+  0xc4; 0x41; 0x2d; 0xfd; 0xc9;
+                           (* VPADDW (%_% ymm9) (%_% ymm10) (%_% ymm9) *)
+  0xc5; 0xfd; 0x7f; 0x7f; 0x40;
+                           (* VMOVDQA (Memop Word256 (%% (rdi,64))) (%_% ymm7) *)
+  0xc5; 0x7d; 0x7f; 0x4f; 0x60;
+                           (* VMOVDQA (Memop Word256 (%% (rdi,96))) (%_% ymm9) *)
   0xc3                     (* RET *)
 ];;
 
@@ -81,16 +126,30 @@ extra_word_CONV := [WORD_SIMPLE_SUBWORD_CONV] @ !extra_word_CONV;;
 
 let montmul_x86 = define
   `montmul_x86 (x : int16) (y :int16) =
-  word_sub
-    (word_subword (word_mul (word_sx y : int32) (word_sx x)) (16,16) : int16)
-    (word_subword
-     (word_mul (word 3329) (word_sx (word_mul y (word_mul (word 62209) x)) : int32))
-     (16,16))
+   word_sub
+     (word_subword (word_mul (word_sx y : int32) (word_sx x)) (16,16) : int16)
+     (word_subword
+        (word_mul (word 3329) (word_sx (word_mul y (word_mul (word 62209) x)) : int32))
+        (16,16))
+  `;;
+
+let montmul_odd_x86 = define
+  `montmul_odd_x86 (x : int16) (y :int16) =
+   word_sub
+     (word_subword
+        (word_mul (word 3329) (word_sx (word_mul y (word_mul (word 62209) x)) : int32))
+        (16,16))
+     (word_subword (word_mul (word_sx y : int32) (word_sx x)) (16,16) : int16)
   `;;
 
 let montmuladd_x86 = define
   `montmuladd_x86 (x0 : int16) (x1 : int16) (y0 : int16) (y1 : int16) =
     word_add (montmul_x86 x0 x1) (montmul_x86 y0 y1)
+  `;;
+
+let montmuladd_odd_x86 = define
+  `montmuladd_odd_x86 (x0 : int16) (x1 : int16) (y0 : int16) (y1 : int16) =
+    word_add (montmul_odd_x86 x0 x1) (montmul_x86 y0 y1)
   `;;
 
 (*  
@@ -105,36 +164,40 @@ let SIMPLE_SPEC = prove(
         aligned 32 src2t /\
         aligned 32 dst /\
         ALL (nonoverlapping (dst, 512))
-            [(word pc, 150);
+            [(word pc, 276);
              (src1, 1024); (src2, 1024); (src2t, 512)]
         ==> ensures x86
               (\s. bytes_loaded s (word pc) (BUTLAST mlkem_basemul_k2_tmc) /\
                    read RIP s = word pc /\
                    C_ARGUMENTS [dst; src1; src2; src2t] s /\
-                   (!i. i < 16
+                   (!i. i < 16 ==> !j. j < 2
                         ==> read(memory :> bytes16
-                             (word_add src1 (word (2*i)))) s = a i) /\
-                   (!i. i < 16
+                             (word_add src1 (word (64*j + 2*i)))) s = a i j) /\
+                   (!i. i < 16 ==> !j. j < 2
                         ==> read(memory :> bytes16
-                             (word_add src1 (word (32 + 2*i)))) s = b i) /\
-                   (!i. i < 16
+                             (word_add src1 (word (64*j + 32 + 2*i)))) s = b i j) /\
+                   (!i. i < 16 ==> !j. j < 2
                         ==> read(memory :> bytes16
-                             (word_add src2 (word (2*i)))) s = c i) /\
-                   (!i. i < 16
+                             (word_add src2 (word (64*j + 2*i)))) s = c i j) /\
+                   (!i. i < 16 ==> !j. j < 2
                         ==> read(memory :> bytes16
-                             (word_add src2 (word (32 + 2*i)))) s = d i) /\
-                   (!i. i < 16
+                             (word_add src2 (word (64*j + 32 + 2*i)))) s = d i j) /\
+                   (!i. i < 16 ==> !j. j < 2
                         ==> read(memory :> bytes16
-                             (word_add src2t (word (2*i)))) s = dz i))
-              (\s. read RIP s = word (pc+150) /\
+                             (word_add src2t (word (32*j + 2*i)))) s = dz i j))
+              (\s. read RIP s = word (pc + 276) /\
                    (!i. i < 16
                         ==> read(memory :> bytes16
                              (word_add dst (word (2*i)))) s =
-                                montmuladd_x86 (b i) (dz i) (a i) (c i)) /\
+                                montmuladd_x86 (b i 0) (dz i 0) (a i 0) (c i 0)) /\
                    (!i. i < 16
                         ==> read(memory :> bytes16
-                             (word_add dst (word (32 + 2*i)))) s =
-                                montmuladd_x86 (b i) (c i) (a i) (d i)))
+                             (word_add dst (word (64 + 2*i)))) s =
+                                montmuladd_odd_x86 (b i 1) (dz i 1) (a i 1) (c i 1)) /\
+                   (!i. i < 16 ==> !j. j < 2
+                        ==> read(memory :> bytes16
+                             (word_add dst (word (64*j + 32 + 2*i)))) s =
+                                montmuladd_x86 (b i j) (c i j) (a i j) (d i j)))
               (MAYCHANGE [RIP] ,, MAYCHANGE [RAX] ,, MAYCHANGE [events] ,,
                MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14] ,,
                MAYCHANGE [memory :> bytes(dst, 512)])`,
@@ -146,14 +209,9 @@ let SIMPLE_SPEC = prove(
   GHOST_INTRO_TAC `init_ymm0:int256` `read YMM0` THEN
   GHOST_INTRO_TAC `init_ymm1:int256` `read YMM1` THEN
 
-  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV EXPAND_CASES_CONV))) THEN
-  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV THENC
-           ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
-(* 
-  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV
-   (EXPAND_CASES_CONV THENC
-    ONCE_DEPTH_CONV NUM_MULT_CONV THENC
-    ONCE_DEPTH_CONV NUM_ADD_CONV)))) THEN *)
+  CONV_TAC(RATOR_CONV(LAND_CONV(TOP_DEPTH_CONV EXPAND_CASES_CONV))) THEN
+  CONV_TAC(TOP_DEPTH_CONV NUM_MULT_CONV THENC
+           TOP_DEPTH_CONV NUM_ADD_CONV) THEN
 
   ENSURES_INIT_TAC "s0" THEN
 
@@ -170,8 +228,8 @@ let SIMPLE_SPEC = prove(
   `(word_zx:int256->int128) x = word_subword x (0,128)` in
   MAP_EVERY (fun n -> X86_STEPS_TAC mlkem_basemul_k2_tmc_EXEC [n] THEN
                       RULE_ASSUM_TAC(REWRITE_RULE[lemma]) THEN
-                      SIMD_SIMPLIFY_TAC [montmul_x86; montmuladd_x86])
-            (1--33)) THEN
+                      SIMD_SIMPLIFY_TAC [montmul_x86; montmuladd_x86; montmul_odd_x86; montmuladd_odd_x86])
+            (1--60)) THEN
 
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
@@ -181,8 +239,8 @@ let SIMPLE_SPEC = prove(
   CONV_RULE(READ_MEMORY_SPLIT_CONV 4) o
   check (can (term_match [] `read qqq s:int256 = xxx`) o concl))) THEN
 
-  CONV_TAC(ONCE_DEPTH_CONV EXPAND_CASES_CONV) THEN
-  CONV_TAC(ONCE_DEPTH_CONV NUM_MULT_CONV THENC
-           ONCE_DEPTH_CONV NUM_ADD_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV EXPAND_CASES_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV NUM_MULT_CONV THENC
+           TOP_DEPTH_CONV NUM_ADD_CONV) THEN
   ASM_REWRITE_TAC[WORD_ADD_0]
 );;
