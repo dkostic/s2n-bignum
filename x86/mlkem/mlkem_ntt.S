@@ -31,6 +31,7 @@
 ntt_avx2:
 
         .cfi_startproc
+        endbr64
         movl	$0xd010d01, %eax        # imm = 0xD010D01
         vmovd	%eax, %xmm0
         vpbroadcastd	%xmm0, %ymm0

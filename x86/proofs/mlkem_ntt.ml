@@ -5,6 +5,7 @@ print_literal_from_elf "x86/mlkem/mlkem_ntt.o";;
 
 let mlkem_ntt_mc = define_assert_from_elf "mlkem_ntt_mc" "x86/mlkem/mlkem_ntt.o"
 [
+  0xf3; 0x0f; 0x1e; 0xfa;  (* ENDBR64 *)
   0xb8; 0x01; 0x0d; 0x01; 0x0d;
                            (* MOV (% eax) (Imm32 (word 218172673)) *)
   0xc5; 0xf9; 0x6e; 0xc0;  (* VMOVD (%_% xmm0) (% eax) *)
@@ -523,8 +524,8 @@ let mlkem_ntt_mc = define_assert_from_elf "mlkem_ntt_mc" "x86/mlkem/mlkem_ntt.o"
 let mlkem_ntt_tmc = define_trimmed "mlkem_ntt_tmc" mlkem_ntt_mc;;
 let MLKEM_NTT_TMC_EXEC = X86_MK_CORE_EXEC_RULE mlkem_ntt_tmc;;
 
-let qdata = define
-`qdata:int list =
+let qdata_full = define
+`qdata_full:int list =
    [&3854; &3340; &2826; &2312; &1798; &1284; &770; &256;
     &3854; &3340; &2826; &2312; &1798; &1284; &770; &256;
     &7;    &0;    &6;    &0;    &5;    &0;    &4;   &0;
@@ -584,6 +585,8 @@ let qdata = define
     -- &32384; -- &6280; -- &14903; -- &11044; &14469; -- &21498; -- &20198; &23210; -- &17442; -- &23860;
     -- &20257; &7756; &23132]`;;
 
+
+
 let ntt_montmul6 = define
  `ntt_montmul6 (a:int32, b:int16) (x:int16) =
   word_sub
@@ -594,35 +597,50 @@ let ntt_montmul6 = define
       (word 3329:int32))
     (16,16))`;;
 
+(*
+(word_sub
+                    (word_add (x 60)
+                              (word_subword
+                               (word_mul (word_sx (x 188)) (word 4294966538))
+                              (16,16)))
+                    (word_subword
+                              (word_mul
+                               (word_sx (word_mul (x 188) (word 31498)))
+                              (word_sx
+                              (word_duplicate
+                              (word_subword init_ymm0 (0,32)))))
+                             (16,16))
+)
+*)
+
 let ntt_montmul6_add = prove
  (`word_add y (ntt_montmul6 (a, b) x) =
-
-  word_sub
-  (word_add
-      (y)
-      (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16))
-  (word_subword
-    (word_mul (word_sx
-      ((word_mul (x:int16) b:int16)))
-      (word 3329:int32))
-    (16,16))`,
+   word_sub
+   (word_add
+       (y)
+       (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16))
+   (word_subword
+     (word_mul (word_sx
+       ((word_mul (x:int16) b:int16)))
+       (word 3329:int32))
+     (16,16))`,
   REWRITE_TAC[ntt_montmul6] THEN CONV_TAC WORD_RULE);;
 
 let MLKEM_NTT_CORRECT = prove
   (`!a zetas (zetas_list:int16 list) x pc.
     aligned 32 a /\
     aligned 32 zetas /\
-    nonoverlapping (word pc, 1510) (a, 512) /\
-    nonoverlapping (word pc, 1510) (zetas, 1248) /\
+    nonoverlapping (word pc, 1514) (a, 512) /\
+    nonoverlapping (word pc, 1514) (zetas, 1248) /\
     nonoverlapping (a, 512) (zetas, 1248)
     ==> ensures x86
           (\s. bytes_loaded s (word pc) (BUTLAST mlkem_ntt_tmc) /\
               read RIP s = word pc /\
               C_ARGUMENTS [a; zetas] s /\
-              wordlist_from_memory(zetas, 624) s = MAP (iword: int -> 16 word) qdata /\
+              wordlist_from_memory(zetas, 624) s = MAP (iword: int -> 16 word) qdata_full /\
               (!i. i < 256 ==> abs(ival(x i)) <= &8191) /\
               (!i. i < 256 ==> read(memory :> bytes16(word_add a (word(2 * i)))) s = x i))
-          (\s. read RIP s = word(pc + 1510) /\
+          (\s. read RIP s = word(pc + 1514) /\
               read YMM8 s = whatever /\
               (!i. i < 128
                         ==> let zi =
@@ -663,7 +681,7 @@ let MLKEM_NTT_CORRECT = prove
 
 
   FIRST_X_ASSUM(MP_TAC o CONV_RULE (LAND_CONV WORDLIST_FROM_MEMORY_CONV)) THEN
-  REWRITE_TAC[qdata; MAP; CONS_11] THEN
+  REWRITE_TAC[qdata_full; MAP; CONS_11] THEN
   STRIP_TAC THEN
 
   MP_TAC(end_itlist CONJ (map (fun n -> READ_MEMORY_MERGE_CONV 4
@@ -683,9 +701,10 @@ let MLKEM_NTT_CORRECT = prove
 
   MAP_EVERY (fun n -> X86_STEPS_TAC MLKEM_NTT_TMC_EXEC [n] THEN
                       SIMD_SIMPLIFY_TAC[ntt_montmul6; ntt_montmul6_add])
-        (1--294) THEN
+        (1--295) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
 
+  REWRITE_TAC[GSYM ntt_montmul6; ntt_montmul6_add] THEN
 
   REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
   CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
