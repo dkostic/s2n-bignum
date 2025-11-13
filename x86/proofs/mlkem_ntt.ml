@@ -1,7 +1,7 @@
 needs "x86/proofs/base.ml";;
 needs "common/mlkem_mldsa.ml";;
 
-print_literal_from_elf "x86/mlkem/mlkem_ntt.o";;
+(* print_literal_from_elf "x86/mlkem/mlkem_ntt.o";; *)
 
 let mlkem_ntt_mc = define_assert_from_elf "mlkem_ntt_mc" "x86/mlkem/mlkem_ntt.o"
 [
@@ -597,26 +597,23 @@ let ntt_montmul6 = define
       (word 3329:int32))
     (16,16))`;;
 
-(*
-(word_sub
-                    (word_add (x 60)
-                              (word_subword
-                               (word_mul (word_sx (x 188)) (word 4294966538))
-                              (16,16)))
-                    (word_subword
-                              (word_mul
-                               (word_sx (word_mul (x 188) (word 31498)))
-                              (word_sx
-                              (word_duplicate
-                              (word_subword init_ymm0 (0,32)))))
-                             (16,16))
-)
-*)
-
 let ntt_montmul6_add = prove
  (`word_add y (ntt_montmul6 (a, b) x) =
    word_sub
    (word_add
+       (y)
+       (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16))
+   (word_subword
+     (word_mul (word_sx
+       ((word_mul (x:int16) b:int16)))
+       (word 3329:int32))
+     (16,16))`,
+  REWRITE_TAC[ntt_montmul6] THEN CONV_TAC WORD_RULE);;
+
+let ntt_montmul6_sub = prove
+ (`word_sub y (ntt_montmul6 (a, b) x) =
+   word_add
+   (word_sub
        (y)
        (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16))
    (word_subword
@@ -641,7 +638,6 @@ let MLKEM_NTT_CORRECT = prove
               (!i. i < 256 ==> abs(ival(x i)) <= &8191) /\
               (!i. i < 256 ==> read(memory :> bytes16(word_add a (word(2 * i)))) s = x i))
           (\s. read RIP s = word(pc + 1514) /\
-              read YMM8 s = whatever /\
               (!i. i < 128
                         ==> let zi =
                       read(memory :> bytes16(word_add a (word(2 * i)))) s in
@@ -697,14 +693,10 @@ let MLKEM_NTT_CORRECT = prove
   CONV_TAC(LAND_CONV(READ_MEMORY_SPLIT_CONV 2)) THEN
   CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC THEN
 
-  (* IT'S GOOD DOWN TO HERE *)
-
   MAP_EVERY (fun n -> X86_STEPS_TAC MLKEM_NTT_TMC_EXEC [n] THEN
-                      SIMD_SIMPLIFY_TAC[ntt_montmul6; ntt_montmul6_add])
+                      SIMD_SIMPLIFY_TAC[ntt_montmul6; ntt_montmul6_add; ntt_montmul6_sub])
         (1--295) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-
-  REWRITE_TAC[GSYM ntt_montmul6; ntt_montmul6_add] THEN
 
   REPEAT(FIRST_X_ASSUM(STRIP_ASSUME_TAC o
   CONV_RULE(SIMD_SIMPLIFY_CONV[]) o
@@ -717,11 +709,21 @@ let MLKEM_NTT_CORRECT = prove
   REWRITE_TAC[INT_ABS_BOUNDS; WORD_ADD_0] THEN
   ASM_REWRITE_TAC[WORD_ADD_0]  THEN
 
-  ASM_REWRITE_TAC[] THEN DISCARD_STATE_TAC "s294" THEN
+  ASM_REWRITE_TAC[] THEN DISCARD_STATE_TAC "s295" THEN
 
-  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-  REWRITE_TAC[GSYM CONJ_ASSOC] THEN
-  REPEAT(GEN_REWRITE_TAC I
-   [TAUT `p /\ q /\ r /\ s <=> (p /\ q /\ r) /\ s`] THEN CONJ_TAC) 
+  REWRITE_TAC[WORD_BLAST `word_subword (x:int32) (0, 32) = x`] THEN
+  REWRITE_TAC[WORD_BLAST `word_subword (x:int64) (0, 64) = x`] THEN
+  REWRITE_TAC[WORD_BLAST
+   `word_subword (word_ushr (word_join (h:int16) (l:int16):int32) 16) (0, 16) = h`] THEN
+  REWRITE_TAC[WORD_BLAST
+   `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (0, 32) = h`] THEN
+  REWRITE_TAC[WORD_BLAST
+    `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (0, 16):int16 =
+     word_subword h (0, 16)`] THEN
+  REWRITE_TAC[WORD_BLAST
+    `word_subword (word_ushr (word_join (h:int32) (l:int32):int64) 32) (16, 16):int16 =
+     word_subword h (16, 16)`] THEN
 
-  );;
+  CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
+
+);;
