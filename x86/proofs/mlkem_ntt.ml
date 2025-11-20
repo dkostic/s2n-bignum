@@ -585,44 +585,6 @@ let qdata_full = define
     -- &32384; -- &6280; -- &14903; -- &11044; &14469; -- &21498; -- &20198; &23210; -- &17442; -- &23860;
     -- &20257; &7756; &23132]`;;
 
-
-
-let ntt_montmul6 = define
- `ntt_montmul6 (a:int32, b:int16) (x:int16) =
-  word_sub
-  (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16)
-  (word_subword
-    (word_mul (word_sx
-      ((word_mul (x:int16) b:int16)))
-      (word 3329:int32))
-    (16,16))`;;
-
-let ntt_montmul6_add = prove
- (`word_add y (ntt_montmul6 (a, b) x) =
-   word_sub
-   (word_add
-       (y)
-       (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16))
-   (word_subword
-     (word_mul (word_sx
-       ((word_mul (x:int16) b:int16)))
-       (word 3329:int32))
-     (16,16))`,
-  REWRITE_TAC[ntt_montmul6] THEN CONV_TAC WORD_RULE);;
-
-let ntt_montmul6_sub = prove
- (`word_sub y (ntt_montmul6 (a, b) x) =
-   word_add
-   (word_sub
-       (y)
-       (word_subword (word_mul (word_sx (x:int16)) a:int32) (16,16):int16))
-   (word_subword
-     (word_mul (word_sx
-       ((word_mul (x:int16) b:int16)))
-       (word 3329:int32))
-     (16,16))`,
-  REWRITE_TAC[ntt_montmul6] THEN CONV_TAC WORD_RULE);;
-
 let MLKEM_NTT_CORRECT = prove
   (`!a zetas (zetas_list:int16 list) x pc.
     aligned 32 a /\
@@ -641,7 +603,7 @@ let MLKEM_NTT_CORRECT = prove
               (!i. i < 128
                         ==> let zi =
                       read(memory :> bytes16(word_add a (word(2 * i)))) s in
-                      (ival zi == forward_ntt (ival o x) i) (mod &3329) /\
+                      (ival zi == avx2_forward_ntt (ival o x) i) (mod &3329) /\
                       abs(ival zi) <= &23594))
           (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI  ,,
            MAYCHANGE [ZMM0; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7; ZMM8;
@@ -694,7 +656,7 @@ let MLKEM_NTT_CORRECT = prove
   CONV_TAC(LAND_CONV WORD_REDUCE_CONV) THEN STRIP_TAC THEN
 
   MAP_EVERY (fun n -> X86_STEPS_TAC MLKEM_NTT_TMC_EXEC [n] THEN
-                      SIMD_SIMPLIFY_TAC[ntt_montmul6; ntt_montmul6_add; ntt_montmul6_sub])
+                      SIMD_SIMPLIFY_TAC[ntt_montmul; ntt_montmul_add; ntt_montmul_sub])
         (1--295) THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
 
