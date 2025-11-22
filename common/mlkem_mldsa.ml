@@ -102,7 +102,7 @@ let forward_ntt = define
 let avx2_forward_ntt = define
  `avx2_forward_ntt f k =
     isum (0..127) (\j. f(2 * j + k MOD 2) *
-                       &17 pow ((2 * mlkem_avx2_ntt_order k + 1) * j))
+                       &17 pow ((2 * mlkem_avx2_ntt_order (k DIV 2) + 1) * j))
     rem &3329`;;
 
 let mldsa_forward_ntt = define
@@ -164,7 +164,7 @@ let AVX2_FORWARD_NTT_ALT = prove
  (`avx2_forward_ntt f k =
    isum (0..127)
         (\j. f(2 * j + k MOD 2) *
-             (&17 pow ((2 * mlkem_avx2_ntt_order k + 1) * j)) rem &3329)
+             (&17 pow ((2 * mlkem_avx2_ntt_order (k DIV 2) + 1) * j)) rem &3329)
     rem &3329`,
   REWRITE_TAC[avx2_forward_ntt] THEN MATCH_MP_TAC
    (REWRITE_RULE[] (ISPEC
