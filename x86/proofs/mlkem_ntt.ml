@@ -1199,14 +1199,18 @@ let MLKEM_NTT_CORRECT = prove
   REWRITE_TAC[WORD_BLAST
     `word_subword (word_shl (word_subword (x:int32) (0, 32):int32) 16:int32) (16, 16):int16 =
      word_subword x (0, 16)`] THEN
+  REWRITE_TAC[WORD_BLAST
+    `word_subword (word_shl (x:int32) 16:int32) (16, 16):int16 =
+     word_subword x (0, 16)`] THEN
+
   CONV_TAC(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
 
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   REWRITE_TAC[GSYM CONJ_ASSOC] THEN
   REPEAT(GEN_REWRITE_TAC I
    [TAUT `p /\ q /\ r /\ s <=> (p /\ q /\ r) /\ s`] THEN CONJ_TAC) THEN
-  FIRST_X_ASSUM(MP_TAC o CONV_RULE EXPAND_CASES_CONV) THEN
 
+  FIRST_X_ASSUM(MP_TAC o CONV_RULE EXPAND_CASES_CONV) THEN
   POP_ASSUM_LIST(K ALL_TAC) THEN
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   DISCH_THEN(fun aboth ->
