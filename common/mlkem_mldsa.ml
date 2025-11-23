@@ -50,7 +50,8 @@ let reorder = define
 
 let mlkem_avx2_ntt_order = define
  `mlkem_avx2_ntt_order i = 
-    bitreverse7(64 * (i DIV 64) + ((i MOD 64) DIV 8) + 8 * (i MOD 8))`;;
+    bitreverse7(64 * (i DIV 64) + ((i MOD 64) DIV 16) + 4 * (i MOD 16))`;;
+
 
 (* ------------------------------------------------------------------------- *)
 (* AVX2-optimized ordering for ML-DSA NTT (swaps bit fields then reverses)   *)
@@ -101,8 +102,7 @@ let forward_ntt = define
 
 let avx2_forward_ntt = define
  `avx2_forward_ntt f k =
-    isum (0..127) (\j. f(2 * j + k MOD 2) *
-                       &17 pow ((2 * mlkem_avx2_ntt_order (k DIV 2) + 1) * j))
+    isum (0..127) (\j. f j * &17 pow ((2 * mlkem_avx2_ntt_order k + 1) * j))
     rem &3329`;;
 
 let mldsa_forward_ntt = define
@@ -163,8 +163,8 @@ let FORWARD_NTT_ALT = prove
 let AVX2_FORWARD_NTT_ALT = prove
  (`avx2_forward_ntt f k =
    isum (0..127)
-        (\j. f(2 * j + k MOD 2) *
-             (&17 pow ((2 * mlkem_avx2_ntt_order (k DIV 2) + 1) * j)) rem &3329)
+        (\j. f j *
+             (&17 pow ((2 * mlkem_avx2_ntt_order k + 1) * j)) rem &3329)
     rem &3329`,
   REWRITE_TAC[avx2_forward_ntt] THEN MATCH_MP_TAC
    (REWRITE_RULE[] (ISPEC
