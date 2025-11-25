@@ -49,9 +49,8 @@ let reorder = define
  `reorder p (a:num->int) = \i. a(p i)`;;
 
 let mlkem_avx2_ntt_order = define
- `mlkem_avx2_ntt_order i = 
+ `mlkem_avx2_ntt_order i =
     bitreverse7(64 * (i DIV 64) + ((i MOD 64) DIV 16) + 4 * (i MOD 16))`;;
-
 
 (* ------------------------------------------------------------------------- *)
 (* AVX2-optimized ordering for ML-DSA NTT (swaps bit fields then reverses)   *)
@@ -102,7 +101,10 @@ let forward_ntt = define
 
 let avx2_forward_ntt = define
  `avx2_forward_ntt f k =
-    isum (0..127) (\j. f j * &17 pow ((2 * mlkem_avx2_ntt_order k + 1) * j))
+    let r = (k DIV 16) MOD 2
+    and q = 16 * (k DIV 32) + k MOD 16 in
+    isum (0..127) (\j. f(2 * j + r) *
+                       &17 pow ((2 * mlkem_avx2_ntt_order q + 1) * j))
     rem &3329`;;
 
 let mldsa_forward_ntt = define
@@ -162,11 +164,14 @@ let FORWARD_NTT_ALT = prove
 
 let AVX2_FORWARD_NTT_ALT = prove
  (`avx2_forward_ntt f k =
+   let r = (k DIV 16) MOD 2
+   and q = 16 * (k DIV 32) + k MOD 16 in
    isum (0..127)
-        (\j. f j *
-             (&17 pow ((2 * mlkem_avx2_ntt_order k + 1) * j)) rem &3329)
+        (\j. f(2 * j + r) *
+             (&17 pow ((2 * mlkem_avx2_ntt_order q + 1) * j)) rem &3329)
     rem &3329`,
-  REWRITE_TAC[avx2_forward_ntt] THEN MATCH_MP_TAC
+  REWRITE_TAC[avx2_forward_ntt] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN MATCH_MP_TAC
    (REWRITE_RULE[] (ISPEC
       `(\x y. x rem &3329 = y rem &3329)` ISUM_RELATED)) THEN
   REWRITE_TAC[INT_REM_EQ; FINITE_NUMSEG; INT_CONG_ADD] THEN
@@ -209,6 +214,7 @@ let MLKEM_AVX2_NTT_ORDER_CLAUSES = end_itlist CONJ (map
 
 let AVX2_FORWARD_NTT_CONV =
   GEN_REWRITE_CONV I [AVX2_FORWARD_NTT_ALT] THENC
+  NUM_REDUCE_CONV THENC ONCE_DEPTH_CONV let_CONV THENC
   LAND_CONV EXPAND_ISUM_CONV THENC
   DEPTH_CONV NUM_RED_CONV THENC
   GEN_REWRITE_CONV ONCE_DEPTH_CONV [MLKEM_AVX2_NTT_ORDER_CLAUSES] THENC
