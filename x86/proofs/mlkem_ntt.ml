@@ -1299,27 +1299,27 @@ let MLKEM_NTT_SUBROUTINE_CORRECT  = prove
 (* Correctness of Windows ABI version.                                       *)
 (* ------------------------------------------------------------------------- *)
 
-let mlkem_ntt_windows_mc3 = define_from_elf
-    "mlkem_ntt_windows_mc3" "x86/mlkem/mlkem_ntt.obj";;
+let mlkem_ntt_windows_mc = define_from_elf
+    "mlkem_ntt_windows_mc" "x86/mlkem/mlkem_ntt.obj";;
 
-let mlkem_ntt_windows_tmc3 = define_trimmed
-    "mlkem_ntt_windows_tmc3" mlkem_ntt_windows_mc3;;
+let mlkem_ntt_windows_tmc = define_trimmed
+    "mlkem_ntt_windows_tmc" mlkem_ntt_windows_mc;;
 
-let MLKEM_NTT_WINDOWS_TMC_EXEC = X86_MK_EXEC_RULE mlkem_ntt_windows_tmc3;;
+let MLKEM_NTT_WINDOWS_TMC_EXEC = X86_MK_EXEC_RULE mlkem_ntt_windows_tmc;;
 
 let MLKEM_NTT_NOIBT_WINDOWS_SUBROUTINE_CORRECT  = prove
   (`!a zetas (zetas_list:int16 list) x pc stackpointer returnaddress.
     aligned 32 a /\
     aligned 32 zetas /\
-    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_tmc3) (a, 512) /\
-    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_tmc3) (zetas, 1248) /\
-    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_tmc3)
+    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_tmc) (a, 512) /\
+    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_tmc) (zetas, 1248) /\
+    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_tmc)
                    (word_sub stackpointer (word 176), 184)  /\
     nonoverlapping (a, 512) (zetas, 1248) /\
     nonoverlapping (a, 512) (word_sub stackpointer (word 176), 184) /\
     nonoverlapping (zetas, 1248) (word_sub stackpointer (word 176), 184) 
     ==> ensures x86
-          (\s. bytes_loaded s (word pc) mlkem_ntt_windows_tmc3 /\
+          (\s. bytes_loaded s (word pc) mlkem_ntt_windows_tmc /\
               read RIP s = word pc /\
               read RSP s = stackpointer /\
               read (memory :> bytes64 stackpointer) s = returnaddress /\
@@ -1335,7 +1335,7 @@ let MLKEM_NTT_NOIBT_WINDOWS_SUBROUTINE_CORRECT  = prove
                       (ival zi == avx2_forward_ntt (ival o x) i) (mod &3329) /\
                       abs(ival zi) <= &23594))
           (MAYCHANGE [RSP] ,, WINDOWS_MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
-           MAYCHANGE [memory :> bytes(word_sub stackpointer (word 176),176)] ,,
+           MAYCHANGE [memory :> bytes(word_sub stackpointer (word 176), 176)] ,,
            MAYCHANGE [memory :> bytes(a, 512)])`,
 
 (** Expand away the wordlist_from_memory ****)
@@ -1408,7 +1408,7 @@ let MLKEM_NTT_NOIBT_WINDOWS_SUBROUTINE_CORRECT  = prove
  *** This handles the core algorithm while preserving the register save/restore wrapper ***)
   X86_BIGSTEP_TAC MLKEM_NTT_WINDOWS_TMC_EXEC "s16" THENL
    [FIRST_ASSUM(MATCH_ACCEPT_TAC o MATCH_MP
-     (BYTES_LOADED_SUBPROGRAM_RULE mlkem_ntt_windows_tmc3
+     (BYTES_LOADED_SUBPROGRAM_RULE mlkem_ntt_windows_tmc
      (REWRITE_RULE[BUTLAST_CLAUSES]
       (AP_TERM `BUTLAST:byte list->byte list` mlkem_ntt_tmc))
      92));
@@ -1438,3 +1438,38 @@ let MLKEM_NTT_NOIBT_WINDOWS_SUBROUTINE_CORRECT  = prove
 (***Finalize the proof by establishing the final state conditions ***)
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
   REPEAT CONJ_TAC THEN CONV_TAC WORD_BLAST);;
+
+let MLKEM_NTT_WINDOWS_SUBROUTINE_CORRECT  = prove
+  (`!a zetas (zetas_list:int16 list) x pc stackpointer returnaddress.
+    aligned 32 a /\
+    aligned 32 zetas /\
+    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_mc) (a, 512) /\
+    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_mc) (zetas, 1248) /\
+    nonoverlapping (word pc, LENGTH mlkem_ntt_windows_mc)
+                   (word_sub stackpointer (word 176), 184)  /\
+    nonoverlapping (a, 512) (zetas, 1248) /\
+    nonoverlapping (a, 512) (word_sub stackpointer (word 176), 184) /\
+    nonoverlapping (zetas, 1248) (word_sub stackpointer (word 176), 184) 
+    ==> ensures x86
+          (\s. bytes_loaded s (word pc) mlkem_ntt_windows_mc /\
+              read RIP s = word pc /\
+              read RSP s = stackpointer /\
+              read (memory :> bytes64 stackpointer) s = returnaddress /\
+              WINDOWS_C_ARGUMENTS [a; zetas] s /\
+              wordlist_from_memory(zetas, 624) s = MAP (iword: int -> 16 word) qdata_full /\
+              (!i. i < 256 ==> abs(ival(x i)) <= &8191) /\
+              (!i. i < 256 ==> read(memory :> bytes16(word_add a (word(2 * i)))) s = x i))
+          (\s. read RIP s = returnaddress /\
+               read RSP s = word_add stackpointer (word 8) /\
+              (!i. i < 256
+                        ==> let zi =
+                      read(memory :> bytes16(word_add a (word(2 * i)))) s in
+                      (ival zi == avx2_forward_ntt (ival o x) i) (mod &3329) /\
+                      abs(ival zi) <= &23594))
+          (MAYCHANGE [RSP] ,, WINDOWS_MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+           MAYCHANGE [memory :> bytes(word_sub stackpointer (word 176), 176)] ,,
+           MAYCHANGE [memory :> bytes(a, 512)])`,
+  let TWEAK_CONV = ONCE_DEPTH_CONV WORDLIST_FROM_MEMORY_CONV in
+  CONV_TAC TWEAK_CONV THEN
+  MATCH_ACCEPT_TAC(ADD_IBT_RULE
+  (CONV_RULE TWEAK_CONV MLKEM_NTT_NOIBT_WINDOWS_SUBROUTINE_CORRECT)));;
