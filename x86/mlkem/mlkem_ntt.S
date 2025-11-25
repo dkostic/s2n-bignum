@@ -647,7 +647,7 @@ S2N_BN_SYMBOL(mlkem_ntt):
         CFI_STACKLOADU(xmm14,128)
         CFI_STACKLOADU(xmm15,144)
         CFI_STACKLOAD(rdi,160)
-        CFI_STACKLOAD(rdi,168)
+        CFI_STACKLOAD(rsi,168)
         CFI_INC_RSP(176)
 #endif
         CFI_RET
