@@ -300,7 +300,6 @@ onlyInArm = [
   "sha3_",
   "mlkem_intt",
   "mlkem_mulcache_compute",
-  "mlkem_ntt",
   "mlkem_rej_uniform_VARIABLE_TIME",
   "mlkem_tobytes",
   "mlkem_tomont",

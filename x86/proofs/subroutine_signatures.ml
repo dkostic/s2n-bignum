@@ -4776,6 +4776,23 @@ let subroutine_signatures = [
    ])
 );
 
+("mlkem_ntt",
+  ([(*args*)
+     ("a", "int16_t[static 256]", (*is const?*)"false");
+     ("q", "int16_t[static 624]", (*is const?*)"true");
+   ],
+   "void",
+   [(* input buffers *)
+    ("a", "256"(* num elems *), 2(* elem bytesize *));
+    ("q", "624"(* num elems *), 2(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("a", "256"(* num elems *), 2(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
 ("mlkem_reduce",
   ([(*args*)
      ("a", "int16_t[static 256]", (*is const?*)"false");
