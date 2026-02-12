@@ -67,6 +67,15 @@ extra_word_CONV := [AESE_REDUCE_CONV; AESMC_REDUCE_CONV;
                     @ (!extra_word_CONV);;
 
 (* ------------------------------------------------------------------------- *)
+(* PMULL/PMULL2 polynomial (carry-less) multiplication                       *)
+(* ------------------------------------------------------------------------- *)
+
+loadt "arm/proofs/pmull.ml";;
+
+extra_word_CONV := [PMULL8_REDUCE_CONV; PMULL64_REDUCE_CONV]
+                    @ (!extra_word_CONV);;
+
+(* ------------------------------------------------------------------------- *)
 (* The main ARM model.                                                       *)
 (* ------------------------------------------------------------------------- *)
 

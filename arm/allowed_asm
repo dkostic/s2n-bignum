@@ -74,6 +74,12 @@
 : ngc$
 : ngcs$
 : orr$
+: pmull$
+: pmull.1q$
+: pmull.8h$
+: pmull2$
+: pmull2.1q$
+: pmull2.8h$
 : rax1$
 : rax1.2d$
 : ret$

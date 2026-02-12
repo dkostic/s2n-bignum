@@ -899,6 +899,16 @@ let decode = new_definition `!w:int32. decode w =
       else
         SOME (arm_SMULL_VEC (QREG' Rd) (QREG' Rn) (QREG' Rm) esize)
 
+  | [0:1; q; 0b001110:6; size:2; 1:1; Rm:5; 0b111000:6; Rn:5; Rd:5] ->
+    // PMULL (vector, Q = 0). PMULL2 (vector, Q = 1)
+    if size = (word 0b01:(2)word) \/ size = (word 0b10:(2)word) then NONE
+    else
+      let esize = if size = (word 0b11:(2)word) then 64 else 8 in
+      if q then
+        SOME (arm_PMULL2_VEC (QREG' Rd) (QREG' Rn) (QREG' Rm) esize)
+      else
+        SOME (arm_PMULL_VEC (QREG' Rd) (QREG' Rn) (QREG' Rm) esize)
+
   | [0:1; q; 0b001110:6; size:2; 0b0:1; Rm:5; 0b000110:6; Rn:5; Rd:5] ->
     // UZP1
     if ~q then NONE // datasize = 64 is unsupported yet
