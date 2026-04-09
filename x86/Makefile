@@ -287,6 +287,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              p256/bignum_montinv_p256.o \
              p256/bignum_montmul_p256.o \
              p256/bignum_montmul_p256_alt.o \
+             p256/bignum_montmul_p256_reordered.o \
              p256/bignum_montsqr_p256.o \
              p256/bignum_montsqr_p256_alt.o \
              p256/bignum_mux_4.o \

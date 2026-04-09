@@ -2402,6 +2402,24 @@ let subroutine_signatures = [
    ])
 );
 
+("bignum_montmul_p256_reordered",
+  ([(*args*)
+     ("z", "uint64_t[static 4]", (*is const?*)"false");
+     ("x", "uint64_t[static 4]", (*is const?*)"true");
+     ("y", "uint64_t[static 4]", (*is const?*)"true");
+   ],
+   "void",
+   [(* input buffers *)
+    ("x", "4"(* num elems *), 8(* elem bytesize *));
+    ("y", "4"(* num elems *), 8(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("z", "4"(* num elems *), 8(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
 ("bignum_montmul_p256k1",
   ([(*args*)
      ("z", "uint64_t[static 4]", (*is const?*)"false");

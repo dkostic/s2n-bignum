@@ -321,6 +321,7 @@ onlyInX86 = [
   "bignum_mod_nsm2_alt",
   "bignum_mod_p256_alt",
   "bignum_mod_p384_alt",
+  "bignum_montmul_p256_reordered",
   "bignum_tomont_p256_alt",
   "bignum_tomont_p256k1_alt",
   "bignum_tomont_p384_alt",

@@ -621,6 +621,8 @@ void call_bignum_montmul_p256(void) repeat(bignum_montmul_p256(b0,b1,b2))
 
 void call_bignum_montmul_p256_alt(void) repeat(bignum_montmul_p256_alt(b0,b1,b2))
 
+void call_bignum_montmul_p256_reordered(void) repeat(bignum_montmul_p256_reordered(b0,b1,b2))
+
 void call_bignum_montmul_p256k1(void) repeat(bignum_montmul_p256k1(b0,b1,b2))
 
 void call_bignum_montmul_p256k1_alt(void) repeat(bignum_montmul_p256k1_alt(b0,b1,b2))
@@ -1384,6 +1386,7 @@ int main(int argc, char *argv[])
   timingtest(all,"bignum_montmul (32x32 -> 32)" ,call_bignum_montmul__32);
   timingtest(bmi,"bignum_montmul_p256",call_bignum_montmul_p256);
   timingtest(all,"bignum_montmul_p256_alt",call_bignum_montmul_p256_alt);
+  timingtest(bmi,"bignum_montmul_p256_reordered",call_bignum_montmul_p256_reordered);
   timingtest(bmi,"bignum_montmul_p256k1",call_bignum_montmul_p256k1);
   timingtest(all,"bignum_montmul_p256k1_alt",call_bignum_montmul_p256k1_alt);
   timingtest(bmi,"bignum_montmul_p384",call_bignum_montmul_p384);

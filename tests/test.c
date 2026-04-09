@@ -7763,6 +7763,11 @@ int test_bignum_montmul_p256_alt(void)
       bignum_montmul_p256_alt);
 }
 
+int test_bignum_montmul_p256_reordered(void)
+{ return test_bignum_montmul_p256_specific("bignum_montmul_p256_reordered",
+      bignum_montmul_p256_reordered);
+}
+
 int test_bignum_montmul_p256k1(void)
 { uint64_t t;
   printf("Testing bignum_montmul_p256k1 with %d cases\n",tests);
@@ -15859,6 +15864,7 @@ int main(int argc, char *argv[])
   functionaltest(all,"bignum_montmul",test_bignum_montmul);
   functionaltest(bmi,"bignum_montmul_p256",test_bignum_montmul_p256);
   functionaltest(all,"bignum_montmul_p256_alt",test_bignum_montmul_p256_alt);
+  functionaltest(bmi,"bignum_montmul_p256_reordered",test_bignum_montmul_p256_reordered);
   functionaltest(bmi,"bignum_montmul_p256k1",test_bignum_montmul_p256k1);
   functionaltest(all,"bignum_montmul_p256k1_alt",test_bignum_montmul_p256k1_alt);
   functionaltest(bmi,"bignum_montmul_p384",test_bignum_montmul_p384);
