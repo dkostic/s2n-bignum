@@ -368,10 +368,47 @@ let WORD_JOIN4_SUBWORD_64_64 = prove
 let WORD_JOIN4_SUBWORD_64_64_ALT =
   REWRITE_RULE[word_join4] WORD_JOIN4_SUBWORD_64_64;;
 
-(* TODO: SHA256SU0/SU1 bridging lemma (SHA256SU_BRIDGE).                    *)
-(* Statement: sha256su1(sha256su0(v4,v5), v6, v7) = word_join4 w16 w17 w18  *)
-(* w19 where w16..w19 are the next 4 message schedule words.                *)
-(* Proved interactively in the HOL Light session. The file proof requires a  *)
-(* custom AC-normalization tactic for word_add under word_ror/word_xor to    *)
-(* handle the commutativity difference between hardware and spec orderings   *)
-(* in the w18/w19 components (which depend on newly-computed w16/w17).       *)
+let WORD_ADD_COMM_ASSOC =
+  WORD_RULE `word_add (word_add (x:N word) y) z = word_add z (word_add x y)`;;
+
+(* SHA256SU0 + SHA256SU1 combined: computes 4 new message schedule words.   *)
+(* The proof expands sha256su0 and sha256su1 step by step, eliminating all   *)
+(* cross-width word_subword operations via extraction lemmas, then uses      *)
+(* WORD_ADD_COMM_ASSOC to normalize word_add ordering differences between    *)
+(* the hardware computation order and the spec order.                        *)
+let SHA256SU_BRIDGE = prove
+ (`!w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15:int32.
+    let w16 = word_add (sha256_sigma1 w14)
+                (word_add w9 (word_add (sha256_sigma0 w1) w0)) in
+    let w17 = word_add (sha256_sigma1 w15)
+                (word_add w10 (word_add (sha256_sigma0 w2) w1)) in
+    let w18 = word_add (sha256_sigma1 w16)
+                (word_add w11 (word_add (sha256_sigma0 w3) w2)) in
+    let w19 = word_add (sha256_sigma1 w17)
+                (word_add w12 (word_add (sha256_sigma0 w4) w3)) in
+    sha256su1 (sha256su0 (word_join4 w0 w1 w2 w3) (word_join4 w4 w5 w6 w7))
+              (word_join4 w8 w9 w10 w11) (word_join4 w12 w13 w14 w15) =
+    word_join4 w16 w17 w18 w19`,
+  let EXTRACT_TAC =
+    ONCE_REWRITE_TAC[WORD_JOIN4_SUBWORD_ALT; WORD_JOIN4_SUBWORD_32_96;
+                      WORD_JOIN4_SUBWORD_64_64_ALT;
+                      WORD_JOIN_96_SUBWORDS; WORD_JOIN_64_SUBWORDS;
+                      WORD_JOIN_SUBWORD_32_96] in
+  REPEAT GEN_TAC THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  ONCE_REWRITE_TAC[sha256su0] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  ONCE_REWRITE_TAC[sha256su0_loop] THEN
+  REWRITE_TAC[elem; word_join4] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  REWRITE_TAC[WORD_JOIN_SUBWORD_32_96; WORD_JOIN4_SUBWORD_ALT;
+              WORD_JOIN4_SUBWORD_32_96] THEN
+  ONCE_REWRITE_TAC[sha256su1] THEN
+  REWRITE_TAC[sha256su1_loop0; sha256su1_loop1; elem] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  EXTRACT_TAC THEN EXTRACT_TAC THEN EXTRACT_TAC THEN
+  REWRITE_TAC[sha256_sigma0; sha256_sigma1] THEN
+  ONCE_REWRITE_TAC[WORD_ADD_COMM_ASSOC] THEN
+  REFL_TAC);;
