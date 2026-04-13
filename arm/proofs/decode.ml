@@ -271,7 +271,9 @@ let decode = new_definition `!w:int32. decode w =
   | [0b1101011001011111000000:22; Rn:5; 0:5] ->
     SOME (arm_RET (XREG' Rn))
   | [sf; 0b10110101100000000001:20; N; Rn:5; Rd:5] ->
-    if ~(sf <=> N) then NONE
+    if ~(sf <=> N) then
+      if sf then SOME (arm_REV32 (XREG' Rd) (XREG' Rn))
+      else NONE
     else SOME (if sf then arm_REV (XREG' Rd) (XREG' Rn)
                else arm_REV (WREG' Rd) (WREG' Rn))
   | [0b10011011010:11; Rm:5; 0b011111:6; Rn:5; Rd:5] ->
@@ -727,6 +729,14 @@ let decode = new_definition `!w:int32. decode w =
     else
       let esize:(64)word = word_shl (word 0b1000: (64)word) (val size) in
       SOME (arm_REV64_VEC (QREG' Rd) (QREG' Rn) (val esize))
+
+  | [0:1; q; 0b101110:6; size:2; 0b100000000010:12; Rn:5; Rd:5] ->
+    // REV32
+    if val size >= 2 then NONE // size must be 00 or 01
+    else
+      let esize:(64)word = word_shl (word 0b1000: (64)word) (val size) in
+      let datasize = if q then 128 else 64 in
+      SOME (arm_REV32_VEC (QREG' Rd) (QREG' Rn) (val esize) datasize)
 
   | [0b01101110000:11; imm5:5; 0:1; imm4:4; 1:1; Rn:5; Rd:5] ->
     // INS, or "MOV (element)"

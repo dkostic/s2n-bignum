@@ -244,8 +244,15 @@ let iclasses =
   "0101101011000000000010xxxxxxxxxx";
   "1101101011000000000011xxxxxxxxxx";
 
+  (*** REV32 ***)
+  "1101101011000000000010xxxxxxxxxx";
+
   (*** REV64 ***)
   "01001110xx100000000010xxxxxxxxxx";
+
+  (*** REV32 (vector) ***)
+  "0x10111000100000000010xxxxxxxxxx";
+  "0x10111001100000000010xxxxxxxxxx";
 
   (*** SHA256 Intrinsics ***)
   (*** SHA256H ***)
