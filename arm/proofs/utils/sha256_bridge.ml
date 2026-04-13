@@ -412,3 +412,55 @@ let SHA256SU_BRIDGE = prove
   REWRITE_TAC[sha256_sigma0; sha256_sigma1] THEN
   ONCE_REWRITE_TAC[WORD_ADD_COMM_ASSOC] THEN
   REFL_TAC);;
+
+(* ========================================================================= *)
+(* Helper lemmas for ADD V.4S pre-addition in assembly proofs.               *)
+(* ========================================================================= *)
+
+(* ------------------------------------------------------------------------- *)
+(* Re-nesting: ADD V.4S produces word_join of two 64-bit halves, but         *)
+(* word_join4 nests as word_join 32 (word_join 32 (word_join 32 32)).         *)
+(* These are equal but syntactically different.                              *)
+(* ------------------------------------------------------------------------- *)
+
+let WORD_JOIN_4x32 = prove
+ (`!(a:int32) (b:int32) (c:int32) (d:int32).
+     (word_join:64 word->64 word->int128)
+       ((word_join:int32->int32->64 word) d c)
+       ((word_join:int32->int32->64 word) b a) =
+     word_join4 a b c d`,
+  REWRITE_TAC[word_join4] THEN REPEAT GEN_TAC THEN
+  BITBLAST_THEN (K ALL_TAC) THEN CONV_TAC TAUT);;
+
+(* ------------------------------------------------------------------------- *)
+(* Pre-addition equivalence: the hardware pre-adds K[t]+W[t] before          *)
+(* SHA256H, so the bridging lemma uses sha256_compress_round kw (word 0).    *)
+(* This lemma lets us convert to the standard spec form with separate K, W.  *)
+(*                                                                           *)
+(* IMPORTANT: Apply bridging lemmas BEFORE this lemma (forward direction).   *)
+(* Using GSYM loops because word_add K W always matches the K argument.      *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256_COMPRESS_ROUND_PREADD = prove
+ (`!(K_t:int32) (W_t:int32) state.
+     sha256_compress_round (word_add K_t W_t) (word 0) state =
+     sha256_compress_round K_t W_t state`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[sha256_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[WORD_ADD_0] THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* K/W argument commutativity: sha256_compress_round only uses               *)
+(* word_add K_t W_t, which is commutative, so swapping K and W is safe.      *)
+(* Needed because ADD V.4S may produce word_add W K instead of word_add K W. *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256_COMPRESS_ROUND_KW_SYM = prove
+ (`!(K_t:int32) (W_t:int32) state.
+     sha256_compress_round K_t W_t state =
+     sha256_compress_round W_t K_t state`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[sha256_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN `word_add (W_t:int32) K_t = word_add K_t W_t`
+    SUBST1_TAC THENL
+   [CONV_TAC WORD_RULE; REFL_TAC]);;
