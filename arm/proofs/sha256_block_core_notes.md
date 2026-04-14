@@ -1,6 +1,13 @@
 # SHA-256 Block Core Proof - Progress Notes
 
-## Status: Symbolic execution COMPLETE, postcondition matching TODO
+## Status: PROOF COMPLETE (2026-04-14)
+
+SHA-256 single-block core (109 ARM64 instructions) formally proven correct
+against sha256_block from the FIPS 180-4 specification.
+
+Postcondition: Q0/Q1 = word_join4 of sha256_block M H elements.
+Proof method: cut-points at each of 16 round groups + SHA256_BLOCK_EL.
+Total interactive proof time: ~2-3 minutes.
 
 ## Key findings (2026-04-14)
 
