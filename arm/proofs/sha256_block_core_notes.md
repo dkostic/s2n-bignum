@@ -94,6 +94,25 @@ REWRITE_TAC W_EL_LEMMAS THEN REFL_TAC
 For groups 4+: need sha256su → EL n W bridge for schedule words n >= 16.
 For all groups: need Q1 (sha256h2) cut-point too (same pattern, different bridge).
 
+### W abbreviation handling (2026-04-14, session 4)
+
+CRITICAL: Do NOT expand the W abbreviation in the goal via GSYM/ASM_REWRITE.
+Expanding W → sha256_message_schedule 48 M changes sha256_compress(4*i) W H
+on the LHS too, breaking REFL_TAC.
+
+CORRECT APPROACH: Build EL_W_LEMMAS that directly say `EL n W = w_n`:
+```
+let w_abbrev = ASSUME `schedule 48 M = W` in
+let EL_W_LEMMAS = List.map (fun k ->
+  CONV_RULE(LAND_CONV(RAND_CONV(REWR_CONV w_abbrev)))
+    (List.nth W_EL_LEMMAS k)) (0--15)
+```
+These keep W opaque in sha256_compress but convert EL n W → w_n in KW args.
+
+Groups 0-3: verified working (groups 0 and 1 Q0 cut-points proven).
+Groups 4+: same pattern but EL_W_LEMMAS needs entries for n=16..63,
+built from SHA256_W_EXTEND + SHA256_SCHEDULE_MONO instead of SHA256_SCHEDULE_PREFIX.
+
 ### Key insight from interactive testing (2026-04-14, session 2)
 
 **Applying SHA256H_BRIDGE during execution causes term duplication.**
