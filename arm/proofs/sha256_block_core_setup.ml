@@ -50,3 +50,70 @@ let COMPRESS_FOLD4 =
         (list_mk_comb(`sha256_compress`, [base_tm; `W:int32 list`; `state:int32 list`])) in
       GSYM(CONV_RULE(RAND_CONV(ONCE_REWRITE_CONV[GSYM base_unroll])) full_unroll) in
   Array.init 16 mk;;
+
+(* ================================================================== *)
+(* Schedule lemmas: connect sha256_message_schedule to sha256su        *)
+(* ================================================================== *)
+
+let EL_APPEND_LENGTH = prove(
+  `!l:A list. !x. EL (LENGTH l) (APPEND l [x]) = x`,
+  REWRITE_TAC[EL_APPEND; LT_REFL; SUB_REFL; EL; HD]);;
+
+let LENGTH_SHA256_MESSAGE_SCHEDULE = prove(
+  `!n M:int32 list. LENGTH(sha256_message_schedule n M) = LENGTH M + n`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha256_message_schedule; ADD_CLAUSES];
+    GEN_TAC THEN REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha256_message_schedule;
+      sha256_extend_schedule; LENGTH_APPEND; LENGTH] THEN
+    ASM_REWRITE_TAC[] THEN ARITH_TAC]);;
+
+let SHA256_SCHEDULE_PREFIX = prove(
+  `!n M:int32 list. !k. k < LENGTH M ==> EL k (sha256_message_schedule n M) = EL k M`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha256_message_schedule];
+    REPEAT STRIP_TAC THEN
+    REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha256_message_schedule;
+      sha256_extend_schedule; EL_APPEND] THEN
+    SUBGOAL_THEN `k < LENGTH(sha256_message_schedule n (M:int32 list))` ASSUME_TAC THENL
+     [ASM_REWRITE_TAC[LENGTH_SHA256_MESSAGE_SCHEDULE] THEN ASM_ARITH_TAC;
+      ASM_REWRITE_TAC[] THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]]]);;
+
+let SHA256_SCHEDULE_MONO = prove(
+  `!n1 n2 M:int32 list. !k. k < LENGTH M + n1 /\ n1 <= n2 ==>
+    EL k (sha256_message_schedule n2 M) = EL k (sha256_message_schedule n1 M)`,
+  GEN_TAC THEN INDUCT_TAC THENL
+   [SIMP_TAC[LE] THEN MESON_TAC[];
+    REPEAT STRIP_TAC THEN ASM_CASES_TAC `n1 <= n2:num` THENL
+     [REWRITE_TAC[ARITH_RULE `SUC n2 = n2 + 1`; sha256_message_schedule; sha256_extend_schedule; EL_APPEND] THEN
+      SUBGOAL_THEN `k < LENGTH(sha256_message_schedule n2 (M:int32 list))` ASSUME_TAC THENL
+       [ASM_REWRITE_TAC[LENGTH_SHA256_MESSAGE_SCHEDULE] THEN ASM_ARITH_TAC;
+        ASM_REWRITE_TAC[] THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]];
+      SUBGOAL_THEN `n1 = SUC n2` SUBST_ALL_TAC THENL
+       [ASM_ARITH_TAC; REFL_TAC]]]);;
+
+let SHA256_SCHEDULE_NEWEST = prove(
+  `!n M:int32 list. LENGTH M = 16 ==>
+    EL (n + 16) (sha256_message_schedule (n + 1) M) =
+    (let W = sha256_message_schedule n M in
+     word_add (sha256_sigma1 (EL (n + 14) W))
+       (word_add (EL (n + 9) W)
+         (word_add (sha256_sigma0 (EL (n + 1) W)) (EL n W))))`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[sha256_message_schedule; sha256_extend_schedule] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN `n + 16 = LENGTH(sha256_message_schedule n (M:int32 list))` SUBST1_TAC THENL
+   [ASM_REWRITE_TAC[LENGTH_SHA256_MESSAGE_SCHEDULE] THEN ARITH_TAC;
+    REWRITE_TAC[EL_APPEND_LENGTH]]);;
+
+let SHA256_W_EXTEND = prove(
+  `!n M:int32 list. LENGTH M = 16 /\ n < 48 ==>
+    EL (n + 16) (sha256_message_schedule 48 M) =
+    (let W = sha256_message_schedule n M in
+     word_add (sha256_sigma1 (EL (n + 14) W))
+       (word_add (EL (n + 9) W)
+         (word_add (sha256_sigma0 (EL (n + 1) W)) (EL n W))))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `EL (n + 16) (sha256_message_schedule 48 (M:int32 list)) =
+                EL (n + 16) (sha256_message_schedule (n + 1) M)` SUBST1_TAC THENL
+   [MATCH_MP_TAC SHA256_SCHEDULE_MONO THEN ASM_ARITH_TAC;
+    MATCH_MP_TAC SHA256_SCHEDULE_NEWEST THEN ASM_REWRITE_TAC[]]);;
