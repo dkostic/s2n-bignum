@@ -74,6 +74,26 @@ Possible approach: prove a separate bridging theorem that connects the
 hardware composition to sha256_block, possibly using concrete evaluation
 to verify the algebraic identity.
 
+### CUT-POINT APPROACH WORKS (2026-04-14, session 3)
+
+The cut-point approach successfully keeps terms small during proof:
+1. After each round group's symexec + ADD_SIMP_RULE
+2. SUBGOAL_THEN: assert Q0 = wj4(EL 0..3 (sha256_compress(4*(i+1)) W H))
+3. Prove subgoal via GROUP_BRIDGE_H + sha256_compress base case + W_EL_LEMMAS
+4. UNDISCH_THEN W def, expand, REWRITE W_EL_LEMMAS, REFL_TAC
+5. Result: Q0 assumption is now in clean sha256_compress form
+
+Tactic per cut-point subgoal (tested for group 0):
+```
+CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha256_compress))) THEN
+CONV_TAC(RAND_CONV(DEPTH_CONV EL_CONV)) THEN
+UNDISCH_THEN `schedule 48 M = W` (fun th -> GEN_REWRITE_TAC (RAND_CONV o DEPTH_CONV) [GSYM th] THEN ASSUME_TAC th) THEN
+REWRITE_TAC W_EL_LEMMAS THEN REFL_TAC
+```
+
+For groups 4+: need sha256su → EL n W bridge for schedule words n >= 16.
+For all groups: need Q1 (sha256h2) cut-point too (same pattern, different bridge).
+
 ### Key insight from interactive testing (2026-04-14, session 2)
 
 **Applying SHA256H_BRIDGE during execution causes term duplication.**
