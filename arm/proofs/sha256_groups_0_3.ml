@@ -133,3 +133,30 @@ let () = Printf.printf "Group 14 cut-point done!\n%!";;
 e(ARM_STEPS_TAC EXEC (102--106) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
   CUT_POINT_TAC 15 `s106:armstate`);;
 let () = Printf.printf "Group 15 cut-point done!\n%!";;
+
+(* Steps 107-109: ADD state add-back + RET *)
+e(ARM_STEPS_TAC EXEC (107--109) THEN RULE_ASSUM_TAC ADD_SIMP_RULE);;
+let () = Printf.printf "Add-back + RET done!\n%!";;
+
+(* Final: ENSURES_FINAL_STATE_TAC + postcondition matching *)
+e(ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]);;
+let () = Printf.printf "ENSURES_FINAL_STATE_TAC done!\n%!";;
+
+(* Close postcondition: sha256_block M H = MAP2 word_add (compress 64 W H) H *)
+(* Use SHA256_BLOCK_EL to convert EL k (sha256_block M H) to word_add form *)
+let POSTCOND_TAC =
+  let len_h = prove(`LENGTH [a:int32;b;c;d;e;f;g;h] = 8`, REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+  let m = `[w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15]` in
+  let h = `[a:int32;b;c;d;e;f;g;h]` in
+  let inst = MP (SPECL [m; h] SHA256_BLOCK_EL) len_h in
+  let block_el = List.map (fun k ->
+    let th = SPEC (mk_small_numeral k) inst in
+    let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
+    let th3 = CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2 in
+    REWRITE_RULE[w_abbrev] th3) (0--7) in
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC block_el THEN
+  REFL_TAC;;
+
+e(POSTCOND_TAC);;
+let () = Printf.printf "*** PROOF COMPLETE! ***\n%!";;
