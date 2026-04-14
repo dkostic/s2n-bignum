@@ -42,7 +42,7 @@ let CUT_POINT_TAC i sname =
    [ASM_REWRITE_TAC[bridge_h] THEN
     TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha256_compress)))) THEN
     CONV_TAC(RAND_CONV(DEPTH_CONV EL_CONV)) THEN
-    REWRITE_TAC EL_W_LEMMAS_W THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
     REWRITE_TAC[SHA256_COMPRESS_ROUND_EL_LIST] THEN
     REFL_TAC; ALL_TAC] THEN
   (* Q1 cut-point *)
@@ -50,7 +50,7 @@ let CUT_POINT_TAC i sname =
    [ASM_REWRITE_TAC[bridge_h2] THEN
     TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha256_compress)))) THEN
     CONV_TAC(RAND_CONV(DEPTH_CONV EL_CONV)) THEN
-    REWRITE_TAC EL_W_LEMMAS_W THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
     REWRITE_TAC[SHA256_COMPRESS_ROUND_EL_LIST] THEN
     REFL_TAC; ALL_TAC] THEN
   (* Discard old sha256h/sha256h2 assumptions *)
@@ -78,10 +78,58 @@ let () = Printf.printf "Group 1 cut-point done!\n%!";;
 
 e(ARM_STEPS_TAC EXEC (17--23) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
   CUT_POINT_TAC 2 `s23:armstate`);;
-
 let () = Printf.printf "Group 2 cut-point done!\n%!";;
 
 e(ARM_STEPS_TAC EXEC (24--30) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
   CUT_POINT_TAC 3 `s30:armstate`);;
-
 let () = Printf.printf "Group 3 cut-point done!\n%!";;
+
+(* Groups 4-11: schedule extension words *)
+e(ARM_STEPS_TAC EXEC (31--37) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 4 `s37:armstate`);;
+let () = Printf.printf "Group 4 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (38--44) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 5 `s44:armstate`);;
+let () = Printf.printf "Group 5 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (45--51) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 6 `s51:armstate`);;
+let () = Printf.printf "Group 6 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (52--58) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 7 `s58:armstate`);;
+let () = Printf.printf "Group 7 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (59--65) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 8 `s65:armstate`);;
+let () = Printf.printf "Group 8 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (66--72) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 9 `s72:armstate`);;
+let () = Printf.printf "Group 9 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (73--79) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 10 `s79:armstate`);;
+let () = Printf.printf "Group 10 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (80--86) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 11 `s86:armstate`);;
+let () = Printf.printf "Group 11 cut-point done!\n%!";;
+
+(* Groups 12-15: no schedule update *)
+e(ARM_STEPS_TAC EXEC (87--91) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 12 `s91:armstate`);;
+let () = Printf.printf "Group 12 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (92--96) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 13 `s96:armstate`);;
+let () = Printf.printf "Group 13 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (97--101) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 14 `s101:armstate`);;
+let () = Printf.printf "Group 14 cut-point done!\n%!";;
+
+e(ARM_STEPS_TAC EXEC (102--106) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+  CUT_POINT_TAC 15 `s106:armstate`);;
+let () = Printf.printf "Group 15 cut-point done!\n%!";;
