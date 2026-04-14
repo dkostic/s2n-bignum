@@ -117,3 +117,16 @@ let SHA256_W_EXTEND = prove(
                 EL (n + 16) (sha256_message_schedule (n + 1) M)` SUBST1_TAC THENL
    [MATCH_MP_TAC SHA256_SCHEDULE_MONO THEN ASM_ARITH_TAC;
     MATCH_MP_TAC SHA256_SCHEDULE_NEWEST THEN ASM_REWRITE_TAC[]]);;
+
+(* EL k (sha256_block M H) = word_add (EL k (compress 64 W H)) (EL k H) *)
+let SHA256_BLOCK_EL = prove(
+  `!M H:int32 list. LENGTH H = 8 ==>
+    !k. k < 8 ==> EL k (sha256_block M H) =
+      word_add (EL k (sha256_compress 64 (sha256_message_schedule 48 M) H)) (EL k H)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[sha256_block] THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  MATCH_MP_TAC EL_MAP2 THEN
+  SUBGOAL_THEN `LENGTH (sha256_compress 64 (sha256_message_schedule 48 (M:int32 list)) (H:int32 list)) = 8`
+    ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_SHA256_COMPRESS THEN ASM_REWRITE_TAC[];
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC]);;
