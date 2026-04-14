@@ -157,17 +157,36 @@ let SHA256_BLOCK_CORE_CORRECT = prove(
   ASM_REWRITE_TAC[] THEN
 
   (* ----- Postcondition matching ----- *)
-  (* At this point we need to show:                                          *)
-  (*   symbolic_Q0 = word_join4 (EL 0 (sha256_block M H)) ... and           *)
-  (*   symbolic_Q1 = word_join4 (EL 4 (sha256_block M H)) ...               *)
-  (* The symbolic Q0/Q1 are large terms involving nested sha256h/sha256h2/   *)
-  (* sha256su0/sha256su1 applications. The postcondition uses sha256_block   *)
-  (* which involves sha256_compress_round and sha256_message_schedule.       *)
-  (* The bridging lemmas (SHA256H_BRIDGE, SHA256SU_BRIDGE, etc.) connect     *)
-  (* these two levels.                                                       *)
+  (* Strategy: unfold the spec side (sha256_block) to the same form as the   *)
+  (* symbolic state, then show they match.                                   *)
   (*                                                                         *)
-  (* TODO: This is the remaining hard step. Options:                         *)
-  (* 1. Apply bridging lemmas to both sides and show they normalize to same  *)
-  (* 2. Use computational evaluation on concrete test vectors + BITBLAST     *)
-  (* 3. Prove the connection as a separate lemma                             *)
+  (* Step 1: Unfold sha256_block -> sha256_compress 64 + message_schedule    *)
+  (* Step 2: Unroll sha256_compress 64 to 64 nested compress_round calls     *)
+  (* Step 3: Unroll sha256_message_schedule to get concrete W expressions    *)
+  (* Step 4: On the symbolic side, apply bridging (SHA256H_BRIDGE etc.)      *)
+  (* Step 5: Use SHA256_COMPRESS_ROUND_KW_SYM to match argument order        *)
+  (* Step 6: Show both sides are syntactically equal                         *)
+  (*                                                                         *)
+  (* TODO: implement the above strategy. The SHA256_COMPRESS_UNROLL_CONV     *)
+  (* (defined below) handles step 2. Steps 3-5 need corresponding tools.    *)
   CHEAT_TAC);;
+
+(* ========================================================================= *)
+(* Conversion to unroll sha256_compress n to nested compress_round calls.    *)
+(* sha256_compress 4 W state =                                               *)
+(*   sha256_compress_round (EL 3 K) (EL 3 W)                                *)
+(*     (sha256_compress_round (EL 2 K) (EL 2 W)                             *)
+(*       (sha256_compress_round (EL 1 K) (EL 1 W)                           *)
+(*         (sha256_compress_round (EL 0 K) (EL 0 W) state)))                *)
+(* ========================================================================= *)
+
+let rec SHA256_COMPRESS_UNROLL_CONV tm =
+  let n_tm = rand(rator(rator tm)) in
+  if n_tm = `0` then REWRITE_CONV[sha256_compress] tm
+  else
+    let n = dest_small_numeral n_tm in
+    let arith_th = ARITH_RULE
+      (mk_eq(n_tm, mk_comb(mk_comb(`(+)`, mk_small_numeral(n-1)), `1`))) in
+    let step1 = ONCE_REWRITE_CONV[arith_th] tm in
+    let step2 = CONV_RULE(RAND_CONV(ONCE_REWRITE_CONV[sha256_compress])) step1 in
+    CONV_RULE(RAND_CONV(RAND_CONV SHA256_COMPRESS_UNROLL_CONV)) step2;;
