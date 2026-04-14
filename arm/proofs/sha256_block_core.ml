@@ -157,18 +157,15 @@ let SHA256_BLOCK_CORE_CORRECT = prove(
   ASM_REWRITE_TAC[] THEN
 
   (* ----- Postcondition matching ----- *)
-  (* Strategy: unfold the spec side (sha256_block) to the same form as the   *)
-  (* symbolic state, then show they match.                                   *)
-  (*                                                                         *)
-  (* Step 1: Unfold sha256_block -> sha256_compress 64 + message_schedule    *)
-  (* Step 2: Unroll sha256_compress 64 to 64 nested compress_round calls     *)
-  (* Step 3: Unroll sha256_message_schedule to get concrete W expressions    *)
-  (* Step 4: On the symbolic side, apply bridging (SHA256H_BRIDGE etc.)      *)
-  (* Step 5: Use SHA256_COMPRESS_ROUND_KW_SYM to match argument order        *)
-  (* Step 6: Show both sides are syntactically equal                         *)
-  (*                                                                         *)
-  (* TODO: implement the above strategy. The SHA256_COMPRESS_UNROLL_CONV     *)
-  (* (defined below) handles step 2. Steps 3-5 need corresponding tools.    *)
+  (* The goal has two conjuncts:                                              *)
+  (*   symbolic_Q0 = word_join4 (EL 0..3 (sha256_block M H))                 *)
+  (*   symbolic_Q1 = word_join4 (EL 4..7 (sha256_block M H))                 *)
+  (* Strategy: unfold sha256_block on the RHS, convert sha256_compress        *)
+  (* into sha256h/sha256h2 chain using the per-group bridge lemmas,           *)
+  (* then match against the symbolic LHS.                                     *)
+  (*                                                                          *)
+  (* Requires: sha256_group_bridge_gen.ml to be loaded (for GROUP_BRIDGE_H/H2)*)
+  (* TODO: complete the postcondition matching using bridge lemmas as rewrites *)
   CHEAT_TAC);;
 
 (* ========================================================================= *)
