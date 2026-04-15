@@ -146,3 +146,17 @@ let sha256_block = new_definition
     let W = sha256_message_schedule 48 msg_block in
     let compressed = sha256_compress 64 W hash in
     MAP2 word_add compressed hash`;;
+
+(* ------------------------------------------------------------------------- *)
+(* Multi-block iteration (FIPS 180-4, Section 6.2.2).                        *)
+(*                                                                           *)
+(* sha256_hash_blocks n blocks H applies sha256_block iteratively:           *)
+(*   sha256_hash_blocks 0 blocks H = H                                      *)
+(*   sha256_hash_blocks (n+1) blocks H =                                    *)
+(*     sha256_block (EL n blocks) (sha256_hash_blocks n blocks H)           *)
+(* ------------------------------------------------------------------------- *)
+
+let sha256_hash_blocks = define
+ `sha256_hash_blocks 0 blocks H = H /\
+  sha256_hash_blocks (n + 1) blocks H =
+    sha256_block (EL n blocks) (sha256_hash_blocks n blocks H)`;;
