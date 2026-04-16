@@ -58,18 +58,6 @@ let EL_W_UNCOND =
 (* - After the SU bridge, also discards Q2/Q3/Q16 temporaries.              *)
 (* ========================================================================= *)
 
-(* ADD_SIMP_RULE_SELECTIVE: apply WORD_JOIN4_SUBWORD/WORD_JOIN_4x32 only to    *)
-(* assumptions that don't involve Q0 or Q1, since ADD_SIMP_RULE can cause     *)
-(* Q0/Q1 (containing sha256h/sha256h2) to be absorbed into tautologies.       *)
-
-let ADD_SIMP_RULE_SELECTIVE =
-  RULE_ASSUM_TAC(fun th ->
-    if can (find_term (fun t ->
-        try let n = fst(dest_const t) in n = "Q0" || n = "Q1"
-        with _ -> false)) (concl th)
-    then th
-    else ADD_SIMP_RULE th);;
-
 (* ========================================================================= *)
 (* Parameterized CUT_POINT_TAC and POSTCOND_TAC.                             *)
 (*                                                                           *)
@@ -151,7 +139,86 @@ let GEN_POSTCOND_TAC h_tm =
 
 let POSTCOND_TAC_HW = GEN_POSTCOND_TAC `[a:int32;b;c;d;e;f;g;h]`;;
 
+(* GEN_POSTCOND_TAC2: like GEN_POSTCOND_TAC but takes an external LENGTH     *)
+(* proof, needed for opaque h_tm like sha256_hash_blocks where LENGTH can't  *)
+(* be computed by REWRITE_TAC[LENGTH] THEN ARITH_TAC.                        *)
+
+let GEN_POSTCOND_TAC2 h_tm len_h =
+  let m = `[w0:int32;w1;w2;w3;w4;w5;w6;w7;
+            w8;w9;w10;w11;w12;w13;w14;w15]` in
+  let hw_w_abbrev = ASSUME
+    `sha256_message_schedule 48
+     [w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W` in
+  let inst = MP (SPECL [m; h_tm] SHA256_BLOCK_EL) len_h in
+  let block_el = List.map (fun k ->
+    let th = SPEC (mk_small_numeral k) inst in
+    let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
+    let th3 = CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2 in
+    REWRITE_RULE[hw_w_abbrev] th3) (0--7) in
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC block_el THEN
+  REFL_TAC;;
+
 (* Single-block proof moved to sha256_hw_1block.ml for faster iteration. *)
+
+(* ========================================================================= *)
+(* Helper lemmas for multi-block body proof.                                 *)
+(* ========================================================================= *)
+
+let LENGTH_SHA256_HASH_BLOCKS = prove
+ (`!n blocks H:int32 list. LENGTH H = 8
+   ==> LENGTH(sha256_hash_blocks n blocks H) = 8`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha256_hash_blocks];
+    REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha256_hash_blocks] THEN
+    REPEAT STRIP_TAC THEN MATCH_MP_TAC LENGTH_SHA256_BLOCK THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]]);;
+
+let WORD_SUB_SUC = prove
+ (`!n. word_sub (word(SUC n):int64) (word 1) = word n`,
+  GEN_TAC THEN REWRITE_TAC[ADD1; GSYM WORD_ADD] THEN
+  CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV
+    (WORD_RULE `word_sub(word_add x (word 1))(word 1):int64 = x`))));;
+
+(* REV32_BITBLAST_TAC: establish clean word_join4 form for a SIMD register   *)
+(* after REV32 instruction (double byte-reversal cancels).                   *)
+
+let REV32_BITBLAST_TAC qpat qtm =
+  SUBGOAL_THEN qtm
+    (fun th -> RULE_ASSUM_TAC(fun asm ->
+      if can (term_match [] qpat) (concl asm) &&
+         not (can (find_term (fun t ->
+           try fst(dest_const t) = "EL" with _ -> false)) (concl asm))
+      then th else asm))
+  THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[word_join4] THEN
+    BITBLAST_THEN (K ALL_TAC) THEN CONV_TAC TAUT; ALL_TAC];;
+
+(* EXPAND_K_TAC: expand quantified K constant into individual assumptions.   *)
+
+let EXPAND_K_TAC =
+  FIRST_X_ASSUM(fun th ->
+    if can (find_term (fun t ->
+      try fst(dest_const t) = "sha256_K" with _ -> false)) (concl th)
+    then
+      MAP_EVERY (fun i ->
+        let spec = SPEC (mk_small_numeral i) th in
+        let mp = MP spec (prove(lhand(concl spec), ARITH_TAC)) in
+        ASSUME_TAC(CONV_RULE
+          (DEPTH_CONV NUM_MULT_CONV THENC DEPTH_CONV NUM_ADD_CONV) mp))
+        (0--15)
+    else FAIL_TAC "");;
+
+(* EXPAND_DATA_TAC: specialize quantified data memory at j=ii.               *)
+
+let EXPAND_DATA_TAC =
+  FIRST_X_ASSUM(fun th ->
+    if can (find_term (fun t ->
+      try fst(dest_const t) = "word_bytereverse" with _ -> false)) (concl th)
+    then
+      MP_TAC(SPEC `ii:num` th) THEN ANTS_TAC THENL
+       [ASM_ARITH_TAC; ALL_TAC]
+    else FAIL_TAC "");;
 
 (* ========================================================================= *)
 (* Multi-block correctness.                                                  *)
@@ -299,9 +366,104 @@ let SHA256_HW_CORRECT = time prove(
     (* Subgoal 2: BODY -- invariant(i) at pc+0x8 ==>                     *)
     (*            invariant(i+1) at pc+0x1e0                             *)
     (* This is the full single-block proof for one loop iteration.       *)
+    (*                                                                   *)
+    (* Key setup steps before symbolic execution:                        *)
+    (*   1. Expand K constant quantifier into 16 individual assumptions  *)
+    (*   2. Specialize data memory quantifier at j=ii                    *)
+    (*   3. REV32 bitblast Q4-Q7 to clean word_join4(EL k ...) form     *)
+    (*   4. Abbreviate w0-w15 and W                                      *)
+    (* Then 16 round groups with cut-points + add-back + postcondition.  *)
     (* ================================================================= *)
-    (* TODO: full body proof with GEN_CUT_POINT_TAC *)
-    CHEAT_TAC;
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    EXPAND_K_TAC THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+    EXPAND_DATA_TAC THEN STRIP_TAC THEN
+    RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_ADD_CONV)) THEN
+    ARM_STEPS_TAC HW_EXEC (1--12) THEN
+    REV32_BITBLAST_TAC `read Q4 s = x:int128`
+      `read Q4 s12 = word_join4 ((EL 0 (EL ii blocks)):int32)
+        (EL 1 (EL ii blocks)) (EL 2 (EL ii blocks))
+        (EL 3 (EL ii blocks))` THEN
+    REV32_BITBLAST_TAC `read Q5 s = x:int128`
+      `read Q5 s12 = word_join4 ((EL 4 (EL ii blocks)):int32)
+        (EL 5 (EL ii blocks)) (EL 6 (EL ii blocks))
+        (EL 7 (EL ii blocks))` THEN
+    REV32_BITBLAST_TAC `read Q6 s = x:int128`
+      `read Q6 s12 = word_join4 ((EL 8 (EL ii blocks)):int32)
+        (EL 9 (EL ii blocks)) (EL 10 (EL ii blocks))
+        (EL 11 (EL ii blocks))` THEN
+    REV32_BITBLAST_TAC `read Q7 s = x:int128`
+      `read Q7 s12 = word_join4 ((EL 12 (EL ii blocks)):int32)
+        (EL 13 (EL ii blocks)) (EL 14 (EL ii blocks))
+        (EL 15 (EL ii blocks))` THEN
+    ABBREV_TAC `w0 = (EL 0 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w1 = (EL 1 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w2 = (EL 2 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w3 = (EL 3 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w4 = (EL 4 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w5 = (EL 5 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w6 = (EL 6 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w7 = (EL 7 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w8 = (EL 8 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w9 = (EL 9 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w10 = (EL 10 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w11 = (EL 11 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w12 = (EL 12 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w13 = (EL 13 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w14 = (EL 14 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w15 = (EL 15 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `W = sha256_message_schedule 48
+      [w0:int32;w1;w2;w3;w4;w5;w6;w7;
+       w8;w9;w10;w11;w12;w13;w14;w15]` THEN
+    (let h_tm = `sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]` in
+    ARM_STEPS_TAC HW_EXEC (13--19) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 0 `s19:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (20--26) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 1 `s26:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (27--33) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 2 `s33:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (34--40) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 3 `s40:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (41--47) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 4 `s47:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (48--54) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 5 `s54:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (55--61) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 6 `s61:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (62--68) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 7 `s68:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (69--75) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 8 `s75:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (76--82) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 9 `s82:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (83--89) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 10 `s89:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (90--96) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 11 `s96:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (97--101) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 12 `s101:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (102--106) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 13 `s106:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (107--111) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 14 `s111:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (112--116) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+      GEN_CUT_POINT_TAC h_tm 15 `s116:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (117--118) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[sha256_hash_blocks; sha256_block] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    REWRITE_TAC[WORD_ADD_ASSOC; GSYM WORD_ADD;
+                ARITH_RULE `64 * ii + 64 = 64 * (ii + 1)`] THEN
+    REWRITE_TAC[WORD_SUB_SUC] THEN
+    GEN_POSTCOND_TAC2 h_tm
+      (prove(`LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]) = 8`,
+        MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
+        REWRITE_TAC[LENGTH] THEN ARITH_TAC)));
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1e0 ==>             *)
