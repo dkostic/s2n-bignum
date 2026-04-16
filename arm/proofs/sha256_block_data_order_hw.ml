@@ -434,12 +434,98 @@ let SHA256_HW_CORRECT = time prove(
      MAYCHANGE [memory :> bytes(state_ptr, 32)] ,,
      MAYCHANGE [events])`,
 
-  (* TODO: Multi-block proof using ENSURES_WHILE_UP_TAC.
-     Structure validated interactively:
-     - ENSURES_WHILE_UP_TAC `num_blocks` `pc+0x8` `pc+0x1e0` with invariant
-       tracking sha256_hash_blocks i blocks H in Q0/Q1
-     - Init subgoal: PROVEN (2 ARM steps)
-     - Body subgoal: single-block proof with GHOST_INTRO_TAC for Q0/Q1
-     - Back-edge: 1 ARM step (CBNZ branches when x2 != 0)
-     - Exit: 4 ARM steps (CBNZ fall-through + STR + STR + RET) *)
-  CHEAT_TAC);;
+  REWRITE_TAC[ALL; MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+              NONOVERLAPPING_CLAUSES] THEN REPEAT STRIP_TAC THEN
+
+  SUBGOAL_THEN `~(num_blocks = 0)` ASSUME_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+
+  ENSURES_WHILE_UP_TAC `num_blocks:num` `pc + 0x8` `pc + 0x1e0`
+    `\i s. aligned_bytes_loaded s (word pc) sha256_hw_mc /\
+           read X0 s = state_ptr /\
+           read X1 s = word_add data_ptr (word(64 * i)) /\
+           read X2 s = word(num_blocks - i) /\
+           read X3 s = kptr /\
+           read Q0 s = word_join4
+             (EL 0 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h]:int32 list))
+             (EL 1 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h]))
+             (EL 2 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h]))
+             (EL 3 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h])) /\
+           read Q1 s = word_join4
+             (EL 4 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h]:int32 list))
+             (EL 5 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h]))
+             (EL 6 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h]))
+             (EL 7 (sha256_hash_blocks i blocks [a;b;c;d;e;f;g;h])) /\
+           (!j. j < num_blocks ==>
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j)))) s =
+               word_join4 (word_bytereverse (EL 0 (EL j blocks)))
+                          (word_bytereverse (EL 1 (EL j blocks)))
+                          (word_bytereverse (EL 2 (EL j blocks)))
+                          (word_bytereverse (EL 3 (EL j blocks))) /\
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j + 16)))) s =
+               word_join4 (word_bytereverse (EL 4 (EL j blocks)))
+                          (word_bytereverse (EL 5 (EL j blocks)))
+                          (word_bytereverse (EL 6 (EL j blocks)))
+                          (word_bytereverse (EL 7 (EL j blocks))) /\
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j + 32)))) s =
+               word_join4 (word_bytereverse (EL 8 (EL j blocks)))
+                          (word_bytereverse (EL 9 (EL j blocks)))
+                          (word_bytereverse (EL 10 (EL j blocks)))
+                          (word_bytereverse (EL 11 (EL j blocks))) /\
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j + 48)))) s =
+               word_join4 (word_bytereverse (EL 12 (EL j blocks)))
+                          (word_bytereverse (EL 13 (EL j blocks)))
+                          (word_bytereverse (EL 14 (EL j blocks)))
+                          (word_bytereverse (EL 15 (EL j blocks)))) /\
+           (!k. k < 16 ==>
+             read (memory :> bytes128 (word_add kptr (word(16 * k)))) s =
+             word_join4 (EL (4*k) sha256_K) (EL (4*k+1) sha256_K)
+                        (EL (4*k+2) sha256_K) (EL (4*k+3) sha256_K)) /\
+           read (memory :> bytes128 state_ptr) s = word_join4 a b c d /\
+           read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+             word_join4 e f g h` THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL [
+
+    (* ================================================================= *)
+    (* Subgoal 1: INIT -- precondition ==> invariant(0) at pc+0x8        *)
+    (* Execute instructions 1-2 (LDR Q0, LDR Q1 for state)              *)
+    (* ================================================================= *)
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC HW_EXEC (1--2) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[sha256_hash_blocks; WORD_ADD_0; MULT_CLAUSES; SUB_0] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
+
+    (* ================================================================= *)
+    (* Subgoal 2: BODY -- invariant(i) at pc+0x8 ==>                     *)
+    (*            invariant(i+1) at pc+0x1e0                             *)
+    (* This is the full single-block proof for one loop iteration.       *)
+    (* ================================================================= *)
+    (* TODO: full body proof with GEN_CUT_POINT_TAC *)
+    CHEAT_TAC;
+
+    (* ================================================================= *)
+    (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1e0 ==>             *)
+    (*            invariant(i) at pc+0x8                                 *)
+    (* Just CBNZ x2, .Loop_hw (1 instruction, branches since x2 != 0)   *)
+    (* ================================================================= *)
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC HW_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[];
+
+    (* ================================================================= *)
+    (* Subgoal 4: EXIT -- invariant(num_blocks) at pc+0x1e0 ==>          *)
+    (*            postcondition at pc+0x1ec                              *)
+    (* CBNZ falls through (x2=0), STR Q0, STR Q1, RET (4 instructions) *)
+    (* ================================================================= *)
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI; SUB_REFL] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC HW_EXEC (1--4) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    REWRITE_TAC[]
+  ]);;
