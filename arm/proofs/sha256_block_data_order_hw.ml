@@ -320,6 +320,17 @@ let SHA256_HW_1BLOCK_CORRECT = time prove(
 
 needs "arm/proofs/utils/sha256_spec.ml";;
 
+(* ========================================================================= *)
+(* Multi-block correctness theorem.                                          *)
+(*                                                                           *)
+(* The `blocks` parameter represents the SHA-256-ready message blocks        *)
+(* (after byte-reversal). Memory contains word_bytereverse of each element   *)
+(* (raw little-endian format); the assembly applies REV32 to convert.        *)
+(*                                                                           *)
+(* The loop invariant tracks sha256_hash_blocks i blocks H in Q0/Q1,        *)
+(* data pointer at data_ptr + 64*i, block counter at num_blocks - i.        *)
+(* ========================================================================= *)
+
 let SHA256_HW_CORRECT = time prove(
  `!num_blocks state_ptr data_ptr kptr
    (a:int32) b c d (e:int32) f g h
@@ -344,17 +355,25 @@ let SHA256_HW_CORRECT = time prove(
            word_join4 e f g h /\
          (!j. j < num_blocks ==>
            read (memory :> bytes128 (word_add data_ptr (word(64 * j)))) s =
-             word_join4 (EL 0 (EL j blocks)) (EL 1 (EL j blocks))
-                        (EL 2 (EL j blocks)) (EL 3 (EL j blocks)) /\
+             word_join4 (word_bytereverse (EL 0 (EL j blocks)))
+                        (word_bytereverse (EL 1 (EL j blocks)))
+                        (word_bytereverse (EL 2 (EL j blocks)))
+                        (word_bytereverse (EL 3 (EL j blocks))) /\
            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 16)))) s =
-             word_join4 (EL 4 (EL j blocks)) (EL 5 (EL j blocks))
-                        (EL 6 (EL j blocks)) (EL 7 (EL j blocks)) /\
+             word_join4 (word_bytereverse (EL 4 (EL j blocks)))
+                        (word_bytereverse (EL 5 (EL j blocks)))
+                        (word_bytereverse (EL 6 (EL j blocks)))
+                        (word_bytereverse (EL 7 (EL j blocks))) /\
            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 32)))) s =
-             word_join4 (EL 8 (EL j blocks)) (EL 9 (EL j blocks))
-                        (EL 10 (EL j blocks)) (EL 11 (EL j blocks)) /\
+             word_join4 (word_bytereverse (EL 8 (EL j blocks)))
+                        (word_bytereverse (EL 9 (EL j blocks)))
+                        (word_bytereverse (EL 10 (EL j blocks)))
+                        (word_bytereverse (EL 11 (EL j blocks))) /\
            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 48)))) s =
-             word_join4 (EL 12 (EL j blocks)) (EL 13 (EL j blocks))
-                        (EL 14 (EL j blocks)) (EL 15 (EL j blocks))) /\
+             word_join4 (word_bytereverse (EL 12 (EL j blocks)))
+                        (word_bytereverse (EL 13 (EL j blocks)))
+                        (word_bytereverse (EL 14 (EL j blocks)))
+                        (word_bytereverse (EL 15 (EL j blocks)))) /\
          (!i. i < 16 ==>
            read (memory :> bytes128 (word_add kptr (word(16 * i)))) s =
            word_join4 (EL (4*i) sha256_K) (EL (4*i+1) sha256_K)
@@ -372,5 +391,12 @@ let SHA256_HW_CORRECT = time prove(
      MAYCHANGE [memory :> bytes(state_ptr, 32)] ,,
      MAYCHANGE [events])`,
 
-  (* TODO: Multi-block proof using ENSURES_WHILE_UP_TAC *)
+  (* TODO: Multi-block proof using ENSURES_WHILE_UP_TAC.
+     Structure validated interactively:
+     - ENSURES_WHILE_UP_TAC `num_blocks` `pc+0x8` `pc+0x1e0` with invariant
+       tracking sha256_hash_blocks i blocks H in Q0/Q1
+     - Init subgoal: PROVEN (2 ARM steps)
+     - Body subgoal: single-block proof with GHOST_INTRO_TAC for Q0/Q1
+     - Back-edge: 1 ARM step (CBNZ branches when x2 != 0)
+     - Exit: 4 ARM steps (CBNZ fall-through + STR + STR + RET) *)
   CHEAT_TAC);;
