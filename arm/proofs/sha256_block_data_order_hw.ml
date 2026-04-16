@@ -70,34 +70,75 @@ let ADD_SIMP_RULE_SELECTIVE =
     then th
     else ADD_SIMP_RULE th);;
 
-(* Use the ORIGINAL CUT_POINT_TAC from sha256_block_core.ml. It works        *)
-(* unchanged as long as Q0/Q1 assumptions are preserved (via                  *)
-(* ADD_SIMP_RULE_SELECTIVE). Also discard Q2/Q3/Q16 temporaries.             *)
+(* ========================================================================= *)
+(* Parameterized CUT_POINT_TAC and POSTCOND_TAC.                             *)
+(*                                                                           *)
+(* These take an initial hash state h_tm : term (e.g., `[a;b;c;d;e;f;g;h]`) *)
+(* as a parameter, allowing them to work both for the single-block proof     *)
+(* (with concrete variables) and the multi-block loop body (with ghost       *)
+(* variables from sha256_hash_blocks).                                       *)
+(* ========================================================================= *)
 
-let CUT_POINT_TAC_HW i sname =
-  CUT_POINT_TAC i sname THEN
+let GEN_CUT_POINT_TAC h_tm i sname =
+  let target = mk_small_numeral(4 * (i + 1)) in
+  let bridge_h = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int32 list`; h_tm] GROUP_BRIDGE_H.(i)) in
+  let bridge_h2 = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int32 list`; h_tm] GROUP_BRIDGE_H2.(i)) in
+  let q0_tm = subst [sname, `s:armstate`; target, `t:num`; h_tm, `H:int32 list`]
+    `read Q0 s = word_join4
+      (EL 0 (sha256_compress t W (H:int32 list)))
+      (EL 1 (sha256_compress t W H))
+      (EL 2 (sha256_compress t W H))
+      (EL 3 (sha256_compress t W H))` in
+  let q1_tm = subst [sname, `s:armstate`; target, `t:num`; h_tm, `H:int32 list`]
+    `read Q1 s = word_join4
+      (EL 4 (sha256_compress t W (H:int32 list)))
+      (EL 5 (sha256_compress t W H))
+      (EL 6 (sha256_compress t W H))
+      (EL 7 (sha256_compress t W H))` in
+  let CUT_SUBGOAL_TAC bridge =
+    ASM_REWRITE_TAC[bridge] THEN
+    TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha256_compress)))) THEN
+    CONV_TAC(RAND_CONV(DEPTH_CONV EL_CONV)) THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
+    REWRITE_TAC[SHA256_COMPRESS_ROUND_EL_LIST] THEN
+    REFL_TAC in
+  SUBGOAL_THEN q0_tm ASSUME_TAC THENL
+   [CUT_SUBGOAL_TAC bridge_h; ALL_TAC] THEN
+  SUBGOAL_THEN q1_tm ASSUME_TAC THENL
+   [CUT_SUBGOAL_TAC bridge_h2; ALL_TAC] THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    can (find_term (fun t ->
+      try let n = fst(dest_const t) in n = "sha256h" || n = "sha256h2"
+      with _ -> false)) (concl th)))) THEN
+  RULE_ASSUM_TAC(fun th ->
+    if can (find_term (fun t ->
+        try fst(dest_const t) = "sha256su1" with _ -> false)) (concl th)
+    then REWRITE_RULE[SHA256SU_BRIDGE_FLAT] th
+    else th) THEN
   DISCARD_MATCHING_ASSUMPTIONS
     [`read Q2 s = x:int128`;
      `read Q3 s = x:int128`;
      `read Q16 s = x:int128`];;
 
+(* Single-block version: h_tm = [a;b;c;d;e;f;g;h] *)
+let CUT_POINT_TAC_HW i sname =
+  GEN_CUT_POINT_TAC `[a:int32;b;c;d;e;f;g;h]` i sname;;
+
 (* ========================================================================= *)
-(* Adapted POSTCOND_TAC for HW proof.                                        *)
-(*                                                                           *)
-(* Connects sha256_compress 64 + add-back to sha256_block, with             *)
-(* byte-reversed message words.                                              *)
+(* Parameterized POSTCOND_TAC.                                               *)
 (* ========================================================================= *)
 
-let POSTCOND_TAC_HW =
-  let len_h = prove(`LENGTH [a:int32;b;c;d;e;f;g;h] = 8`,
+let GEN_POSTCOND_TAC h_tm =
+  let len_h = prove(mk_eq(mk_comb(`LENGTH:int32 list->num`, h_tm), `8`),
     REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
   let m = `[w0:int32;w1;w2;w3;w4;w5;w6;w7;
             w8;w9;w10;w11;w12;w13;w14;w15]` in
-  let h = `[a:int32;b;c;d;e;f;g;h]` in
   let hw_w_abbrev = ASSUME
     `sha256_message_schedule 48
      [w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W` in
-  let inst = MP (SPECL [m; h] SHA256_BLOCK_EL) len_h in
+  let inst = MP (SPECL [m; h_tm] SHA256_BLOCK_EL) len_h in
   let block_el = List.map (fun k ->
     let th = SPEC (mk_small_numeral k) inst in
     let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
@@ -106,6 +147,8 @@ let POSTCOND_TAC_HW =
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   REWRITE_TAC block_el THEN
   REFL_TAC;;
+
+let POSTCOND_TAC_HW = GEN_POSTCOND_TAC `[a:int32;b;c;d;e;f;g;h]`;;
 
 (* ========================================================================= *)
 (* Single-block correctness (num_blocks = 1).                                *)
