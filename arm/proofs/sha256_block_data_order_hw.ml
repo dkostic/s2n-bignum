@@ -309,3 +309,68 @@ let SHA256_HW_1BLOCK_CORRECT = time prove(
 
   (* ---- Postcondition: sha256_compress 64 + add-back = sha256_block ---- *)
   POSTCOND_TAC_HW));;
+
+(* ========================================================================= *)
+(* Multi-block correctness.                                                  *)
+(*                                                                           *)
+(* Uses ENSURES_WHILE_UP_TAC with the loop invariant:                        *)
+(*   after i blocks, Q0/Q1 hold the iterated sha256_block result,           *)
+(*   X1 advanced by 64*i, X2 decremented by i.                             *)
+(* ========================================================================= *)
+
+needs "arm/proofs/utils/sha256_spec.ml";;
+
+let SHA256_HW_CORRECT = time prove(
+ `!num_blocks state_ptr data_ptr kptr
+   (a:int32) b c d (e:int32) f g h
+   (blocks:(int32 list) list) pc.
+   1 <= num_blocks /\
+   LENGTH blocks = num_blocks /\
+   ALL (\bl. LENGTH bl = 16) blocks /\
+   ALL (nonoverlapping (state_ptr, 32))
+       [(word pc, 496); (data_ptr, 64 * num_blocks); (kptr, 256)] /\
+   nonoverlapping (data_ptr, 64 * num_blocks) (word pc, 496) /\
+   nonoverlapping (kptr, 256) (word pc, 496)
+   ==> ensures arm
+    (\s. aligned_bytes_loaded s (word pc) sha256_hw_mc /\
+         read PC s = word pc /\
+         read X30 s = word(pc + 0x1ec) /\
+         read X0 s = state_ptr /\
+         read X1 s = data_ptr /\
+         read X2 s = word num_blocks /\
+         read X3 s = kptr /\
+         read (memory :> bytes128 state_ptr) s = word_join4 a b c d /\
+         read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+           word_join4 e f g h /\
+         (!j. j < num_blocks ==>
+           read (memory :> bytes128 (word_add data_ptr (word(64 * j)))) s =
+             word_join4 (EL 0 (EL j blocks)) (EL 1 (EL j blocks))
+                        (EL 2 (EL j blocks)) (EL 3 (EL j blocks)) /\
+           read (memory :> bytes128 (word_add data_ptr (word(64 * j + 16)))) s =
+             word_join4 (EL 4 (EL j blocks)) (EL 5 (EL j blocks))
+                        (EL 6 (EL j blocks)) (EL 7 (EL j blocks)) /\
+           read (memory :> bytes128 (word_add data_ptr (word(64 * j + 32)))) s =
+             word_join4 (EL 8 (EL j blocks)) (EL 9 (EL j blocks))
+                        (EL 10 (EL j blocks)) (EL 11 (EL j blocks)) /\
+           read (memory :> bytes128 (word_add data_ptr (word(64 * j + 48)))) s =
+             word_join4 (EL 12 (EL j blocks)) (EL 13 (EL j blocks))
+                        (EL 14 (EL j blocks)) (EL 15 (EL j blocks))) /\
+         (!i. i < 16 ==>
+           read (memory :> bytes128 (word_add kptr (word(16 * i)))) s =
+           word_join4 (EL (4*i) sha256_K) (EL (4*i+1) sha256_K)
+                      (EL (4*i+2) sha256_K) (EL (4*i+3) sha256_K)))
+    (\s. read PC s = word(pc + 0x1ec) /\
+         (let result = sha256_hash_blocks num_blocks blocks [a;b;c;d;e;f;g;h] in
+          read (memory :> bytes128 state_ptr) s =
+            word_join4 (EL 0 result) (EL 1 result)
+                       (EL 2 result) (EL 3 result) /\
+          read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+            word_join4 (EL 4 result) (EL 5 result)
+                       (EL 6 result) (EL 7 result)))
+    (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+     MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q16; Q18; Q19] ,,
+     MAYCHANGE [memory :> bytes(state_ptr, 32)] ,,
+     MAYCHANGE [events])`,
+
+  (* TODO: Multi-block proof using ENSURES_WHILE_UP_TAC *)
+  CHEAT_TAC);;
