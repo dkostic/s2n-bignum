@@ -237,10 +237,10 @@ let SHA256_HW_1BLOCK_CORRECT = time prove(
     [w0:int32;w1;w2;w3;w4;w5;w6;w7;
      w8;w9;w10;w11;w12;w13;w14;w15]` THEN
 
-  (* Discard raw data memory and K table (no longer needed) *)
-  DISCARD_MATCHING_ASSUMPTIONS
-    [`read (memory :> bytes128 (word_add data_ptr x)) s = y`;
-     `read (memory :> bytes128 data_ptr) s = y`] THEN
+  (* NOTE: Do NOT discard data memory here. ARM_STEPS_TAC needs all memory
+     assumptions present for address resolution during LDR instructions.
+     Discarding data_ptr memory before the round groups causes ARM_STEPS_TAC
+     to not produce Q0/Q1 assumptions after sha256h/sha256h2. *)
 
   (let w_hyp_tm =
     `sha256_message_schedule 48
@@ -284,11 +284,10 @@ let SHA256_HW_1BLOCK_CORRECT = time prove(
   ARM_STEPS_TAC HW_EXEC (92--98) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
   CUT_POINT_TAC_HW 11 `s98:armstate` THEN
 
-  (* Discard Q4-Q7 schedule registers before groups 12-15:
-     schedule computation is complete, and these carry large terms *)
-  DISCARD_MATCHING_ASSUMPTIONS
-    [`read Q4 s = x:int128`; `read Q5 s = x:int128`;
-     `read Q6 s = x:int128`; `read Q7 s = x:int128`] THEN
+  (* NOTE: Do NOT discard Q4-Q7 here. ARM_STEPS_TAC needs them for the
+     ADD V2.4S instructions in groups 12-15 which read the schedule registers.
+     The CUT_POINT_TAC will discard the old sha256h/sha256h2 assumptions,
+     keeping the growth manageable. *)
 
   (* ---- Round groups 12-15 (no schedule update, 5 steps each) ---- *)
   ARM_STEPS_TAC HW_EXEC (99--103) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
