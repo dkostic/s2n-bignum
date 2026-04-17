@@ -160,7 +160,6 @@ let GEN_POSTCOND_TAC2 h_tm len_h =
   REWRITE_TAC block_el THEN
   REFL_TAC;;
 
-(* Single-block proof moved to sha256_hw_1block.ml for faster iteration. *)
 
 (* ========================================================================= *)
 (* Helper lemmas for multi-block body proof.                                 *)
