@@ -179,6 +179,11 @@ let WORD_SUB_SUC = prove
  (`!n. word_sub (word(SUC n):int64) (word 1) = word n`,
   GEN_TAC THEN REWRITE_TAC[ADD1] THEN CONV_TAC WORD_RULE);;
 
+let WORD_ADVANCE_64 = WORD_RULE
+ `word_add (word_add d (word(64 * ii):int64)) (word 64) =
+  word_add d (word(64 * (ii + 1)))`;;
+
+
 (* REV32_BITBLAST_TAC: establish clean word_join4 form for a SIMD register   *)
 (* after REV32 instruction (double byte-reversal cancels).                   *)
 
@@ -484,15 +489,50 @@ let SHA256_HW_CORRECT = time prove(
     ARM_STEPS_TAC HW_EXEC (117--118) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
     ENSURES_FINAL_STATE_TAC THEN
     RECONSTRUCT_BLOCK_TAC THEN
+    DISCARD_MATCHING_ASSUMPTIONS
+      [`read Q0 s = x:int128`; `read Q1 s = x:int128`;
+       `read Q4 s = x:int128`; `read Q5 s = x:int128`;
+       `read Q6 s = x:int128`; `read Q7 s = x:int128`;
+       `read Q18 s = x:int128`; `read Q19 s = x:int128`;
+       `read PC s = x:int64`; `read X0 s = x:int64`;
+       `read X1 s = x:int64`; `read X2 s = x:int64`;
+       `read X3 s = x:int64`;
+       `aligned_bytes_loaded s (word pc) c`;
+       `EL n (EL ii blocks) = x:int32`;
+       `sha256_message_schedule 48 m = W`;
+       `EL ii blocks = x:int32 list`;
+       `read (memory :> bytes128 (word_add state_ptr (word n))) s = x`;
+       `read (memory :> bytes128 state_ptr) s = x`;
+       `read (memory :> bytes128 (word_add data_ptr y)) s = x`;
+       `read (memory :> bytes128 kptr) s = x`;
+       `read (memory :> bytes128 (word_add kptr y)) s = x`;
+       `MAYCHANGE c s1 s2`;
+       `val (word n:int64) = m`] THEN
     ASM_REWRITE_TAC[sha256_hash_blocks; sha256_block;
-      WORD_ADD_ASSOC; GSYM WORD_ADD;
-      ARITH_RULE `64 * ii + 64 = 64 * (ii + 1)`;
-      WORD_SUB_SUC] THEN
+      WORD_ADVANCE_64; WORD_SUB_SUC] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-    GEN_POSTCOND_TAC2 h_tm
-      (prove(`LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]) = 8`,
-        MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
-        REWRITE_TAC[LENGTH] THEN ARITH_TAC)));
+    (let len_h = prove(
+       `LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]) = 8`,
+       MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
+       REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+     let len_c = prove(
+       `LENGTH(sha256_compress 64 W
+          (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h])) = 8`,
+       MATCH_MP_TAC LENGTH_SHA256_COMPRESS THEN ACCEPT_TAC len_h) in
+     let el_map2_ths = List.map (fun k ->
+       MP (ISPECL [`word_add:int32->int32->int32`;
+         `sha256_compress 64 W
+            (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h])`;
+         h_tm; mk_small_numeral k] EL_MAP2)
+         (prove(lhand(concl(ISPECL [`word_add:int32->int32->int32`;
+           `sha256_compress 64 W
+              (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h])`;
+           h_tm; mk_small_numeral k] EL_MAP2)),
+           REWRITE_TAC[len_c; len_h] THEN ARITH_TAC))) (0--7) in
+     REWRITE_TAC el_map2_ths THEN
+     SUBGOAL_THEN `num_blocks - ii = SUC(num_blocks - (ii + 1))`
+       SUBST1_TAC THENL [ASM_ARITH_TAC; REWRITE_TAC[WORD_SUB_SUC]] THEN
+     REFL_TAC));
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1e0 ==>             *)
