@@ -153,7 +153,8 @@ let GEN_POSTCOND_TAC2 h_tm len_h =
   let block_el = List.map (fun k ->
     let th = SPEC (mk_small_numeral k) inst in
     let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
-    let th3 = CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2 in
+    let th3 = try CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2
+              with _ -> th2 in
     REWRITE_RULE[hw_w_abbrev] th3) (0--7) in
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   REWRITE_TAC block_el THEN
@@ -176,23 +177,50 @@ let LENGTH_SHA256_HASH_BLOCKS = prove
 
 let WORD_SUB_SUC = prove
  (`!n. word_sub (word(SUC n):int64) (word 1) = word n`,
-  GEN_TAC THEN REWRITE_TAC[ADD1; GSYM WORD_ADD] THEN
-  CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV
-    (WORD_RULE `word_sub(word_add x (word 1))(word 1):int64 = x`))));;
+  GEN_TAC THEN REWRITE_TAC[ADD1] THEN CONV_TAC WORD_RULE);;
 
 (* REV32_BITBLAST_TAC: establish clean word_join4 form for a SIMD register   *)
 (* after REV32 instruction (double byte-reversal cancels).                   *)
 
 let REV32_BITBLAST_TAC qpat qtm =
+  let is_wj4_rhs th =
+    try fst(dest_const(fst(strip_comb(rand(concl th))))) = "word_join4"
+    with _ -> false in
   SUBGOAL_THEN qtm
     (fun th -> RULE_ASSUM_TAC(fun asm ->
-      if can (term_match [] qpat) (concl asm) &&
-         not (can (find_term (fun t ->
-           try fst(dest_const t) = "EL" with _ -> false)) (concl asm))
+      if can (term_match [] qpat) (concl asm) && not(is_wj4_rhs asm)
       then th else asm))
   THENL
    [ASM_REWRITE_TAC[] THEN REWRITE_TAC[word_join4] THEN
     BITBLAST_THEN (K ALL_TAC) THEN CONV_TAC TAUT; ALL_TAC];;
+
+(* LENGTH_16_CONS: a list of length 16 is a CONS chain.                      *)
+
+let LENGTH_16_CONS = prove
+ (`!L:A list. LENGTH L = 16
+   ==> ?a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15.
+       L = [a0;a1;a2;a3;a4;a5;a6;a7;a8;a9;a10;a11;a12;a13;a14;a15]`,
+  let suc16 = NUM_REDUCE_CONV
+    `SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC
+      (SUC(SUC(SUC(SUC 0)))))))))))))))` in
+  REWRITE_TAC[GSYM suc16; LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN MESON_TAC[]);;
+
+(* RECONSTRUCT_BLOCK_TAC: prove EL ii blocks = [w0;...;w15] from the        *)
+(* w-abbreviations and ALL(\bl. LENGTH bl = 16) blocks.                      *)
+
+let RECONSTRUCT_BLOCK_TAC =
+  SUBGOAL_THEN
+    `EL ii blocks = [w0:int32;w1;w2;w3;w4;w5;w6;w7;
+                     w8;w9;w10;w11;w12;w13;w14;w15]`
+  ASSUME_TAC THENL
+   [MP_TAC(ISPEC `EL ii (blocks:(int32 list) list)` LENGTH_16_CONS) THEN
+    ANTS_TAC THENL
+     [FIRST_X_ASSUM(MP_TAC o SPEC `ii:num` o
+        REWRITE_RULE[GSYM ALL_EL]) THEN
+      ASM_REWRITE_TAC[] THEN SIMP_TAC[ETA_AX]; ALL_TAC] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC;
+    ALL_TAC];;
 
 (* EXPAND_K_TAC: expand quantified K constant into individual assumptions.   *)
 
@@ -454,12 +482,13 @@ let SHA256_HW_CORRECT = time prove(
     ARM_STEPS_TAC HW_EXEC (112--116) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
       GEN_CUT_POINT_TAC h_tm 15 `s116:armstate` THEN
     ARM_STEPS_TAC HW_EXEC (117--118) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-    REWRITE_TAC[sha256_hash_blocks; sha256_block] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    RECONSTRUCT_BLOCK_TAC THEN
+    ASM_REWRITE_TAC[sha256_hash_blocks; sha256_block;
+      WORD_ADD_ASSOC; GSYM WORD_ADD;
+      ARITH_RULE `64 * ii + 64 = 64 * (ii + 1)`;
+      WORD_SUB_SUC] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-    REWRITE_TAC[WORD_ADD_ASSOC; GSYM WORD_ADD;
-                ARITH_RULE `64 * ii + 64 = 64 * (ii + 1)`] THEN
-    REWRITE_TAC[WORD_SUB_SUC] THEN
     GEN_POSTCOND_TAC2 h_tm
       (prove(`LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]) = 8`,
         MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
