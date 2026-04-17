@@ -4,36 +4,23 @@
  *)
 
 (* ========================================================================= *)
-(* SHA-256 single-block compression core: 64 rounds + state add-back.        *)
+(* SHA-256 proof infrastructure: bridge lemma arrays, schedule extraction,    *)
+(* cut-point tactics, and postcondition tactics.                              *)
 (*                                                                           *)
-(* Proves correctness of a straight-line ARM64 implementation that uses       *)
-(* SHA256H/SHA256H2/SHA256SU0/SHA256SU1 hardware instructions for 16 round   *)
-(* groups (4 rounds each = 64 total), with final state add-back.             *)
+(* This file provides reusable infrastructure for proving correctness of      *)
+(* any ARM64 SHA-256 implementation that uses SHA256H/SHA256H2/SHA256SU0/    *)
+(* SHA256SU1 hardware instructions in the standard 16-round-group pattern.   *)
 (*                                                                           *)
-(* Inputs (all in registers, no memory loads for state/data):                *)
-(*   Q0 = ABCD state, Q1 = EFGH state                                       *)
-(*   Q4 = M[0..3], Q5 = M[4..7], Q6 = M[8..11], Q7 = M[12..15]            *)
-(*         (message words, already byte-swapped to big-endian)               *)
-(*   x1 = pointer to K constant table (64 x int32 = 256 bytes)              *)
-(*                                                                           *)
-(* Output (in registers):                                                    *)
-(*   Q0 = new ABCD = compressed ABCD + initial ABCD                         *)
-(*   Q1 = new EFGH = compressed EFGH + initial EFGH                         *)
-(*                                                                           *)
-(* The postcondition connects to sha256_block from sha256_spec.ml.           *)
+(* Key exports:                                                              *)
+(*   GROUP_BRIDGE_H.(i), GROUP_BRIDGE_H2.(i) -- per-group bridge lemmas     *)
+(*   EL_W_ALL_LIST -- schedule extraction (EL n W = expression)             *)
+(*   CUT_POINT_TAC -- assert sha256_compress form at round group boundary   *)
+(*   POSTCOND_TAC -- connect sha256_compress 64 to sha256_block             *)
+(*   ADD_SIMP_RULE -- simplify SIMD packing after ARM_STEPS_TAC             *)
 (* ========================================================================= *)
 
 needs "arm/proofs/base.ml";;
 needs "arm/proofs/utils/sha256_bridge.ml";;
-
-(* ========================================================================= *)
-(* Machine code and execution rule.                                          *)
-(* ========================================================================= *)
-
-let sha256_block_core_mc = define_from_elf "sha256_block_core_mc"
-  (file_on_path !load_path "arm/sha2/sha256_block_core.o");;
-
-let EXEC = ARM_MK_EXEC_RULE sha256_block_core_mc;;
 
 (* ========================================================================= *)
 (* Helper lemmas.                                                            *)
@@ -238,7 +225,6 @@ let m_list =
 let len_m = prove(mk_eq(mk_comb(`LENGTH:int32 list->num`, m_list), `16`),
   REWRITE_TAC[LENGTH] THEN ARITH_TAC);;
 
-(* Build incrementally: 0..15 from prefix, 16..63 from recursive extension *)
 let EL_W_ALL_LIST =
   let el_w_acc = ref (List.map (fun k ->
     let th = SPECL [`48`; m_list; mk_small_numeral k] SHA256_SCHEDULE_PREFIX in
@@ -340,119 +326,3 @@ let POSTCOND_TAC =
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   REWRITE_TAC block_el THEN
   REFL_TAC;;
-
-(* ========================================================================= *)
-(* Correctness theorem.                                                      *)
-(* ========================================================================= *)
-
-let SHA256_BLOCK_CORE_CORRECT = prove(
- `!(a:int32) b c d (e:int32) f g h
-   (w0:int32) w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
-   kptr pc ret_pc.
-   nonoverlapping (kptr, 256) (word pc, 436)
-   ==> ensures arm
-    (\s. aligned_bytes_loaded s (word pc) sha256_block_core_mc /\
-         read PC s = word pc /\
-         read X30 s = word ret_pc /\
-         read X1 s = kptr /\
-         read Q0 s = word_join4 a b c d /\
-         read Q1 s = word_join4 e f g h /\
-         read Q4 s = word_join4 w0 w1 w2 w3 /\
-         read Q5 s = word_join4 w4 w5 w6 w7 /\
-         read Q6 s = word_join4 w8 w9 w10 w11 /\
-         read Q7 s = word_join4 w12 w13 w14 w15 /\
-         (!i. i < 16 ==>
-           read (memory :> bytes128 (word_add kptr (word(16 * i)))) s =
-           word_join4 (EL (4*i) sha256_K) (EL (4*i+1) sha256_K)
-                      (EL (4*i+2) sha256_K) (EL (4*i+3) sha256_K)))
-    (\s. read PC s = word ret_pc /\
-         (let M = [w0;w1;w2;w3;w4;w5;w6;w7;
-                   w8;w9;w10;w11;w12;w13;w14;w15] in
-          let H = [a;b;c;d;e;f;g;h] in
-          let result = sha256_block M H in
-          read Q0 s = word_join4 (EL 0 result) (EL 1 result)
-                                 (EL 2 result) (EL 3 result) /\
-          read Q1 s = word_join4 (EL 4 result) (EL 5 result)
-                                 (EL 6 result) (EL 7 result)))
-    (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
-     MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q16; Q18; Q19] ,,
-     MAYCHANGE [events])`,
-
-  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
-              NONOVERLAPPING_CLAUSES] THEN
-  REPEAT STRIP_TAC THEN
-
-  (* Expand the K constant quantifier into 16 individual assumptions *)
-  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV
-    (EXPAND_CASES_CONV THENC ONCE_DEPTH_CONV NUM_MULT_CONV)))) THEN
-
-  ENSURES_INIT_TAC "s0" THEN
-
-  RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
-  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_ADD_CONV)) THEN
-
-  (* Abbreviate the full message schedule *)
-  ABBREV_TAC `W = sha256_message_schedule 48
-    [w0:int32;w1;w2;w3;w4;w5;w6;w7;
-     w8;w9;w10;w11;w12;w13;w14;w15]` THEN
-
-  (* Steps 1-2: Save initial state *)
-  ARM_STEPS_TAC EXEC (1--2) THEN
-
-  (* ---- Round groups 0-11 (with schedule update, 7 steps each) ---- *)
-  ARM_STEPS_TAC EXEC (3--9) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 0 `s9:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (10--16) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 1 `s16:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (17--23) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 2 `s23:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (24--30) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 3 `s30:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (31--37) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 4 `s37:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (38--44) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 5 `s44:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (45--51) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 6 `s51:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (52--58) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 7 `s58:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (59--65) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 8 `s65:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (66--72) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 9 `s72:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (73--79) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 10 `s79:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (80--86) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 11 `s86:armstate` THEN
-
-  (* ---- Round groups 12-15 (no schedule update, 5 steps each) ---- *)
-  ARM_STEPS_TAC EXEC (87--91) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 12 `s91:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (92--96) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 13 `s96:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (97--101) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 14 `s101:armstate` THEN
-
-  ARM_STEPS_TAC EXEC (102--106) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-  CUT_POINT_TAC 15 `s106:armstate` THEN
-
-  (* ---- Steps 107-109: ADD state add-back + RET ---- *)
-  ARM_STEPS_TAC EXEC (107--109) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
-
-  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-
-  (* ---- Postcondition: sha256_compress 64 + add-back = sha256_block ---- *)
-  POSTCOND_TAC);;
