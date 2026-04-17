@@ -213,24 +213,34 @@ let LENGTH_16_CONS = prove
 (* RECONSTRUCT_BLOCK_TAC: prove EL ii blocks = [w0;...;w15] from the        *)
 (* w-abbreviations and ALL(\bl. LENGTH bl = 16) blocks.                      *)
 
+let LIST_16_EL = prove
+ (`!L:A list. LENGTH L = 16 ==>
+    L = [EL 0 L; EL 1 L; EL 2 L; EL 3 L; EL 4 L; EL 5 L; EL 6 L; EL 7 L;
+         EL 8 L; EL 9 L; EL 10 L; EL 11 L; EL 12 L; EL 13 L; EL 14 L;
+         EL 15 L]`,
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_16_CONS) THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
+
 let RECONSTRUCT_BLOCK_TAC =
   SUBGOAL_THEN
     `EL ii blocks = [w0:int32;w1;w2;w3;w4;w5;w6;w7;
                      w8;w9;w10;w11;w12;w13;w14;w15]`
   ASSUME_TAC THENL
-   [MP_TAC(ISPEC `EL ii (blocks:(int32 list) list)` LENGTH_16_CONS) THEN
-    ANTS_TAC THENL
-     [FIRST_X_ASSUM(MP_TAC o SPEC `ii:num` o
-        REWRITE_RULE[GSYM ALL_EL]) THEN
-      ASM_REWRITE_TAC[] THEN SIMP_TAC[ETA_AX]; ALL_TAC] THEN
-    STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
-    CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC;
+   [MAP_EVERY EXPAND_TAC
+      ["w0";"w1";"w2";"w3";"w4";"w5";"w6";"w7";
+       "w8";"w9";"w10";"w11";"w12";"w13";"w14";"w15"] THEN
+    MATCH_MP_TAC LIST_16_EL THEN
+    UNDISCH_TAC `ALL (\bl:int32 list. LENGTH bl = 16) blocks` THEN
+    REWRITE_TAC[GSYM ALL_EL] THEN
+    DISCH_THEN(MP_TAC o SPEC `ii:num`) THEN
+    ASM_REWRITE_TAC[] THEN SIMP_TAC[];
     ALL_TAC];;
 
 (* EXPAND_K_TAC: expand quantified K constant into individual assumptions.   *)
 
 let EXPAND_K_TAC =
-  FIRST_X_ASSUM(fun th ->
+  FIRST_ASSUM(fun th ->
     if can (find_term (fun t ->
       try fst(dest_const t) = "sha256_K" with _ -> false)) (concl th)
     then
@@ -245,7 +255,7 @@ let EXPAND_K_TAC =
 (* EXPAND_DATA_TAC: specialize quantified data memory at j=ii.               *)
 
 let EXPAND_DATA_TAC =
-  FIRST_X_ASSUM(fun th ->
+  FIRST_ASSUM(fun th ->
     if can (find_term (fun t ->
       try fst(dest_const t) = "word_bytereverse" with _ -> false)) (concl th)
     then
@@ -489,28 +499,6 @@ let SHA256_HW_CORRECT = time prove(
     ARM_STEPS_TAC HW_EXEC (117--118) THEN RULE_ASSUM_TAC ADD_SIMP_RULE THEN
     ENSURES_FINAL_STATE_TAC THEN
     RECONSTRUCT_BLOCK_TAC THEN
-    DISCARD_MATCHING_ASSUMPTIONS
-      [`read Q0 s = x:int128`; `read Q1 s = x:int128`;
-       `read Q4 s = x:int128`; `read Q5 s = x:int128`;
-       `read Q6 s = x:int128`; `read Q7 s = x:int128`;
-       `read Q18 s = x:int128`; `read Q19 s = x:int128`;
-       `read PC s = x:int64`; `read X0 s = x:int64`;
-       `read X1 s = x:int64`; `read X2 s = x:int64`;
-       `read X3 s = x:int64`;
-       `aligned_bytes_loaded s (word pc) c`;
-       `EL n (EL ii blocks) = x:int32`;
-       `sha256_message_schedule 48 m = W`;
-       `EL ii blocks = x:int32 list`;
-       `read (memory :> bytes128 (word_add state_ptr (word n))) s = x`;
-       `read (memory :> bytes128 state_ptr) s = x`;
-       `read (memory :> bytes128 (word_add data_ptr y)) s = x`;
-       `read (memory :> bytes128 kptr) s = x`;
-       `read (memory :> bytes128 (word_add kptr y)) s = x`;
-       `MAYCHANGE c s1 s2`;
-       `val (word n:int64) = m`] THEN
-    ASM_REWRITE_TAC[sha256_hash_blocks; sha256_block;
-      WORD_ADVANCE_64; WORD_SUB_SUC] THEN
-    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     (let len_h = prove(
        `LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]) = 8`,
        MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
@@ -529,6 +517,8 @@ let SHA256_HW_CORRECT = time prove(
               (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h])`;
            h_tm; mk_small_numeral k] EL_MAP2)),
            REWRITE_TAC[len_c; len_h] THEN ARITH_TAC))) (0--7) in
+     ASM_REWRITE_TAC[WORD_ADVANCE_64; sha256_hash_blocks; sha256_block] THEN
+     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
      REWRITE_TAC el_map2_ths THEN
      SUBGOAL_THEN `num_blocks - ii = SUC(num_blocks - (ii + 1))`
        SUBST1_TAC THENL [ASM_ARITH_TAC; REWRITE_TAC[WORD_SUB_SUC]] THEN
@@ -555,7 +545,6 @@ let SHA256_HW_CORRECT = time prove(
     (* ================================================================= *)
     REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
                 NONOVERLAPPING_CLAUSES; SUB_REFL] THEN
-    STRIP_TAC THEN
     VAL_INT64_TAC `num_blocks - num_blocks` THEN
     ENSURES_INIT_TAC "s0" THEN
     ARM_STEPS_TAC HW_EXEC (1--3) THEN
