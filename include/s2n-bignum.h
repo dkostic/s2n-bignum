@@ -1177,8 +1177,8 @@ extern void sha3_keccak4_f1600_alt(uint64_t a[S2N_BIGNUM_STATIC 100],const uint6
 extern void sha3_keccak4_f1600_alt2(uint64_t a[S2N_BIGNUM_STATIC 100],const uint64_t rc[S2N_BIGNUM_STATIC 24]);
 
 // SHA-256 multi-block processing (hardware-accelerated, ARM only)
-// Inputs state[8] (read/written), data (64*num_blocks bytes), num_blocks, K[64]
-extern void sha256_block_data_order_hw(uint32_t state[S2N_BIGNUM_STATIC 8],const uint8_t *data,uint64_t num_blocks,const uint32_t K[S2N_BIGNUM_STATIC 64]);
+// Inputs state[8], data[64*num_blocks], num_blocks, K[64]; output state[8]
+extern void sha256_block_data_order_hw(uint32_t state[S2N_BIGNUM_STATIC 8],const uint8_t *data,uint64_t num_blocks,const uint32_t k[S2N_BIGNUM_STATIC 64]);
 
 // Point addition on CC curve SM2 in Montgomery-Jacobian coordinates
 // Inputs p1[12], p2[12]; output p3[12]

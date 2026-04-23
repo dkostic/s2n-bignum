@@ -297,6 +297,7 @@ onlyInArm = [
   "bignum_emontredc_8n_cdiff",
   "curve25519_x25519_byte",
   "curve25519_x25519_byte_alt",
+  "sha256_block_data_order_hw",
   "sha3_",
   "mldsa_pointwise",
   "mldsa_ntt_arm",
