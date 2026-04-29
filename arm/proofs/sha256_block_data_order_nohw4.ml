@@ -1,0 +1,817 @@
+(*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+ *)
+
+(* ========================================================================= *)
+(* SHA-256 multi-block compression using scalar instructions only (nohw4).   *)
+(* Variant of sha256_block_data_order_nohw2 with Phase B (message-schedule   *)
+(* extension) fused into the first 48 rounds of Phase D (compression), and   *)
+(* Phase C (initial state load) moved ahead of the fused loop. Proved        *)
+(* against sha256_hash_blocks from sha256_spec.ml.                           *)
+(* ========================================================================= *)
+
+needs "arm/proofs/sha256_block_scalar.ml";;
+
+(* Machine code *)
+
+let sha256_block_data_order_nohw4_mc = define_from_elf
+  "sha256_block_data_order_nohw4_mc"
+  (file_on_path !load_path "arm/sha2/sha256_block_data_order_nohw4.o");;
+
+let NOHW4_EXEC = ARM_MK_EXEC_RULE sha256_block_data_order_nohw4_mc;;
+
+(* ------------------------------------------------------------------------- *)
+(* Helper lemmas for multi-block induction (same as nohw2).                  *)
+(* ------------------------------------------------------------------------- *)
+
+let LENGTH_SHA256_HASH_BLOCKS_NOHW4 = prove
+ (`!n blocks H:int32 list. LENGTH H = 8
+   ==> LENGTH(sha256_hash_blocks n blocks H) = 8`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha256_hash_blocks];
+    REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha256_hash_blocks] THEN
+    REPEAT STRIP_TAC THEN MATCH_MP_TAC LENGTH_SHA256_BLOCK THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]]);;
+
+let LENGTH_8_CONS_NOHW4 = prove
+ (`!L:A list. LENGTH L = 8 ==>
+     ?a0 a1 a2 a3 a4 a5 a6 a7. L = [a0;a1;a2;a3;a4;a5;a6;a7]`,
+  let suc8 = NUM_REDUCE_CONV
+    `SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC 0)))))))` in
+  REWRITE_TAC[GSYM suc8; LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN MESON_TAC[]);;
+
+let LIST_8_EL_NOHW4 = prove
+ (`!L:A list. LENGTH L = 8 ==>
+     L = [EL 0 L; EL 1 L; EL 2 L; EL 3 L;
+          EL 4 L; EL 5 L; EL 6 L; EL 7 L]`,
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_8_CONS_NOHW4) THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Core correctness theorem.                                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256_BLOCK_DATA_ORDER_NOHW4_CORRECT = prove
+ (`!num_blocks (blocks:(int32 list) list)
+    (a:int32) b c d (e:int32) f g h
+    state_ptr data_ptr kptr pc stackpointer.
+    1 <= num_blocks /\ num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    aligned 16 stackpointer /\
+    ALLPAIRS nonoverlapping
+             [(state_ptr:int64,32); (stackpointer:int64,256)]
+             [(word pc, 0x218);
+              (data_ptr:int64, 64 * num_blocks);
+              (kptr:int64, 256)] /\
+    nonoverlapping (state_ptr,32) (stackpointer,256)
+    ==> ensures arm
+      (\s. aligned_bytes_loaded s (word pc)
+              sha256_block_data_order_nohw4_mc /\
+           read PC s = word (pc + 0x18) /\
+           read SP s = stackpointer /\
+           read X0 s = state_ptr /\
+           read X1 s = data_ptr /\
+           read X2 s = word num_blocks /\
+           read X3 s = kptr /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t [a;b;c;d;e;f;g;h]) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                read (memory :> bytes32
+                      (word_add data_ptr (word(64 * j + 4*t)))) s =
+                word_bytereverse (EL t (EL j blocks))) /\
+           (!t. t < 64 ==>
+                read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                EL t sha256_K))
+      (\s. read PC s = word (pc + 0x1fc) /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t (sha256_hash_blocks num_blocks blocks
+                        [a;b;c;d;e;f;g;h])))
+      (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+       MAYCHANGE [X19; X20; X21; X22; X23; X24; X25; X26; X27] ,,
+       MAYCHANGE [memory :> bytes(state_ptr,32);
+                  memory :> bytes(stackpointer,256)])`,
+  let BIC_NORM = WORD_RULE
+    `word_and (x:(N)word) (word_not y) = word_and (word_not y) x` in
+  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+              MODIFIABLE_GPRS; MODIFIABLE_SIMD_REGS;
+              MODIFIABLE_UPPER_SIMD_REGS;
+              SOME_FLAGS; NONOVERLAPPING_CLAUSES; ALL; ALLPAIRS;
+              fst NOHW4_EXEC] THEN
+  REPEAT STRIP_TAC THEN
+
+  ENSURES_WHILE_UP_TAC `num_blocks:num` `pc + 0x18` `pc + 0x1f8`
+    `\i s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+           read SP s = stackpointer /\
+           read X0 s = state_ptr /\
+           read X1 s = word_add data_ptr (word(64 * i)) /\
+           read X2 s = word (num_blocks - i) /\
+           read X3 s = kptr /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t (sha256_hash_blocks i blocks [a:int32;b;c;d;e;f;g;h])) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                read (memory :> bytes32
+                      (word_add data_ptr (word(64 * j + 4*t)))) s =
+                word_bytereverse (EL t (EL j blocks))) /\
+           (!t. t < 64 ==>
+                read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                EL t sha256_K)` THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+
+  [(* ===== num_blocks <> 0 ===== *)
+   ASM_ARITH_TAC;
+
+   (* ===== Init: pc+0x18 precondition implies invariant(0) ===== *)
+   ENSURES_INIT_TAC "s0" THEN ENSURES_FINAL_STATE_TAC THEN
+   ASM_REWRITE_TAC[WORD_ADD_0; MULT_CLAUSES; SUB_0; sha256_hash_blocks];
+
+   (* ===== Body: invariant(ii) at pc+0x18 => invariant(ii+1) at pc+0x1f8 *)
+   ALL_TAC;
+
+   (* ===== Back-edge: invariant(ii) at pc+0x1f8 => invariant(ii) at pc+0x18 *)
+   X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+   REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+   SUBGOAL_THEN `num_blocks - i < 2 EXP 64` ASSUME_TAC THENL
+    [ASM_ARITH_TAC; ALL_TAC] THEN
+   VAL_INT64_TAC `num_blocks - i` THEN
+   ENSURES_INIT_TAC "s0" THEN ARM_STEPS_TAC NOHW4_EXEC [1] THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
+
+   (* ===== Exit: invariant(num_blocks) at pc+0x1f8 => postcondition at pc+0x1fc *)
+   REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+               NONOVERLAPPING_CLAUSES; SUB_REFL] THEN
+   VAL_INT64_TAC `0` THEN
+   ENSURES_INIT_TAC "s0" THEN ARM_STEPS_TAC NOHW4_EXEC (1--1) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]] THEN
+
+  (* =================================================================== *)
+  (* Body subgoal                                                        *)
+  (* =================================================================== *)
+  X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+  SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  VAL_INT64_TAC `num_blocks - ii` THEN
+  ABBREV_TAC `dptr_i = word_add data_ptr (word(64 * ii)):int64` THEN
+  ABBREV_TAC `H_i = sha256_hash_blocks ii blocks [a:int32;b;c;d;e;f;g;h]` THEN
+  SUBGOAL_THEN `LENGTH (H_i:int32 list) = 8` ASSUME_TAC THENL
+   [EXPAND_TAC "H_i" THEN
+    MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS_NOHW4 THEN
+    REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+  ABBREV_TAC `M_i = EL ii blocks:int32 list` THEN
+  SUBGOAL_THEN `LENGTH (M_i:int32 list) = 16` ASSUME_TAC THENL
+   [EXPAND_TAC "M_i" THEN
+    UNDISCH_TAC `ALL (\bl:int32 list. LENGTH bl = 16) blocks` THEN
+    REWRITE_TAC[GSYM ALL_EL] THEN
+    DISCH_THEN(MP_TAC o SPEC `ii:num`) THEN
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(ISPEC `H_i:int32 list` LIST_8_EL_NOHW4) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  ABBREV_TAC `a_i = EL 0 H_i:int32` THEN
+  ABBREV_TAC `b_i = EL 1 H_i:int32` THEN
+  ABBREV_TAC `c_i = EL 2 H_i:int32` THEN
+  ABBREV_TAC `d_i = EL 3 H_i:int32` THEN
+  ABBREV_TAC `e_i = EL 4 H_i:int32` THEN
+  ABBREV_TAC `f_i = EL 5 H_i:int32` THEN
+  ABBREV_TAC `g_i = EL 6 H_i:int32` THEN
+  ABBREV_TAC `h_i = EL 7 H_i:int32` THEN
+  FIRST_ASSUM(fun th ->
+    if is_eq (concl th) &&
+       (try fst(dest_var(lhand(concl th))) = "H_i" with _ -> false)
+    then ONCE_REWRITE_TAC[th] else FAIL_TAC "") THEN
+  SUBGOAL_THEN
+    `!t. word_add data_ptr (word(64 * ii + 4 * t):int64) =
+         word_add dptr_i (word(4 * t))`
+  ASSUME_TAC THENL
+   [GEN_TAC THEN EXPAND_TAC "dptr_i" THEN
+    REWRITE_TAC[WORD_RULE
+      `word_add (word_add d (word x:int64)) (word y) =
+       word_add d (word (x + y))`] THEN
+    AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC;
+    ALL_TAC] THEN
+
+  (* ===== Phase A: split at pc+0x34 ===== *)
+  ENSURES_SEQUENCE_TAC `pc + 0x34`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+         read SP s = stackpointer /\
+         read X0 s = state_ptr /\
+         read X1 s = dptr_i /\
+         read X2 s = word(num_blocks - ii) /\
+         read X3 s = kptr /\
+         (!t. t < 8 ==>
+              read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+              EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K) /\
+         (!t. t < 16 ==>
+              read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+              EL t M_i)` THEN
+  CONJ_TAC THENL
+
+  [(* Phase A: load 16 words from dptr_i, REV, store to stackpointer *)
+   ENSURES_WHILE_UP2_TAC `16` `pc + 0x1c` `pc + 0x34`
+    `\i s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+           read SP s = stackpointer /\
+           read X0 s = state_ptr /\
+           read X1 s = dptr_i /\
+           read X2 s = word(num_blocks - ii) /\
+           read X3 s = kptr /\
+           read X17 s = word i /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                read (memory :> bytes32
+                      (word_add data_ptr (word(64 * j + 4*t)))) s =
+                word_bytereverse (EL t (EL j blocks))) /\
+           (!t. t < 64 ==>
+                read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                EL t sha256_K) /\
+           (!t. t < i ==>
+                read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+                EL t M_i)` THEN
+   ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+    [ARITH_TAC;
+     ENSURES_INIT_TAC "s0" THEN
+     ARM_STEPS_TAC NOHW4_EXEC (1--1) THEN
+     ENSURES_FINAL_STATE_TAC THEN
+     ASM_REWRITE_TAC[LT] THEN MESON_TAC[];
+     X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+     SUBGOAL_THEN `i < 2 EXP 64 /\ i + 1 < 2 EXP 64` STRIP_ASSUME_TAC THENL
+      [UNDISCH_TAC `i < 16` THEN ARITH_TAC; ALL_TAC] THEN
+     SUBGOAL_THEN `word_shl (word i:int64) 2 = word (4 * i)` ASSUME_TAC THENL
+      [REWRITE_TAC[WORD_SHL_WORD] THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
+     SUBGOAL_THEN `val (word i:int64) = i` ASSUME_TAC THENL
+      [ASM_SIMP_TAC[VAL_WORD_EQ; DIMINDEX_64]; ALL_TAC] THEN
+     ENSURES_INIT_TAC "s0" THEN
+     SUBGOAL_THEN
+      `read (memory :> bytes32 (word_add dptr_i (word (4 * i)))) s0 =
+       word_bytereverse (EL i M_i)`
+     ASSUME_TAC THENL
+      [FIRST_X_ASSUM(fun th ->
+         MP_TAC(SPECL [`ii:num`; `i:num`] th) THEN
+         ANTS_TAC THENL
+          [UNDISCH_TAC `ii < num_blocks` THEN UNDISCH_TAC `i < 16` THEN
+           ARITH_TAC;
+           ALL_TAC]) THEN
+       ASM_REWRITE_TAC[];
+       ALL_TAC] THEN
+     ARM_STEPS_TAC NOHW4_EXEC (1--6) THEN
+     ENSURES_FINAL_STATE_TAC THEN
+     ASM_REWRITE_TAC[] THEN
+     REPEAT CONJ_TAC THENL
+      [REWRITE_TAC[VAL_WORD_SUB_EQ_0; VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+       ASM_SIMP_TAC[MOD_LT;
+                    ARITH_RULE `i < 16 ==> i < 2 EXP 64`;
+                    ARITH_RULE `18446744073709551601 < 2 EXP 64`] THEN
+       ASM_CASES_TAC `i + 1 = 16` THENL
+        [ASM_REWRITE_TAC[LT_REFL] THEN
+         SUBGOAL_THEN `i = 15` SUBST1_TAC THENL
+          [UNDISCH_TAC `i + 1 = 16` THEN ARITH_TAC; ALL_TAC] THEN
+         CONV_TAC NUM_REDUCE_CONV THEN REWRITE_TAC[];
+         SUBGOAL_THEN `i + 1 < 16` ASSUME_TAC THENL
+          [UNDISCH_TAC `i < 16` THEN UNDISCH_TAC `~(i + 1 = 16)` THEN
+           ARITH_TAC; ALL_TAC] THEN
+         ASM_REWRITE_TAC[] THEN
+         SUBGOAL_THEN `~((i + 18446744073709551601) MOD 2 EXP 64 = 0)`
+           ASSUME_TAC THENL
+          [SUBGOAL_THEN
+             `(i + 18446744073709551601) MOD 2 EXP 64 =
+              i + 18446744073709551601` SUBST1_TAC THENL
+            [MATCH_MP_TAC MOD_LT THEN
+             UNDISCH_TAC `i + 1 < 16` THEN ARITH_TAC; ALL_TAC] THEN
+           UNDISCH_TAC `i + 1 < 16` THEN ARITH_TAC; ALL_TAC] THEN
+         ASM_REWRITE_TAC[]];
+       CONV_TAC WORD_RULE;
+       GEN_TAC THEN DISCH_TAC THEN
+       ASM_CASES_TAC `t < i` THENL [ASM_MESON_TAC[]; ALL_TAC] THEN
+       SUBGOAL_THEN `t:num = i` SUBST_ALL_TAC THENL
+        [UNDISCH_TAC `t < i + 1` THEN UNDISCH_TAC `~(t < i)` THEN
+         ARITH_TAC; ALL_TAC] THEN
+       ASM_REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+       SIMP_TAC[WORD_ZX_ZX; WORD_ZX_TRIVIAL; DIMINDEX_32; DIMINDEX_64;
+                LE_REFL; ARITH] THEN
+       REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE]];
+     ENSURES_INIT_TAC "s0" THEN
+     ENSURES_FINAL_STATE_TAC THEN
+     ASM_REWRITE_TAC[]];
+
+   ALL_TAC] THEN
+
+  (* ===== Phase C at pc+0x34 .. pc+0x74: load state into W4..W11, mirror to W19..W26 ===== *)
+  ENSURES_SEQUENCE_TAC `pc + 0x74`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+         read SP s = stackpointer /\
+         read X0 s = state_ptr /\
+         read X1 s = dptr_i /\
+         read X2 s = word(num_blocks - ii) /\
+         read X3 s = kptr /\
+         read X4 s = word_zx (a_i:int32) /\
+         read X5 s = word_zx (b_i:int32) /\
+         read X6 s = word_zx (c_i:int32) /\
+         read X7 s = word_zx (d_i:int32) /\
+         read X8 s = word_zx (e_i:int32) /\
+         read X9 s = word_zx (f_i:int32) /\
+         read X10 s = word_zx (g_i:int32) /\
+         read X11 s = word_zx (h_i:int32) /\
+         read X19 s = word_zx (a_i:int32) /\
+         read X20 s = word_zx (b_i:int32) /\
+         read X21 s = word_zx (c_i:int32) /\
+         read X22 s = word_zx (d_i:int32) /\
+         read X23 s = word_zx (e_i:int32) /\
+         read X24 s = word_zx (f_i:int32) /\
+         read X25 s = word_zx (g_i:int32) /\
+         read X26 s = word_zx (h_i:int32) /\
+         (!t. t < 8 ==>
+              read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+              EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K) /\
+         (!t. t < 16 ==>
+              read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+              EL t M_i)` THEN
+  CONJ_TAC THENL
+
+  [(* Phase C: load state into W4..W11 and save to W19..W26 *)
+   ENSURES_INIT_TAC "s0" THEN
+   MAP_EVERY (fun k ->
+     let th = SPECL [k] (ASSUME
+      `forall t.
+           t < 8
+           ==> read (memory :> bytes32 (word_add state_ptr (word (4 * t)))) s0 =
+               EL t [a_i:int32; b_i; c_i; d_i; e_i; f_i; g_i; h_i]`) in
+     MP_TAC th THEN ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+     REWRITE_TAC[ARITH; EL; HD; TL] THEN
+     CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN
+     REWRITE_TAC[WORD_ADD_0] THEN
+     DISCH_TAC)
+    [`0`; `1`; `2`; `3`; `4`; `5`; `6`; `7`] THEN
+   ARM_STEPS_TAC NOHW4_EXEC (1--16) THEN
+   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+   SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+   REWRITE_TAC[EL; HD; TL] THEN
+   CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
+
+   ALL_TAC] THEN
+
+  (* ===== Fused B+D loop: split at pc+0x1b0 (exit to Phase E) ===== *)
+  (* At pc+0x1b0, we have completed all 64 compression rounds and the   *)
+  (* message-schedule extension. The invariant carries sha256_compress  *)
+  (* 64 on a fully-extended schedule.                                   *)
+  ABBREV_TAC `W = sha256_message_schedule 48 M_i` THEN
+  SUBGOAL_THEN `LENGTH (W:int32 list) = 64` ASSUME_TAC THENL
+   [EXPAND_TAC "W" THEN REWRITE_TAC[LENGTH_SHA256_MESSAGE_SCHEDULE] THEN
+    ASM_REWRITE_TAC[] THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN
+    `!t. t < 16 ==> EL t M_i = EL t (W:int32 list)`
+  ASSUME_TAC THENL
+   [REPEAT STRIP_TAC THEN EXPAND_TAC "W" THEN
+    CONV_TAC SYM_CONV THEN MATCH_MP_TAC SHA256_SCHEDULE_PREFIX THEN
+    ASM_REWRITE_TAC[]; ALL_TAC] THEN
+
+  ENSURES_SEQUENCE_TAC `pc + 0x1b0`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+         read SP s = stackpointer /\
+         read X0 s = state_ptr /\
+         read X1 s = dptr_i /\
+         read X2 s = word(num_blocks - ii) /\
+         read X3 s = kptr /\
+         read X4 s = word_zx (EL 0 (sha256_compress 64 W
+                    [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X5 s = word_zx (EL 1 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X6 s = word_zx (EL 2 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X7 s = word_zx (EL 3 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X8 s = word_zx (EL 4 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X9 s = word_zx (EL 5 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X10 s = word_zx (EL 6 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X11 s = word_zx (EL 7 (sha256_compress 64 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X19 s = word_zx (a_i:int32) /\
+         read X20 s = word_zx (b_i:int32) /\
+         read X21 s = word_zx (c_i:int32) /\
+         read X22 s = word_zx (d_i:int32) /\
+         read X23 s = word_zx (e_i:int32) /\
+         read X24 s = word_zx (f_i:int32) /\
+         read X25 s = word_zx (g_i:int32) /\
+         read X26 s = word_zx (h_i:int32) /\
+         (!t. t < 8 ==>
+              read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+              EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K)` THEN
+  CONJ_TAC THENL
+
+  [(* Fused B+D loop + D-tail loop: prove we reach pc+0x1b0 with state *)
+   (* = sha256_compress 64 W on the initial hash.                       *)
+
+   (* Setup at pc+0x74 .. pc+0x7c: mov x17, #0; mov x27, sp. *)
+   ENSURES_SEQUENCE_TAC `pc + 0x7c`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+         read SP s = stackpointer /\
+         read X0 s = state_ptr /\
+         read X1 s = dptr_i /\
+         read X2 s = word(num_blocks - ii) /\
+         read X3 s = kptr /\
+         read X17 s = word 0 /\
+         read X27 s = stackpointer /\
+         read X4 s = word_zx (a_i:int32) /\
+         read X5 s = word_zx (b_i:int32) /\
+         read X6 s = word_zx (c_i:int32) /\
+         read X7 s = word_zx (d_i:int32) /\
+         read X8 s = word_zx (e_i:int32) /\
+         read X9 s = word_zx (f_i:int32) /\
+         read X10 s = word_zx (g_i:int32) /\
+         read X11 s = word_zx (h_i:int32) /\
+         read X19 s = word_zx (a_i:int32) /\
+         read X20 s = word_zx (b_i:int32) /\
+         read X21 s = word_zx (c_i:int32) /\
+         read X22 s = word_zx (d_i:int32) /\
+         read X23 s = word_zx (e_i:int32) /\
+         read X24 s = word_zx (f_i:int32) /\
+         read X25 s = word_zx (g_i:int32) /\
+         read X26 s = word_zx (h_i:int32) /\
+         (!t. t < 8 ==>
+              read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+              EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K) /\
+         (!t. t < 16 ==>
+              read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+              EL t (W:int32 list))` THEN
+   CONJ_TAC THENL
+    [ENSURES_INIT_TAC "s0" THEN
+     ARM_STEPS_TAC NOHW4_EXEC (1--2) THEN
+     ENSURES_FINAL_STATE_TAC THEN
+     ASM_REWRITE_TAC[] THEN
+     REPEAT CONJ_TAC THEN
+     TRY (FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[] THEN NO_TAC) THEN
+     GEN_TAC THEN DISCH_TAC THEN
+     SUBGOAL_THEN `EL t (W:int32 list) = EL t (M_i:int32 list)` SUBST1_TAC THENL
+      [CONV_TAC SYM_CONV THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+       ALL_TAC] THEN
+     FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+     ALL_TAC] THEN
+
+   (* Fused B+D loop (pc+0x7c -> pc+0x134): j = 0..48 *)
+   ENSURES_SEQUENCE_TAC `pc + 0x134`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+         read SP s = stackpointer /\
+         read X0 s = state_ptr /\
+         read X1 s = dptr_i /\
+         read X2 s = word(num_blocks - ii) /\
+         read X3 s = kptr /\
+         read X17 s = word 48 /\
+         read X4 s = word_zx (EL 0 (sha256_compress 48 W
+                    [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X5 s = word_zx (EL 1 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X6 s = word_zx (EL 2 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X7 s = word_zx (EL 3 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X8 s = word_zx (EL 4 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X9 s = word_zx (EL 5 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X10 s = word_zx (EL 6 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X11 s = word_zx (EL 7 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X19 s = word_zx (a_i:int32) /\
+         read X20 s = word_zx (b_i:int32) /\
+         read X21 s = word_zx (c_i:int32) /\
+         read X22 s = word_zx (d_i:int32) /\
+         read X23 s = word_zx (e_i:int32) /\
+         read X24 s = word_zx (f_i:int32) /\
+         read X25 s = word_zx (g_i:int32) /\
+         read X26 s = word_zx (h_i:int32) /\
+         (!t. t < 8 ==>
+              read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+              EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+              EL t (W:int32 list))` THEN
+   CONJ_TAC THENL
+    [CHEAT_TAC;
+     ALL_TAC] THEN
+
+   (* D-tail loop (pc+0x134 -> pc+0x1b0): j = 48..64 *)
+   ENSURES_WHILE_AUP2_TAC `48` `64` `pc + 0x134` `pc + 0x1b0`
+    `\i s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+           read SP s = stackpointer /\
+           read X0 s = state_ptr /\
+           read X1 s = dptr_i /\
+           read X2 s = word(num_blocks - ii) /\
+           read X3 s = kptr /\
+           read X17 s = word i /\
+           read X4 s = word_zx (EL 0 (sha256_compress i W
+                                      [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X5 s = word_zx (EL 1 (sha256_compress i W
+                                      [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X6 s = word_zx (EL 2 (sha256_compress i W
+                                      [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X7 s = word_zx (EL 3 (sha256_compress i W
+                                      [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X8 s = word_zx (EL 4 (sha256_compress i W
+                                      [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X9 s = word_zx (EL 5 (sha256_compress i W
+                                      [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X10 s = word_zx (EL 6 (sha256_compress i W
+                                       [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X11 s = word_zx (EL 7 (sha256_compress i W
+                                       [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+           read X19 s = word_zx (a_i:int32) /\
+           read X20 s = word_zx (b_i:int32) /\
+           read X21 s = word_zx (c_i:int32) /\
+           read X22 s = word_zx (d_i:int32) /\
+           read X23 s = word_zx (e_i:int32) /\
+           read X24 s = word_zx (f_i:int32) /\
+           read X25 s = word_zx (g_i:int32) /\
+           read X26 s = word_zx (h_i:int32) /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                read (memory :> bytes32
+                      (word_add data_ptr (word(64 * j + 4*t)))) s =
+                word_bytereverse (EL t (EL j blocks))) /\
+           (!t. t < 64 ==>
+                read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+                EL t W) /\
+           (!t. t < 64 ==>
+                read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                EL t sha256_K)` THEN
+   ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+    [ARITH_TAC;
+     (* Init at i=48: comes from fused-loop post-assertion *)
+     ENSURES_INIT_TAC "s0" THEN
+     ENSURES_FINAL_STATE_TAC THEN
+     ASM_REWRITE_TAC[];
+     (* Body: same as nohw2's Phase D body, pc+0x134 instructions *)
+     X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+     SUBGOAL_THEN `i < 2 EXP 64 /\ i + 1 < 2 EXP 64` STRIP_ASSUME_TAC THENL
+      [UNDISCH_TAC `i < 64` THEN ARITH_TAC; ALL_TAC] THEN
+     ABBREV_TAC `sc_i = sha256_compress i W
+                        [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]` THEN
+     SUBGOAL_THEN
+      `sha256_compress (i+1) W [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i] =
+       sha256_compress_round (EL i sha256_K) (EL i W)
+        [EL 0 sc_i; EL 1 sc_i; EL 2 sc_i; EL 3 sc_i; EL 4 sc_i; EL 5 sc_i;
+         EL 6 sc_i; EL 7 sc_i]`
+     SUBST1_TAC THENL
+      [REWRITE_TAC[sha256_compress; SHA256_COMPRESS_ROUND_EL_LIST] THEN
+       ASM_REWRITE_TAC[]; ALL_TAC] THEN
+     MAP_EVERY ABBREV_TAC
+      [`K_t = (EL i sha256_K):int32`; `W_t = (EL i W):int32`] THEN
+     REWRITE_TAC[sha256_compress_round; sha256_Sigma0; sha256_Sigma1;
+                 sha256_Ch; sha256_Maj; LET_DEF; LET_END_DEF] THEN
+     SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_32; ARITH] THEN
+     REWRITE_TAC[DIMINDEX_32; EL; HD; TL; ARITH] THEN
+     CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[GSYM(CONJUNCT1 EL)] THEN
+     SUBGOAL_THEN `word_shl (word i:int64) 2 = word (4 * i)` ASSUME_TAC THENL
+      [REWRITE_TAC[WORD_SHL_WORD] THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
+     SUBGOAL_THEN `val (word i:int64) = i` ASSUME_TAC THENL
+      [ASM_SIMP_TAC[VAL_WORD_EQ; DIMINDEX_64]; ALL_TAC] THEN
+     ENSURES_INIT_TAC "s0" THEN
+     SUBGOAL_THEN
+      `read (memory :> bytes32 (word_add kptr (word (4 * i)))) s0 = K_t /\
+       read (memory :> bytes32 (word_add stackpointer (word (4 * i)))) s0 =
+       W_t`
+     STRIP_ASSUME_TAC THENL [ASM_MESON_TAC[]; ALL_TAC] THEN
+     ARM_STEPS_TAC NOHW4_EXEC (1--31) THEN
+     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+     SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_32; ARITH] THEN
+     SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+              WORD_ZX_TRIVIAL] THEN
+     REWRITE_TAC[WORD_ZX_INJ_32_64] THEN
+     REPEAT CONJ_TAC THENL
+      [REWRITE_TAC[VAL_WORD_SUB_EQ_0; VAL_WORD_ADD; VAL_WORD;
+                   VAL_WORD_ZX_GEN; DIMINDEX_32; DIMINDEX_64] THEN
+       ASM_SIMP_TAC[MOD_LT;
+                    ARITH_RULE `i < 64
+                      ==> i < 2 EXP 64 /\ i < 2 EXP 32 /\
+                          1 < 2 EXP 32 /\ 64 < 2 EXP 32 /\
+                          i + 1 < 2 EXP 32`;
+                    ARITH_RULE `18446744073709551553 < 2 EXP 64`] THEN
+       ASM_CASES_TAC `i + 1 = 64` THENL
+        [ASM_REWRITE_TAC[LT_REFL] THEN
+         SUBGOAL_THEN `i = 63` SUBST1_TAC THENL
+          [UNDISCH_TAC `i + 1 = 64` THEN ARITH_TAC; ALL_TAC] THEN
+         CONV_TAC NUM_REDUCE_CONV;
+         SUBGOAL_THEN `i + 1 < 64` ASSUME_TAC THENL
+          [UNDISCH_TAC `i < 64` THEN UNDISCH_TAC `~(i + 1 = 64)` THEN
+           ARITH_TAC; ALL_TAC] THEN
+         ASM_REWRITE_TAC[] THEN
+         SUBGOAL_THEN `~((i + 18446744073709551553) MOD 2 EXP 64 = 0)` ASSUME_TAC
+         THENL
+          [SUBGOAL_THEN
+             `(i + 18446744073709551553) MOD 2 EXP 64 =
+              i + 18446744073709551553` SUBST1_TAC THENL
+            [MATCH_MP_TAC MOD_LT THEN
+             UNDISCH_TAC `i + 1 < 64` THEN ARITH_TAC; ALL_TAC] THEN
+           UNDISCH_TAC `i + 1 < 64` THEN ARITH_TAC; ALL_TAC] THEN
+         ASM_REWRITE_TAC[]];
+       ONCE_REWRITE_TAC[GSYM VAL_EQ] THEN
+       REWRITE_TAC[VAL_WORD_ZX_GEN; VAL_WORD_ADD; VAL_WORD;
+                   DIMINDEX_32; DIMINDEX_64] THEN
+       SIMP_TAC[MOD_LT; ARITH_RULE `1 < 2 EXP 32`] THEN
+       ASM_SIMP_TAC[MOD_LT;
+                    ARITH_RULE `i < 64
+                      ==> i < 2 EXP 32 /\ i + 1 < 2 EXP 32 /\
+                          i + 1 < 2 EXP 64`] THEN
+       CONV_TAC NUM_REDUCE_CONV THEN
+       MATCH_MP_TAC MOD_LT THEN
+       UNDISCH_TAC `i < 64` THEN ARITH_TAC;
+       REWRITE_TAC[BIC_NORM] THEN CONV_TAC WORD_RULE;
+       REWRITE_TAC[BIC_NORM] THEN CONV_TAC WORD_RULE];
+     (* Exit *)
+     ENSURES_INIT_TAC "s0" THEN
+     ENSURES_FINAL_STATE_TAC THEN
+     ASM_REWRITE_TAC[]];
+
+   ALL_TAC] THEN
+
+  (* ===== Phase E: split at pc+0x1d0 ===== *)
+  ENSURES_SEQUENCE_TAC `pc + 0x1d0`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+         read SP s = stackpointer /\
+         read X0 s = state_ptr /\
+         read X1 s = dptr_i /\
+         read X2 s = word(num_blocks - ii) /\
+         read X3 s = kptr /\
+         read X4 s = word_zx (word_add
+            (EL 0 (sha256_compress 64 W
+                   [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) a_i) /\
+         read X5 s = word_zx (word_add
+            (EL 1 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) b_i) /\
+         read X6 s = word_zx (word_add
+            (EL 2 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) c_i) /\
+         read X7 s = word_zx (word_add
+            (EL 3 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) d_i) /\
+         read X8 s = word_zx (word_add
+            (EL 4 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) e_i) /\
+         read X9 s = word_zx (word_add
+            (EL 5 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) f_i) /\
+         read X10 s = word_zx (word_add
+            (EL 6 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) g_i) /\
+         read X11 s = word_zx (word_add
+            (EL 7 (sha256_compress 64 W
+                   [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) h_i) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K)` THEN
+  CONJ_TAC THENL
+
+  [(* Phase E: 8 ADDs for add-back *)
+   ENSURES_INIT_TAC "s0" THEN
+   ARM_STEPS_TAC NOHW4_EXEC (1--8) THEN
+   ENSURES_FINAL_STATE_TAC THEN
+   ASM_REWRITE_TAC[] THEN
+   SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+            WORD_ZX_TRIVIAL] THEN
+   REWRITE_TAC[WORD_ZX_INJ_32_64] THEN
+   REPEAT CONJ_TAC THEN
+   (CONV_TAC WORD_RULE ORELSE ASM_REWRITE_TAC[]);
+
+   ALL_TAC] THEN
+
+  (* ===== Phase F + postamble: 8 stores + add x1 + sub x2 ===== *)
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC NOHW4_EXEC (1--10) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THENL
+   [(* X1 = word_add data_ptr (word(64 * (ii + 1))) *)
+    EXPAND_TAC "dptr_i" THEN CONV_TAC WORD_RULE;
+    (* X2 = word(num_blocks - (ii + 1)) *)
+    SUBGOAL_THEN `num_blocks - ii = (num_blocks - (ii + 1)) + 1` ASSUME_TAC THENL
+     [UNDISCH_TAC `ii < num_blocks` THEN ARITH_TAC; ALL_TAC] THEN
+    ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE;
+    (* memory read at state_ptr: EL t (sha256_hash_blocks (ii+1) blocks H0) *)
+    GEN_TAC THEN DISCH_TAC THEN
+    REWRITE_TAC[ARITH_RULE `ii + 1 = SUC ii`;
+                sha256_hash_blocks;
+                ARITH_RULE `SUC ii = ii + 1`] THEN
+    EXPAND_TAC "M_i" THEN EXPAND_TAC "H_i" THEN
+    MP_TAC(SPECL [`M_i:int32 list`;
+                  `[a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]`] SHA256_BLOCK_EL) THEN
+    ANTS_TAC THENL [REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+    DISCH_THEN(MP_TAC o SPEC `t:num`) THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `sha256_block M_i H_i = sha256_block M_i [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]`
+    SUBST1_TAC THENL
+     [AP_TERM_TAC THEN ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
+    DISCH_THEN SUBST1_TAC THEN
+    POP_ASSUM MP_TAC THEN
+    SPEC_TAC(`t:num`,`t:num`) THEN
+    CONV_TAC EXPAND_CASES_CONV THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    REWRITE_TAC[EL; HD; TL] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+    ASM_REWRITE_TAC[WORD_ADD_0] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+    REWRITE_TAC[GSYM(CONJUNCT1 EL)]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Subroutine wrapper.                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256_BLOCK_DATA_ORDER_NOHW4_SUBROUTINE_CORRECT = prove
+ (`!num_blocks (blocks:(int32 list) list)
+    (a:int32) b c d (e:int32) f g h
+    state_ptr data_ptr kptr pc stackpointer returnaddress.
+    1 <= num_blocks /\ num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    aligned 16 stackpointer /\
+    nonoverlapping (state_ptr,32)
+                   (word_sub stackpointer (word 336), 336) /\
+    ALLPAIRS nonoverlapping
+             [(state_ptr:int64,32);
+              (word_sub stackpointer (word 336):int64, 336)]
+             [(word pc, 0x218);
+              (data_ptr:int64, 64 * num_blocks);
+              (kptr:int64, 256)]
+    ==> ensures arm
+      (\s. aligned_bytes_loaded s (word pc)
+              sha256_block_data_order_nohw4_mc /\
+           read PC s = word pc /\
+           read SP s = stackpointer /\
+           read X30 s = returnaddress /\
+           read X0 s = state_ptr /\
+           read X1 s = data_ptr /\
+           read X2 s = word num_blocks /\
+           read X3 s = kptr /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t [a;b;c;d;e;f;g;h]) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                read (memory :> bytes32
+                      (word_add data_ptr (word(64 * j + 4*t)))) s =
+                word_bytereverse (EL t (EL j blocks))) /\
+           (!t. t < 64 ==>
+                read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                EL t sha256_K))
+      (\s. read PC s = returnaddress /\
+           (!t. t < 8 ==>
+                read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                EL t (sha256_hash_blocks num_blocks blocks
+                        [a;b;c;d;e;f;g;h])))
+      (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+       MAYCHANGE [memory :> bytes(state_ptr,32);
+                  memory :> bytes(word_sub stackpointer (word 336), 336)])`,
+  ARM_ADD_RETURN_STACK_TAC ~pre_post_nsteps:(6,6) NOHW4_EXEC
+        SHA256_BLOCK_DATA_ORDER_NOHW4_CORRECT
+    `[X19; X20; X21; X22; X23; X24; X25; X26; X27; X28]` 336);;
