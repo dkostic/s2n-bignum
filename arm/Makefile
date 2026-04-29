@@ -369,6 +369,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              sha3/sha3_keccak4_f1600_alt2.o \
              sha2/sha256_block_data_order_hw.o \
              sha2/sha256_block_data_order_nohw.o \
+             sha2/sha256_block_data_order_nohw2.o \
              sm2/bignum_add_sm2.o \
              sm2/bignum_cmul_sm2.o \
              sm2/bignum_deamont_sm2.o \

@@ -1144,6 +1144,8 @@ void call_sha256_block_data_order_hw__1(void) {}
 void call_sha256_block_data_order_hw__16(void) {}
 void call_sha256_block_data_order_nohw__1(void) {}
 void call_sha256_block_data_order_nohw__16(void) {}
+void call_sha256_block_data_order_nohw2__1(void) {}
+void call_sha256_block_data_order_nohw2__16(void) {}
 
 #else
 
@@ -1177,6 +1179,8 @@ void call_sha256_block_data_order_hw__1(void) repeat(sha256_block_data_order_hw(
 void call_sha256_block_data_order_hw__16(void) repeat(sha256_block_data_order_hw((uint32_t*)b0,(const uint8_t*)b1,16,sha256_K))
 void call_sha256_block_data_order_nohw__1(void) repeat(sha256_block_data_order_nohw((uint32_t*)b0,(const uint8_t*)b1,1,sha256_K))
 void call_sha256_block_data_order_nohw__16(void) repeat(sha256_block_data_order_nohw((uint32_t*)b0,(const uint8_t*)b1,16,sha256_K))
+void call_sha256_block_data_order_nohw2__1(void) repeat(sha256_block_data_order_nohw2((uint32_t*)b0,(const uint8_t*)b1,1,sha256_K))
+void call_sha256_block_data_order_nohw2__16(void) repeat(sha256_block_data_order_nohw2((uint32_t*)b0,(const uint8_t*)b1,16,sha256_K))
 
 void call_mlkem_frombytes(void) {}
 void call_mlkem_unpack(void) {}
@@ -1629,6 +1633,8 @@ int main(int argc, char *argv[])
   timingtest(arm,"sha256_block_data_order_hw (16 blocks)",call_sha256_block_data_order_hw__16);
   timingtest(arm,"sha256_block_data_order_nohw (1 block)",call_sha256_block_data_order_nohw__1);
   timingtest(arm,"sha256_block_data_order_nohw (16 blocks)",call_sha256_block_data_order_nohw__16);
+  timingtest(arm,"sha256_block_data_order_nohw2 (1 block)",call_sha256_block_data_order_nohw2__1);
+  timingtest(arm,"sha256_block_data_order_nohw2 (16 blocks)",call_sha256_block_data_order_nohw2__16);
   timingtest(bmi,"sm2_montjadd",call_sm2_montjadd);
   timingtest(all,"sm2_montjadd_alt",call_sm2_montjadd_alt);
   timingtest(bmi,"sm2_montjdouble",call_sm2_montjdouble);

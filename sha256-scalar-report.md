@@ -179,22 +179,91 @@ ports.
 
 On Graviton (2.5 GHz Neoverse-V1):
 
-| Function                                        | 1 block | 16 blocks |
-|-------------------------------------------------|---------|-----------|
+| Function                                         | 1 block | 16 blocks |
+|--------------------------------------------------|---------|-----------|
 | `sha256_block_data_order_hw` (SHA-256 extension) | 38 ns   | 575 ns    |
-| `sha256_block_data_order_nohw` (this work)       | 275 ns  | 4394 ns   |
+| `sha256_block_data_order_nohw` (baseline scalar) | 275 ns  | 4395 ns   |
+| `sha256_block_data_order_nohw2` (optimised)      | 242 ns  | 3884 ns   |
 
-That is roughly 7.6x slower than the HW variant at 16 blocks, as
-expected for a base-ISA implementation. The scalar code is intended
-for platforms without the optional ARMv8.2 crypto extensions; on such
-platforms this is a formally verified alternative to
-`openssl/boringssl/aws-lc`'s hand-written assembly.
+The baseline scalar variant is intentionally written for
+verifiability rather than peak throughput: a single round per loop
+iteration, no manual software pipelining, no
+message-schedule / compression interleaving.
 
-The implementation is intentionally written for verifiability rather
-than peak throughput: a single round per loop iteration, no manual
-software pipelining, no message-schedule / compression interleaving.
-Optimising the throughput would be a separate effort; we have not
-attempted it and it is not a goal of this work.
+The `nohw2` variant is a drop-in replacement with the same ABI and
+loop structure; the measured speedup is **1.13x** on both 1-block
+and 16-block workloads. Its proof
+(`arm/proofs/sha256_block_data_order_nohw2.ml`) is a direct port of
+the baseline proof with three targeted edits.
+
+### Optimisations in `nohw2`
+
+1. **Shifted-register EOR fusion for all four sigma functions.**
+   The classical sequence
+   ```asm
+   ror Wt, Wn, #r1
+   eor Wd, Wd, Wt
+   ```
+   is fused into the single instruction
+   ```asm
+   eor Wd, Wd, Wn, ror #r1
+   ```
+   This applies to `sigma0`, `sigma1`, `Sigma0`, `Sigma1`, saving
+   4 instructions per schedule iteration and 6 instructions per
+   compression round.
+
+2. **Fused Maj.** `Maj(a,b,c)` is computed as `(a AND b) XOR ((a XOR b) AND c)`
+   (4 instructions) rather than `(a AND b) XOR (a AND c) XOR (b AND c)`
+   (5 instructions). Semantically equivalent; saves 1 instruction
+   per round.
+
+Total: 384 instructions saved in the compression loop + 192 in the
+message-schedule extension = 576 instructions per block. The
+`.S` shrinks from 456 bytes to 420 bytes; cut-point offsets shift
+accordingly (Phase B exit pc+0x90 → pc+0x80, Phase D exit
+pc+0x164 → pc+0x140, epilogue pc+0x1b0 → pc+0x18c).
+
+### Proof changes
+
+Because the phase structure, register allocation, stack frame, ABI,
+and loop invariants are all unchanged, the optimised proof is a
+verbatim copy of the baseline with three edits:
+
+- **Offset and step-count updates.** `0x90 → 0x80`, `0x164 → 0x140`,
+  `0x1b0 → 0x18c`, `0x1ac → 0x188`, `0x1c8 → 0x1a4`, `0xd4 → 0xc4`,
+  `0xd0 → 0xc0`; Phase D body `1--36 → 1--31`; Phase B body
+  `1--22 → 1--18`.
+
+- **Normalise `word_ror` to `word_subword(word_join ...)` form in
+  Phase D body.** The shifted-register EOR encoding uses
+  `regshift_operation ROR = word_ror`, so `ARM_STEPS_TAC` now
+  produces `word_ror` in hypotheses, whereas the postcondition --
+  already rewritten by `SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF]` --
+  is in `word_subword(word_join ...)` form. Adding a second
+  `SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_32; ARITH]` pass
+  after `ARM_STEPS_TAC` normalises both sides. (The baseline did
+  not need this because `arm_ROR` is defined via `arm_EXTR`, which
+  produces `word_subword` directly.)
+
+- **`CONV_TAC WORD_RULE` after `REWRITE_TAC[BIC_NORM]`** to close
+  the register-equality subgoals. The fused-Maj form differs in
+  bracketing and commutativity from the classical form; `WORD_RULE`
+  handles the full word-level ring equivalence.
+
+Both `SHA256_BLOCK_DATA_ORDER_NOHW2_CORRECT` and
+`SHA256_BLOCK_DATA_ORDER_NOHW2_SUBROUTINE_CORRECT` close without
+`CHEAT_TAC`. `check_axioms()` reports no additional axioms.
+
+### Artefacts (nohw2)
+
+| Path                                                       | Purpose                                  |
+|------------------------------------------------------------|------------------------------------------|
+| `arm/sha2/sha256_block_data_order_nohw2.S`                 | Optimised assembly (170 lines, 420 bytes)|
+| `arm/proofs/sha256_block_data_order_nohw2.ml`              | Full HOL-Light proof                     |
+| `include/s2n-bignum.h`                                     | C declaration                            |
+| `arm/Makefile`                                             | Build integration                        |
+| `benchmarks/benchmark.c`                                   | Benchmark entry                          |
+| `tests/test.c`                                             | Cross-check test vs baseline + reference |
 
 ## Artefacts
 
