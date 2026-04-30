@@ -14699,9 +14699,9 @@ int test_sha256_block_data_order_nohw(void)
 #else
   uint64_t t;
   int i, j;
-  uint32_t ref_state[8], asm_state[8], asm2_state[8], asm4_state[8], block[16];
+  uint32_t ref_state[8], asm_state[8], asm2_state[8], asm4_state[8], asm5_state[8], block[16];
   uint8_t data[64];
-  printf("Testing sha256_block_data_order_nohw(+nohw2,+nohw4) with %d cases\n",tests);
+  printf("Testing sha256_block_data_order_nohw(+nohw2,+nohw4,+nohw5) with %d cases\n",tests);
 
   // Test 1: NIST "abc" (single block, padded)
   { uint32_t init[8] = {0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
@@ -14711,7 +14711,7 @@ int test_sha256_block_data_order_nohw(void)
     msg[15] = 0x00000018;
     uint32_t expected[8] = {0xba7816bf,0x8f01cfea,0x414140de,0x5dae2223,
                             0xb00361a3,0x96177a9c,0xb410ff61,0xf20015ad};
-    for (i = 0; i < 8; ++i) { asm_state[i] = init[i]; asm2_state[i] = init[i]; asm4_state[i] = init[i]; }
+    for (i = 0; i < 8; ++i) { asm_state[i] = init[i]; asm2_state[i] = init[i]; asm4_state[i] = init[i]; asm5_state[i] = init[i]; }
     for (i = 0; i < 16; ++i)
      { data[4*i+0] = (msg[i] >> 24) & 0xff;
        data[4*i+1] = (msg[i] >> 16) & 0xff;
@@ -14721,18 +14721,19 @@ int test_sha256_block_data_order_nohw(void)
     sha256_block_data_order_nohw(asm_state, data, 1, sha256_K);
     sha256_block_data_order_nohw2(asm2_state, data, 1, sha256_K);
     sha256_block_data_order_nohw4(asm4_state, data, 1, sha256_K);
+    sha256_block_data_order_nohw5(asm5_state, data, 1, sha256_K);
     for (i = 0; i < 8; ++i)
-     { if (asm_state[i] != expected[i] || asm2_state[i] != expected[i] || asm4_state[i] != expected[i])
+     { if (asm_state[i] != expected[i] || asm2_state[i] != expected[i] || asm4_state[i] != expected[i] || asm5_state[i] != expected[i])
         { printf("Error: SHA-256(\"abc\") mismatch at [%d]: "
-                 "nohw=0x%08x nohw2=0x%08x nohw4=0x%08x expected=0x%08x\n",
-                 i, asm_state[i], asm2_state[i], asm4_state[i], expected[i]);
+                 "nohw=0x%08x nohw2=0x%08x nohw4=0x%08x nohw5=0x%08x expected=0x%08x\n",
+                 i, asm_state[i], asm2_state[i], asm4_state[i], asm5_state[i], expected[i]);
           return 1;
         }
      }
     if (VERBOSE) printf("OK: SHA-256(\"abc\") = ba7816bf...\n");
   }
 
-  // Test 2: single-block random data, cross-check nohw/nohw2/nohw4 vs reference
+  // Test 2: single-block random data, cross-check nohw/nohw2/nohw4/nohw5 vs reference
   for (t = 0; t < tests; ++t)
    { for (i = 0; i < 4; ++i)
       { uint64_t r;
@@ -14740,7 +14741,7 @@ int test_sha256_block_data_order_nohw(void)
         ref_state[2*i]   = (uint32_t)(r >> 32);
         ref_state[2*i+1] = (uint32_t)(r);
       }
-     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; asm4_state[i] = ref_state[i]; }
+     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; asm4_state[i] = ref_state[i]; asm5_state[i] = ref_state[i]; }
      for (i = 0; i < 8; ++i)
       { uint64_t r;
         random_bignum(1, &r);
@@ -14757,6 +14758,7 @@ int test_sha256_block_data_order_nohw(void)
      sha256_block_data_order_nohw(asm_state, data, 1, sha256_K);
      sha256_block_data_order_nohw2(asm2_state, data, 1, sha256_K);
      sha256_block_data_order_nohw4(asm4_state, data, 1, sha256_K);
+     sha256_block_data_order_nohw5(asm5_state, data, 1, sha256_K);
      for (i = 0; i < 8; ++i)
       { if (asm_state[i] != ref_state[i])
          { printf("Error in sha256_block_data_order_nohw at state[%d]: "
@@ -14773,6 +14775,11 @@ int test_sha256_block_data_order_nohw(void)
                   "asm=0x%08x ref=0x%08x\n", i, asm4_state[i], ref_state[i]);
            return 1;
          }
+        if (asm5_state[i] != ref_state[i])
+         { printf("Error in sha256_block_data_order_nohw5 at state[%d]: "
+                  "asm=0x%08x ref=0x%08x\n", i, asm5_state[i], ref_state[i]);
+           return 1;
+         }
       }
    }
 
@@ -14786,7 +14793,7 @@ int test_sha256_block_data_order_nohw(void)
         ref_state[2*i]   = (uint32_t)(r >> 32);
         ref_state[2*i+1] = (uint32_t)(r);
       }
-     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; asm4_state[i] = ref_state[i]; }
+     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; asm4_state[i] = ref_state[i]; asm5_state[i] = ref_state[i]; }
      for (j = 0; j < 2; ++j)
       { for (i = 0; i < 8; ++i)
          { uint64_t r;
@@ -14805,6 +14812,7 @@ int test_sha256_block_data_order_nohw(void)
      sha256_block_data_order_nohw(asm_state, data2, 2, sha256_K);
      sha256_block_data_order_nohw2(asm2_state, data2, 2, sha256_K);
      sha256_block_data_order_nohw4(asm4_state, data2, 2, sha256_K);
+     sha256_block_data_order_nohw5(asm5_state, data2, 2, sha256_K);
      for (i = 0; i < 8; ++i)
       { if (asm_state[i] != ref_state[i])
          { printf("Error in sha256_block_data_order_nohw (2-block) at state[%d]: "
@@ -14819,6 +14827,11 @@ int test_sha256_block_data_order_nohw(void)
         if (asm4_state[i] != ref_state[i])
          { printf("Error in sha256_block_data_order_nohw4 (2-block) at state[%d]: "
                   "asm=0x%08x ref=0x%08x\n", i, asm4_state[i], ref_state[i]);
+           return 1;
+         }
+        if (asm5_state[i] != ref_state[i])
+         { printf("Error in sha256_block_data_order_nohw5 (2-block) at state[%d]: "
+                  "asm=0x%08x ref=0x%08x\n", i, asm5_state[i], ref_state[i]);
            return 1;
          }
       }

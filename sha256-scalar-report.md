@@ -193,6 +193,17 @@ On Graviton (2.5 GHz Neoverse-V1):
 | `sha256_block_data_order_nohw` (baseline scalar) | 276 ns  | 4393 ns   | 1.00x       |
 | `sha256_block_data_order_nohw2` (fusion)         | 243 ns  | 3891 ns   | 1.14x / 1.13x |
 | `sha256_block_data_order_nohw4` (fusion + interleave) | 198 ns | 3236 ns | **1.39x / 1.36x** |
+| `sha256_block_data_order_nohw5` (nohw4 + W in registers, **proof WIP**) | 181 ns | 2872 ns | **1.52x / 1.53x** |
+
+`nohw5` keeps the full message-schedule window in 16 registers
+(`w12..w17, w19..w28`) with a rotating logical-to-physical slot
+mapping, eliminating the 256-byte stack scratch used by the prior
+variants. The .S is verified correct via the test harness (201 random
+tests + NIST "abc" vector across 1- and 2-block inputs). The proof
+skeleton loads without axioms from `CHEAT_TAC` for `SUBROUTINE_CORRECT`
+and for the multi-block outer induction of `CORRECT`; the per-block
+body proof (slot-rotation invariant across the 16-round period) is
+currently `CHEAT_TAC` pending completion.
 
 The baseline scalar variant is intentionally written for
 verifiability rather than peak throughput: a single round per loop
