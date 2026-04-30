@@ -550,10 +550,37 @@ let SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT = prove
               read (memory :> bytes32(word_add kptr (word(4*t)))) s =
               EL t sha256_K)` THEN
   CONJ_TAC THENL
-   [(* Phase E proof *) CHEAT_TAC; ALL_TAC] THEN
+   [(* Phase E: 8 (ldr + add) pairs.  At pc+0x1090 each wK is
+       word_zx(EL (K-4) sha256_compress 64 W [a_i;..;h_i]); loading the
+       initial state element EL (K-4) [a_i;..;h_i] from [x29, #4*(K-4)]
+       and adding gives the add-back value.                               *)
+    ENSURES_INIT_TAC "s0" THEN
+    MAP_EVERY (fun k ->
+     let th = SPECL [k] (ASSUME
+      `forall t.
+           t < 8
+           ==> read (memory :> bytes32 (word_add state_ptr (word (4 * t)))) s0 =
+               EL t [a_i:int32; b_i; c_i; d_i; e_i; f_i; g_i; h_i]`) in
+     MP_TAC th THEN ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+     REWRITE_TAC[ARITH; EL; HD; TL] THEN
+     CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN
+     REWRITE_TAC[WORD_ADD_0] THEN
+     DISCH_TAC)
+     [`0`; `1`; `2`; `3`; `4`; `5`; `6`; `7`] THEN
+    ARM_STEPS_TAC NOHW5_EXEC (1--16) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+             WORD_ZX_TRIVIAL] THEN
+    REWRITE_TAC[WORD_ZX_INJ_32_64] THEN
+    REPEAT CONJ_TAC THEN
+    (CONV_TAC WORD_RULE ORELSE ASM_REWRITE_TAC[]);
 
-  (* ===== Phase F + postamble: pc+0x10d0 .. pc+0x1100 (13 insts). ===== *)
-  (* Phase F: 8 str. Postamble: ldp x1,x2 + add x1 + sub x2 + sub x3 (5). *)
+    ALL_TAC] THEN
+
+  (* ===== Phase F + postamble: pc+0x10d0 .. pc+0x1100 (12 insts body +
+     cbnz at pc+0x1100 handled by outer ENSURES_WHILE_UP_TAC back-edge).
+     12 insts: 8 str (Phase F) + ldp + add + sub + sub.                   *)
   CHEAT_TAC);;
 
 (* Note on CORRECT window: core covers pc+0x20 (start of block loop, after    *)
