@@ -580,7 +580,21 @@ let SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT = prove
 
   (* ===== Phase F + postamble: pc+0x10d0 .. pc+0x1100 (12 insts body +
      cbnz at pc+0x1100 handled by outer ENSURES_WHILE_UP_TAC back-edge).
-     12 insts: 8 str (Phase F) + ldp + add + sub + sub.                   *)
+     12 insts: 8 str (Phase F) + ldp + add + sub + sub.
+     BLOCKER (2026-04-30 session): When Phase F's tactic block follows
+     Phase E's block, the proof fails at ENSURES_INIT_TAC with "term is
+     neither ensures..." after Phase E's ARM_STEPS completes.  Phase E
+     standalone (with CHEAT_TAC for Phase F) loads cleanly; Phase F
+     standalone (via holctl goal, with CHEAT for Phase E) also works
+     through ARM_STEPS(1--12) and closes 3 of 4 conjuncts easily
+     (X1=dptr_i+64 via EXPAND_TAC+WORD_RULE, X2=word(num_blocks-(ii+1))
+     via SUBGOAL_THEN arith, X3 via WORD_RULE).  The 4th conjunct
+     (state memory at s12 = EL t (sha256_hash_blocks (ii+1) ...))
+     needs SHA256_BLOCK_EL + LIST_8_EL; the nohw4 pattern was near
+     closing but list-rewrite didn't orient correctly with the M_i
+     abbreviation standing in for `EL ii blocks`.  Left as CHEAT_TAC
+     pending debugging why Phase E+Phase F composition fails when both
+     components work in isolation.                                        *)
   CHEAT_TAC);;
 
 (* Note on CORRECT window: core covers pc+0x20 (start of block loop, after    *)
