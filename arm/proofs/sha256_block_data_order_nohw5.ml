@@ -13,11 +13,12 @@
 (* consumed. Three iterations of a 16-round unrolled "period" handle rounds  *)
 (* 0..47; a 16-round unrolled D-tail handles rounds 48..63.                  *)
 (*                                                                           *)
-(* **WIP / PROOF SKELETON**. SUBROUTINE_CORRECT is fully proved; CORRECT has *)
-(* the multi-block outer induction fully proved, but the per-block body is  *)
-(* CHEAT_TAC pending a proof of the slot-rotation invariant across the 16-  *)
-(* round period body and the 16-round D-tail. The .S is verified correct   *)
-(* via the test harness (201 random tests + NIST "abc" vector).             *)
+(* **WIP**. Phases A, C, stash, Phase E (add-back), and Phase F+postamble   *)
+(* are fully proved.  The period loop (pc+0xc8..pc+0x9d0: 3 periods ×      *)
+(* 16 ROUND_SCHED) and the D-tail (pc+0x9d0..pc+0x1090: 16 ROUND_NOSCHED)   *)
+(* remain CHEAT_TAC pending a proof of the slot-rotation invariant across   *)
+(* the sliding schedule window.  The .S is verified correct via the test   *)
+(* harness (201 random tests + NIST "abc" vector).                          *)
 (* ========================================================================= *)
 
 needs "arm/proofs/sha256_block_scalar.ml";;
@@ -573,29 +574,59 @@ let SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT = prove
     SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
              WORD_ZX_TRIVIAL] THEN
     REWRITE_TAC[WORD_ZX_INJ_32_64] THEN
-    REPEAT CONJ_TAC THEN
-    (CONV_TAC WORD_RULE ORELSE ASM_REWRITE_TAC[]);
+    REWRITE_TAC[EL; HD; TL] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    REWRITE_TAC[];
 
     ALL_TAC] THEN
 
   (* ===== Phase F + postamble: pc+0x10d0 .. pc+0x1100 (12 insts body +
      cbnz at pc+0x1100 handled by outer ENSURES_WHILE_UP_TAC back-edge).
-     12 insts: 8 str (Phase F) + ldp + add + sub + sub.
-     BLOCKER (2026-04-30 session): When Phase F's tactic block follows
-     Phase E's block, the proof fails at ENSURES_INIT_TAC with "term is
-     neither ensures..." after Phase E's ARM_STEPS completes.  Phase E
-     standalone (with CHEAT_TAC for Phase F) loads cleanly; Phase F
-     standalone (via holctl goal, with CHEAT for Phase E) also works
-     through ARM_STEPS(1--12) and closes 3 of 4 conjuncts easily
-     (X1=dptr_i+64 via EXPAND_TAC+WORD_RULE, X2=word(num_blocks-(ii+1))
-     via SUBGOAL_THEN arith, X3 via WORD_RULE).  The 4th conjunct
-     (state memory at s12 = EL t (sha256_hash_blocks (ii+1) ...))
-     needs SHA256_BLOCK_EL + LIST_8_EL; the nohw4 pattern was near
-     closing but list-rewrite didn't orient correctly with the M_i
-     abbreviation standing in for `EL ii blocks`.  Left as CHEAT_TAC
-     pending debugging why Phase E+Phase F composition fails when both
-     components work in isolation.                                        *)
-  CHEAT_TAC);;
+     12 insts: 8 str (Phase F) + ldp + add + sub + sub.                   *)
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC NOHW5_EXEC (1--12) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [(* X1 = word_add data_ptr (word (64 * (ii+1))) *)
+    REWRITE_TAC[ARITH_RULE `64 * (ii+1) = 64 * ii + 64`] THEN
+    UNDISCH_TAC `word_add data_ptr (word (64 * ii):int64) = dptr_i` THEN
+    CONV_TAC WORD_RULE;
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [(* X2 = word (num_blocks - (ii+1)) *)
+    SUBGOAL_THEN `num_blocks - ii = (num_blocks - (ii + 1)) + 1` ASSUME_TAC THENL
+     [UNDISCH_TAC `ii < num_blocks` THEN ARITH_TAC; ALL_TAC] THEN
+    ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE;
+    ALL_TAC] THEN
+  (* state memory: EL t (sha256_hash_blocks (ii+1) blocks H0) for t<8 *)
+  GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[ARITH_RULE `ii + 1 = SUC ii`;
+              sha256_hash_blocks;
+              ARITH_RULE `SUC ii = ii + 1`] THEN
+  EXPAND_TAC "M_i" THEN EXPAND_TAC "H_i" THEN
+  MP_TAC(SPECL [`M_i:int32 list`;
+                `[a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]`] SHA256_BLOCK_EL) THEN
+  ANTS_TAC THENL [REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+  DISCH_THEN(MP_TAC o SPEC `t:num`) THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN
+    `sha256_block M_i H_i = sha256_block M_i [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]`
+  SUBST1_TAC THENL
+   [AP_TERM_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  POP_ASSUM MP_TAC THEN
+  SPEC_TAC(`t:num`,`t:num`) THEN
+  CONV_TAC EXPAND_CASES_CONV THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  REWRITE_TAC[EL; HD; TL] THEN
+  CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+  ASM_REWRITE_TAC[WORD_ADD_0] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+  REWRITE_TAC[GSYM(CONJUNCT1 EL)]);;
 
 (* Note on CORRECT window: core covers pc+0x20 (start of block loop, after    *)
 (* prologue + `mov x29, x0`) through pc+0x1104 (instruction just after the    *)
