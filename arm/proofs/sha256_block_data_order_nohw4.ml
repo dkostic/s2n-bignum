@@ -530,7 +530,191 @@ let SHA256_BLOCK_DATA_ORDER_NOHW4_CORRECT = prove
               read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
               EL t (W:int32 list))` THEN
    CONJ_TAC THENL
-    [CHEAT_TAC;
+    [(* Fused B+D loop body: ENSURES_WHILE_UP2_TAC over j = 0..48 *)
+     ENSURES_WHILE_UP2_TAC `48` `pc + 0x7c` `pc + 0x134`
+      `\i s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw4_mc /\
+             read SP s = stackpointer /\
+             read X0 s = state_ptr /\
+             read X1 s = dptr_i /\
+             read X2 s = word(num_blocks - ii) /\
+             read X3 s = kptr /\
+             read X17 s = word i /\
+             read X27 s = word_add stackpointer (word (4 * i)) /\
+             read X4 s = word_zx (EL 0 (sha256_compress i W
+                                        [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X5 s = word_zx (EL 1 (sha256_compress i W
+                                        [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X6 s = word_zx (EL 2 (sha256_compress i W
+                                        [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X7 s = word_zx (EL 3 (sha256_compress i W
+                                        [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X8 s = word_zx (EL 4 (sha256_compress i W
+                                        [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X9 s = word_zx (EL 5 (sha256_compress i W
+                                        [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X10 s = word_zx (EL 6 (sha256_compress i W
+                                         [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X11 s = word_zx (EL 7 (sha256_compress i W
+                                         [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+             read X19 s = word_zx (a_i:int32) /\
+             read X20 s = word_zx (b_i:int32) /\
+             read X21 s = word_zx (c_i:int32) /\
+             read X22 s = word_zx (d_i:int32) /\
+             read X23 s = word_zx (e_i:int32) /\
+             read X24 s = word_zx (f_i:int32) /\
+             read X25 s = word_zx (g_i:int32) /\
+             read X26 s = word_zx (h_i:int32) /\
+             (!t. t < 8 ==>
+                  read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                  EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+             (!j t. j < num_blocks /\ t < 16 ==>
+                  read (memory :> bytes32
+                        (word_add data_ptr (word(64 * j + 4*t)))) s =
+                  word_bytereverse (EL t (EL j blocks))) /\
+             (!t. t < 64 ==>
+                  read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                  EL t sha256_K) /\
+             (!t. t < i + 16 ==>
+                  read (memory :> bytes32(word_add stackpointer (word(4*t)))) s =
+                  EL t (W:int32 list))` THEN
+     ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+      [ARITH_TAC;
+       (* Init at i=0 *)
+       ENSURES_INIT_TAC "s0" THEN
+       ENSURES_FINAL_STATE_TAC THEN
+       ASM_REWRITE_TAC[WORD_ADD_0; MULT_CLAUSES; sha256_compress;
+                       ADD_CLAUSES] THEN
+       CONV_TAC(DEPTH_CONV EL_CONV) THEN
+       REWRITE_TAC[];
+
+       (* Body: i < 48 ==> loopinv(i) at pc+0x7c => loopinv(i+1) at exit *)
+       X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+       SUBGOAL_THEN `i < 2 EXP 64 /\ i + 1 < 2 EXP 64` STRIP_ASSUME_TAC THENL
+        [UNDISCH_TAC `i < 48` THEN ARITH_TAC; ALL_TAC] THEN
+       ABBREV_TAC `sc_i = sha256_compress i W
+                          [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]` THEN
+       SUBGOAL_THEN
+        `sha256_compress (i+1) W [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i] =
+         sha256_compress_round (EL i sha256_K) (EL i W)
+          [EL 0 sc_i; EL 1 sc_i; EL 2 sc_i; EL 3 sc_i; EL 4 sc_i; EL 5 sc_i;
+           EL 6 sc_i; EL 7 sc_i]`
+       SUBST1_TAC THENL
+        [REWRITE_TAC[sha256_compress; SHA256_COMPRESS_ROUND_EL_LIST] THEN
+         ASM_REWRITE_TAC[]; ALL_TAC] THEN
+       MAP_EVERY ABBREV_TAC
+        [`K_t = (EL i sha256_K):int32`; `W_t = (EL i W):int32`] THEN
+       REWRITE_TAC[sha256_compress_round; sha256_Sigma0; sha256_Sigma1;
+                   sha256_Ch; sha256_Maj; LET_DEF; LET_END_DEF] THEN
+       SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_32; ARITH] THEN
+       REWRITE_TAC[DIMINDEX_32; EL; HD; TL; ARITH] THEN
+       CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[GSYM(CONJUNCT1 EL)] THEN
+       SUBGOAL_THEN `word_shl (word i:int64) 2 = word (4 * i)` ASSUME_TAC THENL
+        [REWRITE_TAC[WORD_SHL_WORD] THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
+       SUBGOAL_THEN `val (word i:int64) = i` ASSUME_TAC THENL
+        [ASM_SIMP_TAC[VAL_WORD_EQ; DIMINDEX_64]; ALL_TAC] THEN
+       ENSURES_INIT_TAC "s0" THEN
+       SUBGOAL_THEN
+        `word_add (word_add stackpointer (word (4 * i))) (word 0):int64 =
+           word_add stackpointer (word(4 * i)) /\
+         word_add (word_add stackpointer (word (4 * i))) (word 4):int64 =
+           word_add stackpointer (word(4 * (i+1))) /\
+         word_add (word_add stackpointer (word (4 * i))) (word 36):int64 =
+           word_add stackpointer (word(4 * (i+9))) /\
+         word_add (word_add stackpointer (word (4 * i))) (word 56):int64 =
+           word_add stackpointer (word(4 * (i+14))) /\
+         word_add (word_add stackpointer (word (4 * i))) (word 64):int64 =
+           word_add stackpointer (word(4 * (i+16)))`
+       STRIP_ASSUME_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+       SUBGOAL_THEN
+        `read (memory :> bytes32 (word_add kptr (word (4 * i)))) s0 = K_t /\
+         read (memory :> bytes32 (word_add stackpointer (word (4 * i)))) s0 =
+         W_t /\
+         read (memory :> bytes32 (word_add stackpointer (word (4 * (i+1))))) s0 =
+         EL (i+1) (W:int32 list) /\
+         read (memory :> bytes32 (word_add stackpointer (word (4 * (i+9))))) s0 =
+         EL (i+9) W /\
+         read (memory :> bytes32 (word_add stackpointer (word (4 * (i+14))))) s0 =
+         EL (i+14) W`
+       STRIP_ASSUME_TAC THENL
+        [EXPAND_TAC "K_t" THEN EXPAND_TAC "W_t" THEN
+         REPEAT CONJ_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN
+         UNDISCH_TAC `i < 48` THEN ARITH_TAC;
+         ALL_TAC] THEN
+       ARM_STEPS_TAC NOHW4_EXEC (1--46) THEN
+       ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+       SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_32; ARITH] THEN
+       SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                WORD_ZX_TRIVIAL] THEN
+       REWRITE_TAC[WORD_ZX_INJ_32_64] THEN
+       REPEAT CONJ_TAC THEN
+       TRY(REWRITE_TAC[BIC_NORM] THEN CONV_TAC WORD_RULE) THEN
+       (* Stack memory forall - try first since it uses GEN_TAC pattern *)
+       TRY(GEN_TAC THEN DISCH_TAC THEN
+           ASM_CASES_TAC `t < i + 16` THENL
+            [FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+             ALL_TAC] THEN
+           SUBGOAL_THEN `t = i + 16` SUBST_ALL_TAC THENL
+            [UNDISCH_TAC `t < (i + 1) + 16` THEN UNDISCH_TAC `~(t < i + 16)` THEN
+             ARITH_TAC; ALL_TAC] THEN
+           MP_TAC(SPECL [`i:num`; `M_i:int32 list`] SHA256_W_EXTEND) THEN
+           ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+           EXPAND_TAC "W" THEN
+           DISCH_THEN SUBST1_TAC THEN
+           SUBGOAL_THEN
+            `EL i (sha256_message_schedule i M_i) = EL i (W:int32 list) /\
+             EL (i+1) (sha256_message_schedule i M_i) = EL (i+1) W /\
+             EL (i+9) (sha256_message_schedule i M_i) = EL (i+9) W /\
+             EL (i+14) (sha256_message_schedule i M_i) = EL (i+14) W`
+           STRIP_ASSUME_TAC THENL
+            [EXPAND_TAC "W" THEN REPEAT CONJ_TAC THEN
+             CONV_TAC SYM_CONV THEN
+             MATCH_MP_TAC SHA256_SCHEDULE_MONO THEN
+             ASM_REWRITE_TAC[] THEN
+             UNDISCH_TAC `i < 48` THEN ARITH_TAC;
+             ALL_TAC] THEN
+           CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+           ASM_REWRITE_TAC[] THEN
+           REWRITE_TAC[sha256_sigma0; sha256_sigma1] THEN
+           SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_32; ARITH] THEN
+           SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                    WORD_ZX_TRIVIAL] THEN
+           CONV_TAC WORD_RULE) THEN
+       (* PC branch (remaining) *)
+       REWRITE_TAC[VAL_WORD_SUB_EQ_0; VAL_WORD_ADD; VAL_WORD;
+                   VAL_WORD_ZX_GEN; DIMINDEX_32; DIMINDEX_64] THEN
+       ASM_SIMP_TAC[MOD_LT;
+                    ARITH_RULE `i < 48
+                      ==> i < 2 EXP 64 /\ i < 2 EXP 32 /\
+                          1 < 2 EXP 32 /\ 48 < 2 EXP 32 /\
+                          i + 1 < 2 EXP 32`;
+                    ARITH_RULE `18446744073709551569 < 2 EXP 64`] THEN
+       ASM_CASES_TAC `i + 1 = 48` THENL
+        [ASM_REWRITE_TAC[LT_REFL] THEN
+         SUBGOAL_THEN `i = 47` SUBST1_TAC THENL
+          [UNDISCH_TAC `i + 1 = 48` THEN ARITH_TAC; ALL_TAC] THEN
+         CONV_TAC NUM_REDUCE_CONV;
+         SUBGOAL_THEN `i + 1 < 48` ASSUME_TAC THENL
+          [UNDISCH_TAC `i < 48` THEN UNDISCH_TAC `~(i + 1 = 48)` THEN
+           ARITH_TAC; ALL_TAC] THEN
+         ASM_REWRITE_TAC[] THEN
+         SUBGOAL_THEN `~((i + 18446744073709551569) MOD 2 EXP 64 = 0)`
+           ASSUME_TAC THENL
+          [SUBGOAL_THEN
+             `(i + 18446744073709551569) MOD 2 EXP 64 =
+              i + 18446744073709551569` SUBST1_TAC THENL
+            [MATCH_MP_TAC MOD_LT THEN
+             UNDISCH_TAC `i + 1 < 48` THEN ARITH_TAC; ALL_TAC] THEN
+           UNDISCH_TAC `i + 1 < 48` THEN ARITH_TAC; ALL_TAC] THEN
+         ASM_REWRITE_TAC[]];
+
+       (* Exit at i=48 *)
+       ENSURES_INIT_TAC "s0" THEN
+       ENSURES_FINAL_STATE_TAC THEN
+       ASM_REWRITE_TAC[] THEN
+       REPEAT STRIP_TAC THEN
+       FIRST_X_ASSUM MATCH_MP_TAC THEN
+       UNDISCH_TAC `t < 64` THEN ARITH_TAC];
+
      ALL_TAC] THEN
 
    (* D-tail loop (pc+0x134 -> pc+0x1b0): j = 48..64 *)
