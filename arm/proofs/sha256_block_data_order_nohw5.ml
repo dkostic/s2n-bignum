@@ -406,7 +406,67 @@ let SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT = prove
 
     ALL_TAC] THEN
 
-  (* ===== Period loop + D-tail ===== *)
+  (* ===== Period loop: pc+0xc8 .. pc+0x9d0 (3 periods x 16 rounds).
+     At exit: slot_reg(j) = word_zx (EL (48 + j) W) (j=0..15),
+              X4..X11 holds sha256_compress 48 W H_i,
+              X3 = word_add kptr (word 192),
+              X30 = word 0.                                                *)
+  ENSURES_SEQUENCE_TAC `pc + 0x9d0`
+    `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw5_mc /\
+         read SP s = stackpointer /\
+         read X29 s = state_ptr /\
+         read X30 s = word 0 /\
+         read X3 s = word_add kptr (word 192) /\
+         read X4 s = word_zx (EL 0 (sha256_compress 48 W
+                    [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X5 s = word_zx (EL 1 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X6 s = word_zx (EL 2 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X7 s = word_zx (EL 3 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X8 s = word_zx (EL 4 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X9 s = word_zx (EL 5 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X10 s = word_zx (EL 6 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X11 s = word_zx (EL 7 (sha256_compress 48 W
+                    [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+         read X19 s = word_zx (EL 48 (W:int32 list)) /\
+         read X20 s = word_zx (EL 49 (W:int32 list)) /\
+         read X21 s = word_zx (EL 50 (W:int32 list)) /\
+         read X22 s = word_zx (EL 51 (W:int32 list)) /\
+         read X23 s = word_zx (EL 52 (W:int32 list)) /\
+         read X24 s = word_zx (EL 53 (W:int32 list)) /\
+         read X25 s = word_zx (EL 54 (W:int32 list)) /\
+         read X26 s = word_zx (EL 55 (W:int32 list)) /\
+         read X27 s = word_zx (EL 56 (W:int32 list)) /\
+         read X28 s = word_zx (EL 57 (W:int32 list)) /\
+         read X12 s = word_zx (EL 58 (W:int32 list)) /\
+         read X13 s = word_zx (EL 59 (W:int32 list)) /\
+         read X14 s = word_zx (EL 60 (W:int32 list)) /\
+         read X15 s = word_zx (EL 61 (W:int32 list)) /\
+         read X16 s = word_zx (EL 62 (W:int32 list)) /\
+         read X17 s = word_zx (EL 63 (W:int32 list)) /\
+         read (memory :> bytes64 (word_add stackpointer (word 96))) s =
+           dptr_i /\
+         read (memory :> bytes64 (word_add stackpointer (word 104))) s =
+           word(num_blocks - ii) /\
+         (!t. t < 8 ==>
+              read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+              EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+         (!j t. j < num_blocks /\ t < 16 ==>
+              read (memory :> bytes32
+                    (word_add data_ptr (word(64 * j + 4*t)))) s =
+              word_bytereverse (EL t (EL j blocks))) /\
+         (!t. t < 64 ==>
+              read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+              EL t sha256_K)` THEN
+  CONJ_TAC THENL
+   [(* Period loop proof *) CHEAT_TAC; ALL_TAC] THEN
+
+  (* ===== D-tail: pc+0x9d0 .. pc+0x1090, 16 compression-only rounds. ===== *)
   ENSURES_SEQUENCE_TAC `pc + 0x1090`
     `\s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw5_mc /\
          read SP s = stackpointer /\
@@ -443,7 +503,7 @@ let SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT = prove
               read (memory :> bytes32(word_add kptr (word(4*t)))) s =
               EL t sha256_K)` THEN
   CONJ_TAC THENL
-   [(* Period + D-tail proof *) CHEAT_TAC; ALL_TAC] THEN
+   [(* D-tail proof *) CHEAT_TAC; ALL_TAC] THEN
 
   (* ===== Phase E: add-back (pc+0x1090 .. pc+0x10d0, 16 insts). ===== *)
   ENSURES_SEQUENCE_TAC `pc + 0x10d0`
