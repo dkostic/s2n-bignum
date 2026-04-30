@@ -492,9 +492,8 @@ let SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT = prove
   CONJ_TAC THENL
    [(* Phase E proof *) CHEAT_TAC; ALL_TAC] THEN
 
-  (* ===== Phase F + postamble: pc+0x10d0 .. pc+0x1100 (12 insts). ===== *)
-  (* Phase F has 8 str; postamble has ldp, add x1, sub x2, sub x3 (4).   *)
-  (* Total 12 instructions ending at the cbnz at pc+0x1100.              *)
+  (* ===== Phase F + postamble: pc+0x10d0 .. pc+0x1100 (13 insts). ===== *)
+  (* Phase F: 8 str. Postamble: ldp x1,x2 + add x1 + sub x2 + sub x3 (5). *)
   CHEAT_TAC);;
 
 (* Note on CORRECT window: core covers pc+0x20 (start of block loop, after    *)
