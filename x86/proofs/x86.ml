@@ -7,6 +7,10 @@
 (* Simplified model of x86 semantics.                                        *)
 (* ========================================================================= *)
 
+(* SHA-256 helper functions (Ch, Maj, Sigma0/1, sigma0/1) are shared with *)
+(* ARM and used by the SHA-NI instruction semantics below.                *)
+needs "common/sha256_spec.ml";;
+
 let x86_print_log = ref false;;
 
 (* ------------------------------------------------------------------------- *)
@@ -1494,31 +1498,9 @@ let x86_PUNPCKLQDQ = new_definition
     let res = (word_join:int64->int64->int128) y_low x_low in
     (dest := res) s`;;
 
-(* SHA-256 helper functions for sigma0, sigma1, Sigma0, Sigma1, Ch, Maj *)
-
-let sha256_Ch = new_definition
-  `sha256_Ch (e:int32) (f:int32) (g:int32) =
-    word_xor (word_and e f) (word_and (word_not e) g)`;;
-
-let sha256_Maj = new_definition
-  `sha256_Maj (a:int32) (b:int32) (c:int32) =
-    word_xor (word_and a b) (word_xor (word_and a c) (word_and b c))`;;
-
-let sha256_Sigma0 = new_definition
-  `sha256_Sigma0 (x:int32) =
-    word_xor (word_ror x 2) (word_xor (word_ror x 13) (word_ror x 22))`;;
-
-let sha256_Sigma1 = new_definition
-  `sha256_Sigma1 (x:int32) =
-    word_xor (word_ror x 6) (word_xor (word_ror x 11) (word_ror x 25))`;;
-
-let sha256_sigma0 = new_definition
-  `sha256_sigma0 (x:int32) =
-    word_xor (word_ror x 7) (word_xor (word_ror x 18) (word_ushr x 3))`;;
-
-let sha256_sigma1 = new_definition
-  `sha256_sigma1 (x:int32) =
-    word_xor (word_ror x 17) (word_xor (word_ror x 19) (word_ushr x 10))`;;
+(* SHA-256 helper functions (sha256_Ch, sha256_Maj, sha256_Sigma0,       *)
+(* sha256_Sigma1, sha256_sigma0, sha256_sigma1) are defined in           *)
+(* common/sha256_spec.ml, loaded above.                                  *)
 
 let x86_SHA256RNDS2 = new_definition
   `x86_SHA256RNDS2 dest src wk s =
