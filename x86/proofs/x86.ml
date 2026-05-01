@@ -1435,6 +1435,162 @@ let x86_PSRLW = new_definition
     let res:(128)word = usimd8 (\x. word_ushr x count) d in
     (dest := res) s`;;
 
+let x86_PALIGNR = new_definition
+  `x86_PALIGNR dest src imm8 s =
+    let x = read dest s and y = read src s in
+    let shift = 8 * val (read imm8 s) in
+    let concat:(256)word = word_join x y in
+    let res:(128)word = word_subword concat (shift,128) in
+    (dest := res) s`;;
+
+let x86_PSLLD = new_definition
+  `x86_PSLLD dest imm8 s =
+    let d = read dest s in
+    let count = val (read imm8 s) in
+    let res:(128)word = usimd4 (\x. word_shl x count) d in
+    (dest := res) s`;;
+
+let x86_PSLLDQ = new_definition
+  `x86_PSLLDQ dest imm8 s =
+    let d = read dest s in
+    let count = 8 * val (read imm8 s) in
+    let res:(128)word = word_shl d count in
+    (dest := res) s`;;
+
+let x86_PSRLD = new_definition
+  `x86_PSRLD dest imm8 s =
+    let d = read dest s in
+    let count = val (read imm8 s) in
+    let res:(128)word = usimd4 (\x. word_ushr x count) d in
+    (dest := res) s`;;
+
+let x86_PSRLDQ = new_definition
+  `x86_PSRLDQ dest imm8 s =
+    let d = read dest s in
+    let count = 8 * val (read imm8 s) in
+    let res:(128)word = word_ushr d count in
+    (dest := res) s`;;
+
+let x86_PSRLQ = new_definition
+  `x86_PSRLQ dest imm8 s =
+    let d = read dest s in
+    let count = val (read imm8 s) in
+    let res:(128)word = usimd2 (\x. word_ushr x count) d in
+    (dest := res) s`;;
+
+let x86_PUNPCKHQDQ = new_definition
+  `x86_PUNPCKHQDQ dest src s =
+    let x = read dest s and y = read src s in
+    let x_high = (word_subword:int128->num#num->int64) x (64,64)
+    and y_high = (word_subword:int128->num#num->int64) y (64,64) in
+    let res = (word_join:int64->int64->int128) y_high x_high in
+    (dest := res) s`;;
+
+let x86_PUNPCKLQDQ = new_definition
+  `x86_PUNPCKLQDQ dest src s =
+    let x = read dest s and y = read src s in
+    let x_low = (word_subword:int128->num#num->int64) x (0,64)
+    and y_low = (word_subword:int128->num#num->int64) y (0,64) in
+    let res = (word_join:int64->int64->int128) y_low x_low in
+    (dest := res) s`;;
+
+(* SHA-256 helper functions for sigma0, sigma1, Sigma0, Sigma1, Ch, Maj *)
+
+let sha256_Ch = new_definition
+  `sha256_Ch (e:int32) (f:int32) (g:int32) =
+    word_xor (word_and e f) (word_and (word_not e) g)`;;
+
+let sha256_Maj = new_definition
+  `sha256_Maj (a:int32) (b:int32) (c:int32) =
+    word_xor (word_and a b) (word_xor (word_and a c) (word_and b c))`;;
+
+let sha256_Sigma0 = new_definition
+  `sha256_Sigma0 (x:int32) =
+    word_xor (word_ror x 2) (word_xor (word_ror x 13) (word_ror x 22))`;;
+
+let sha256_Sigma1 = new_definition
+  `sha256_Sigma1 (x:int32) =
+    word_xor (word_ror x 6) (word_xor (word_ror x 11) (word_ror x 25))`;;
+
+let sha256_sigma0 = new_definition
+  `sha256_sigma0 (x:int32) =
+    word_xor (word_ror x 7) (word_xor (word_ror x 18) (word_ushr x 3))`;;
+
+let sha256_sigma1 = new_definition
+  `sha256_sigma1 (x:int32) =
+    word_xor (word_ror x 17) (word_xor (word_ror x 19) (word_ushr x 10))`;;
+
+let x86_SHA256RNDS2 = new_definition
+  `x86_SHA256RNDS2 dest src wk s =
+    let cdgh:(128)word = read dest s
+    and abef:(128)word = read src s
+    and wkval:(128)word = read wk s in
+    let a_0 = word_subword abef (96,32):(32)word
+    and b_0 = word_subword abef (64,32):(32)word
+    and c_0 = word_subword cdgh (96,32):(32)word
+    and d_0 = word_subword cdgh (64,32):(32)word
+    and e_0 = word_subword abef (32,32):(32)word
+    and f_0 = word_subword abef (0,32):(32)word
+    and g_0 = word_subword cdgh (32,32):(32)word
+    and h_0 = word_subword cdgh (0,32):(32)word
+    and wk0 = word_subword wkval (0,32):(32)word
+    and wk1 = word_subword wkval (32,32):(32)word in
+    let t_0 = word_add (word_add (word_add (sha256_Ch e_0 f_0 g_0)
+                                           (sha256_Sigma1 e_0))
+                                 wk0) h_0 in
+    let a_1 = word_add t_0 (word_add (sha256_Maj a_0 b_0 c_0)
+                                     (sha256_Sigma0 a_0))
+    and b_1 = a_0
+    and c_1 = b_0
+    and d_1 = c_0
+    and e_1 = word_add t_0 d_0
+    and f_1 = e_0
+    and g_1 = f_0
+    and h_1 = g_0 in
+    let t_1 = word_add (word_add (word_add (sha256_Ch e_1 f_1 g_1)
+                                           (sha256_Sigma1 e_1))
+                                 wk1) h_1 in
+    let a_2 = word_add t_1 (word_add (sha256_Maj a_1 b_1 c_1)
+                                     (sha256_Sigma0 a_1))
+    and b_2 = a_1
+    and e_2 = word_add t_1 d_1
+    and f_2 = e_1 in
+    let res:(128)word = word
+      (val f_2 + val e_2 * 2 EXP 32 +
+       val b_2 * 2 EXP 64 + val a_2 * 2 EXP 96) in
+    (dest := res) s`;;
+
+let x86_SHA256MSG1 = new_definition
+  `x86_SHA256MSG1 dest src s =
+    let x:(128)word = read dest s
+    and y:(128)word = read src s in
+    let w0 = word_subword x (0,32):(32)word
+    and w1 = word_subword x (32,32):(32)word
+    and w2 = word_subword x (64,32):(32)word
+    and w3 = word_subword x (96,32):(32)word
+    and w4 = word_subword y (0,32):(32)word in
+    let res:(128)word = word
+      (val (word_add w0 (sha256_sigma0 w1)) +
+       val (word_add w1 (sha256_sigma0 w2)) * 2 EXP 32 +
+       val (word_add w2 (sha256_sigma0 w3)) * 2 EXP 64 +
+       val (word_add w3 (sha256_sigma0 w4)) * 2 EXP 96) in
+    (dest := res) s`;;
+
+let x86_SHA256MSG2 = new_definition
+  `x86_SHA256MSG2 dest src s =
+    let x:(128)word = read dest s
+    and y:(128)word = read src s in
+    let w14 = word_subword y (64,32):(32)word
+    and w15 = word_subword y (96,32):(32)word in
+    let w16 = word_add (word_subword x (0,32):(32)word) (sha256_sigma1 w14) in
+    let w17 = word_add (word_subword x (32,32):(32)word) (sha256_sigma1 w15) in
+    let w18 = word_add (word_subword x (64,32):(32)word) (sha256_sigma1 w16) in
+    let w19 = word_add (word_subword x (96,32):(32)word) (sha256_sigma1 w17) in
+    let res:(128)word = word
+      (val w16 + val w17 * 2 EXP 32 +
+       val w18 * 2 EXP 64 + val w19 * 2 EXP 96) in
+    (dest := res) s`;;
+
 let x86_PXOR = new_definition
   `x86_PXOR dest src s =
     let x = read dest s in
@@ -2126,6 +2282,25 @@ let x86_VPSHUFB = new_definition
         let res = f128 (word_zx x) (word_zx ix) in
         (dest := (word_zx res):N word) s`;;
 
+let x86_VPSHUFD = new_definition
+  `x86_VPSHUFD dest src imm8 (s:x86state) =
+      let (x:N word) = read src s
+      and od = read imm8 s in
+      if dimindex(:N) = 256 then
+        let xl:(128)word = word_subword (word_zx x:(256)word) (0,128)
+        and xh:(128)word = word_subword (word_zx x:(256)word) (128,128) in
+        let rl:(128)word = usimd4 (\(od:(2)word).
+            word_subword xl ((val od)*32,32)) od
+        and rh:(128)word = usimd4 (\(od:(2)word).
+            word_subword xh ((val od)*32,32)) od in
+        let res:(256)word = word_join rh rl in
+        (dest := (word_zx res):N word) s
+      else
+        let x128:(128)word = word_zx x in
+        let res:(128)word = usimd4 (\(od:(2)word).
+            word_subword x128 ((val od)*32,32)) od in
+        (dest := (word_zx res):N word) s`;;
+
 let x86_VPSUBD = new_definition
   `x86_VPSUBD dest src1 src2 (s:x86state) =
       let (x:N word) = read src1 s
@@ -2337,12 +2512,41 @@ let x86_VPOR = new_definition
         let z = word_or x y in
         (dest := (z:N word)) s`;;
 
+let x86_VPALIGNR = new_definition
+  `x86_VPALIGNR dest src1 src2 imm8 (s:x86state) =
+      let (x:N word) = read src1 s
+      and (y:N word) = read src2 s in
+      let shift = 8 * val (read imm8 s) in
+      if dimindex(:N) = 256 then
+        let xh:(128)word = word_subword (word_zx x:(256)word) (128,128)
+        and xl:(128)word = word_subword (word_zx x:(256)word) (0,128)
+        and yh:(128)word = word_subword (word_zx y:(256)word) (128,128)
+        and yl:(128)word = word_subword (word_zx y:(256)word) (0,128) in
+        let concat_h:(256)word = word_join xh yh
+        and concat_l:(256)word = word_join xl yl in
+        let rh:(128)word = word_subword concat_h (shift,128)
+        and rl:(128)word = word_subword concat_l (shift,128) in
+        let res:(256)word = word_join rh rl in
+        (dest := (word_zx res):N word) s
+      else
+        let x128:(128)word = word_zx x
+        and y128:(128)word = word_zx y in
+        let concat:(256)word = word_join x128 y128 in
+        let res:(128)word = word_subword concat (shift,128) in
+        (dest := (word_zx res):N word) s`;;
+
 let x86_VPXOR = new_definition
  `x86_VPXOR dest src1 src2 (s:x86state) =
         let x = read src1 s
         and y = read src2 s in
         let z = word_xor x y in
         (dest := (z:N word)) s`;;
+
+(* VZEROUPPER zeros the upper 128 bits of all ZMM registers (bits 256-511).
+   Since the proof framework tracks YMM registers as full 256-bit values and
+   does not model the upper ZMM bits, this is effectively a no-op. *)
+let x86_VZEROUPPER = new_definition
+  `x86_VZEROUPPER (s:x86state) = \s'. s = s'`;;
 
 (* Only deal with register-register exchange *)
 let x86_XCHG = new_definition
@@ -2983,6 +3187,11 @@ let x86_execute = define
        (add_load_event dest s ,, add_load_event src s ,,
         add_store_event dest s ,,
        (\s. x86_PADDQ (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
+    | PALIGNR dest src imm8 ->
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_PALIGNR (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
+                        (OPERAND8 imm8 s) s)) s
     | PAND dest src ->
        (add_load_event dest s ,, add_load_event src s ,,
         add_store_event dest s ,,
@@ -3042,12 +3251,35 @@ let x86_execute = define
         add_store_event dest s ,,
        (\s. x86_PSHUFD (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
                        (OPERAND8 imm8 s) s)) s
+    | PSLLD dest imm8 ->
+       (add_load_event dest s ,, add_store_event dest s ,,
+       (\s. x86_PSLLD (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
+    | PSLLDQ dest imm8 ->
+       (add_load_event dest s ,, add_store_event dest s ,,
+       (\s. x86_PSLLDQ (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
     | PSRAD dest imm8 ->
        (add_load_event dest s ,, add_store_event dest s ,,
        (\s. x86_PSRAD (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
+    | PSRLD dest imm8 ->
+       (add_load_event dest s ,, add_store_event dest s ,,
+       (\s. x86_PSRLD (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
+    | PSRLDQ dest imm8 ->
+       (add_load_event dest s ,, add_store_event dest s ,,
+       (\s. x86_PSRLDQ (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
+    | PSRLQ dest imm8 ->
+       (add_load_event dest s ,, add_store_event dest s ,,
+       (\s. x86_PSRLQ (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
     | PSRLW dest imm8 ->
        (add_load_event dest s ,, add_store_event dest s ,,
        (\s. x86_PSRLW (OPERAND128_SSE dest s) (OPERAND8 imm8 s) s)) s
+    | PUNPCKHQDQ dest src ->
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_PUNPCKHQDQ (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
+    | PUNPCKLQDQ dest src ->
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_PUNPCKLQDQ (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
     | PUSH src ->
        (add_load_event src s ,,
        (\s. (match operand_size src with
@@ -3132,6 +3364,19 @@ let x86_execute = define
        (\s. (match operand_size dest with
            8 -> x86_SET cc (OPERAND8 dest s)
          | _ -> ARB) s)) s
+    | SHA256MSG1 dest src ->
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_SHA256MSG1 (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
+    | SHA256MSG2 dest src ->
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_SHA256MSG2 (OPERAND128_SSE dest s) (OPERAND128_SSE src s) s)) s
+    | SHA256RNDS2 dest src ->
+       (add_load_event dest s ,, add_load_event src s ,,
+        add_store_event dest s ,,
+       (\s. x86_SHA256RNDS2 (OPERAND128_SSE dest s) (OPERAND128_SSE src s)
+                            (OPERAND128_SSE (Simdregister xmm0) s) s)) s
     | SHL dest src ->
        (add_load_event dest s ,, add_load_event src s ,,
         add_store_event dest s ,,
@@ -3440,6 +3685,13 @@ let x86_execute = define
                              (OPERAND256 src2 s)
         | 128 -> x86_VPSHUFB (OPERAND128 dest s) (OPERAND128 src1 s)
                              (OPERAND128 src2 s)) s)) s
+    | VPSHUFD dest src imm8 ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPSHUFD (OPERAND256 dest s) (OPERAND256 src s)
+                             (OPERAND8 imm8 s)
+        | 128 -> x86_VPSHUFD (OPERAND128 dest s) (OPERAND128 src s)
+                             (OPERAND8 imm8 s)) s)) s
     | VPSLLVD dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3575,6 +3827,14 @@ let x86_execute = define
         (\s. (match operand_size dest with
           256 -> x86_VPOR (OPERAND256 dest s) (OPERAND256 src1 s) (OPERAND256 src2 s)
         | 128 -> x86_VPOR (OPERAND128 dest s) (OPERAND128 src1 s) (OPERAND128 src2 s)) s)) s
+    | VPALIGNR dest src1 src2 imm8 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPALIGNR (OPERAND256 dest s) (OPERAND256 src1 s)
+                              (OPERAND256 src2 s) (OPERAND8 imm8 s)
+        | 128 -> x86_VPALIGNR (OPERAND128 dest s) (OPERAND128 src1 s)
+                              (OPERAND128 src2 s) (OPERAND8 imm8 s)) s)) s
     | VPSRAD dest src imm8 ->
         (add_load_event src s ,, add_store_event dest s ,,
         (\s. (match operand_size dest with
@@ -3592,6 +3852,8 @@ let x86_execute = define
         (\s. (match operand_size dest with
           256 -> x86_VPUNPCKLQDQ (OPERAND256 dest s) (OPERAND256 src1 s) (OPERAND256 src2 s)
         | 128 -> x86_VPUNPCKLQDQ (OPERAND128 dest s) (OPERAND128 src1 s) (OPERAND128 src2 s)) s)) s
+    | VZEROUPPER ->
+        x86_VZEROUPPER s
     | XCHG dest src ->
         (add_load_event src s ,, add_load_event dest s ,,
          add_store_event dest s ,, add_store_event src s ,,
@@ -4394,6 +4656,9 @@ let x86_PSHUFB_ALT = EXPAND_SIMD_RULE x86_PSHUFB;;
 let x86_PSHUFD_ALT = EXPAND_SIMD_RULE x86_PSHUFD;;
 let x86_PSRAD_ALT = EXPAND_SIMD_RULE x86_PSRAD;;
 let x86_PSRLW_ALT = EXPAND_SIMD_RULE x86_PSRLW;;
+let x86_PSLLD_ALT = EXPAND_SIMD_RULE x86_PSLLD;;
+let x86_PSRLD_ALT = EXPAND_SIMD_RULE x86_PSRLD;;
+let x86_PSRLQ_ALT = EXPAND_SIMD_RULE x86_PSRLQ;;
 let x86_VMOVDQA_ALT = EXPAND_SIMD_RULE x86_VMOVDQA;;
 let x86_VMOVDQU_ALT = EXPAND_SIMD_RULE x86_VMOVDQU;;
 let x86_VMOVSHDUP_ALT = EXPAND_SIMD_RULE x86_VMOVSHDUP;;
@@ -4444,11 +4709,16 @@ let x86_VPSRAW_ALT = EXPAND_SIMD_RULE x86_VPSRAW;;
 let x86_VPSRLW_ALT = EXPAND_SIMD_RULE x86_VPSRLW;;
 let x86_VPUNPCKHQDQ_ALT = EXPAND_SIMD_RULE x86_VPUNPCKHQDQ;;
 let x86_VPUNPCKLQDQ_ALT = EXPAND_SIMD_RULE x86_VPUNPCKLQDQ;;
+let x86_VPALIGNR_ALT = EXPAND_SIMD_RULE x86_VPALIGNR;;
+let x86_VPSHUFD_ALT = EXPAND_SIMD_RULE x86_VPSHUFD;;
 
 let X86_OPERATION_CLAUSES =
   map (CONV_RULE (TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) o
        REWRITE_RULE[WORD_ZX_TRIVIAL] o
-       CONV_RULE(TOP_DEPTH_CONV let_CONV) o SPEC_ALL)
+       CONV_RULE(TOP_DEPTH_CONV let_CONV) o
+       REWRITE_RULE[sha256_Ch; sha256_Maj; sha256_Sigma0; sha256_Sigma1;
+                    sha256_sigma0; sha256_sigma1] o
+       SPEC_ALL)
    [x86_ADC_ALT; x86_ADCX_ALT; x86_ADOX_ALT; x86_ADD_ALT;
     x86_AESDEC; x86_AESDECLAST; x86_AESENC; x86_AESENCLAST;
     x86_AESKEYGENASSIST; x86_AND;
@@ -4458,11 +4728,15 @@ let X86_OPERATION_CLAUSES =
     x86_MOV; x86_MOVAPS; x86_MOVDQA; x86_MOVDQU; x86_MOVD; x86_MOVQ; x86_VMOVD; x86_VMOVQ;
     x86_VMOVHPD; x86_MOVSX; x86_MOVUPS; x86_MOVSB_ALT;
     x86_MOVZX; x86_MUL2; x86_MULX4; x86_NEG; x86_NOP; x86_NOP_N; x86_NOT; x86_OR;
-    x86_PADDD_ALT; x86_PADDQ_ALT; x86_PAND; x86_PBLENDW_ALT; x86_PCMPGTD_ALT; x86_PCMPGTW_ALT;
+    x86_PADDD_ALT; x86_PADDQ_ALT; x86_PALIGNR; x86_PAND; x86_PBLENDW_ALT; x86_PCMPGTD_ALT; x86_PCMPGTW_ALT;
     x86_PEXT_ALT; x86_PINSRD; x86_PINSRQ; x86_PMOVMSKB_ALT; x86_POP_ALT; x86_POPCNT;
-    x86_PSHUFB_ALT; x86_PSHUFD_ALT; x86_PSRAD_ALT; x86_PSRLW_ALT; x86_PUSH_ALT; x86_PXOR;
+    x86_PSHUFB_ALT; x86_PSHUFD_ALT; x86_PSLLD_ALT; x86_PSLLDQ; x86_PSRAD_ALT;
+    x86_PSRLD_ALT; x86_PSRLDQ; x86_PSRLQ_ALT; x86_PSRLW_ALT;
+    x86_PUNPCKHQDQ; x86_PUNPCKLQDQ; x86_PUSH_ALT; x86_PXOR;
     x86_RCL; x86_RCR; x86_RET; x86_ROL; x86_ROR;
-    x86_SAR; x86_SBB_ALT; x86_SET; x86_SHL; x86_SHLD; x86_SHR; x86_SHRD;
+    x86_SAR; x86_SBB_ALT; x86_SET;
+    x86_SHA256MSG1; x86_SHA256MSG2; x86_SHA256RNDS2;
+    x86_SHL; x86_SHLD; x86_SHR; x86_SHRD;
     x86_STC; x86_STD; x86_SUB_ALT; x86_TEST; x86_TZCNT; x86_XCHG; x86_XOR;
     (*** AVX2 instructions ***)
     x86_VPADDD_ALT; x86_VPADDQ_ALT; x86_VPADDW_ALT; x86_VPMULHRSW_ALT; x86_VPMULHW_ALT; x86_VPINSRD; x86_VPINSRQ; x86_VPINSRW; x86_VINSERTI128; x86_VEXTRACTI128;
@@ -4473,6 +4747,7 @@ let X86_OPERATION_CLAUSES =
     x86_VPACKUSWB_ALT; x86_VPBLENDVB_ALT;
     x86_VPBLENDD_ALT; x86_VPBLENDW_ALT; x86_VPCLMULQDQ_ALT; x86_VPERMD_ALT; x86_VPERMQ_ALT; x86_VPSHUFB_ALT;
     x86_VPUNPCKLQDQ_ALT; x86_VPUNPCKHQDQ_ALT; x86_VPBROADCASTQ_ALT; x86_VPERM2I128_ALT;
+    x86_VPALIGNR_ALT; x86_VPSHUFD_ALT; x86_VZEROUPPER;
     (*** 32-bit backups since the ALT forms are 64-bit only ***)
     INST_TYPE[`:32`,`:N`] x86_ADC;
     INST_TYPE[`:32`,`:N`] x86_ADCX;

@@ -284,6 +284,7 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | OR operand operand
    | PADDD operand operand
    | PADDQ operand operand
+   | PALIGNR operand operand operand
    | PAND operand operand
    | PBLENDW operand operand operand
    | PCMPGTD operand operand
@@ -296,8 +297,15 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | POPCNT operand operand
    | PSHUFB operand operand
    | PSHUFD operand operand operand
+   | PSLLD operand operand
+   | PSLLDQ operand operand
    | PSRAD operand operand
+   | PSRLD operand operand
+   | PSRLDQ operand operand
+   | PSRLQ operand operand
    | PSRLW operand operand
+   | PUNPCKHQDQ operand operand
+   | PUNPCKLQDQ operand operand
    | PUSH operand
    | PXOR operand operand
    | RCL operand operand
@@ -308,6 +316,9 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | SAR operand operand
    | SBB operand operand
    | SET condition operand
+   | SHA256MSG1 operand operand
+   | SHA256MSG2 operand operand
+   | SHA256RNDS2 operand operand
    | SHL operand operand
    | SHR operand operand
    | SHLD operand operand operand
@@ -355,7 +366,9 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | VPMULLD operand operand operand
    | VPMULLW operand operand operand
    | VPOR operand operand operand
+   | VPALIGNR operand operand operand operand
    | VPSHUFB operand operand operand
+   | VPSHUFD operand operand operand
    | VPSLLD operand operand operand
    | VPSLLVD operand operand operand
    | VPSLLQ operand operand operand
@@ -374,6 +387,7 @@ let instruction_INDUCTION,instruction_RECURSION = define_type
    | VPUNPCKHQDQ operand operand operand
    | VPUNPCKLQDQ operand operand operand
    | VPXOR operand operand operand
+   | VZEROUPPER
    | XCHG operand operand
    | XOR operand operand";;
 
