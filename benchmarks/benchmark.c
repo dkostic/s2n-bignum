@@ -49,9 +49,11 @@ static uint64_t bb[16][BUFFERSIZE];
 
 static uint64_t bigbuff[100000];
 
-// SHA-256 round constants (K) for benchmarking sha256_block_data_order_hw
+// SHA-256 round constants (K) for benchmarking sha256_block_data_order_hw.
+// 64 round constants followed by a 4-word SSSE3 byte-swap mask used by the
+// x86 SHA-NI implementation; ARM reads only indices 0..63.
 
-static const uint32_t sha256_K[64] = {
+static const uint32_t sha256_K[68] = {
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
   0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
@@ -67,7 +69,8 @@ static const uint32_t sha256_K[64] = {
   0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
   0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f
 };
 
 // Source of random 64-bit numbers with bit density
@@ -1140,8 +1143,8 @@ void call_sha3_keccak2_f1600(void) {}
 void call_sha3_keccak2_f1600_alt(void) {}
 void call_sha3_keccak4_f1600_alt(void) repeat(sha3_keccak4_f1600_alt(b0,b1,b2,b3))
 void call_sha3_keccak4_f1600_alt2(void) {}
-void call_sha256_block_data_order_hw__1(void) {}
-void call_sha256_block_data_order_hw__16(void) {}
+void call_sha256_block_data_order_hw__1(void) repeat(sha256_block_data_order_hw((uint32_t*)b0,(const uint8_t*)b1,1,sha256_K))
+void call_sha256_block_data_order_hw__16(void) repeat(sha256_block_data_order_hw((uint32_t*)b0,(const uint8_t*)b1,16,sha256_K))
 
 #else
 
@@ -1621,8 +1624,8 @@ int main(int argc, char *argv[])
   timingtest(all,"sha3_keccak4_f1600",call_sha3_keccak4_f1600);
   timingtest(all,"sha3_keccak4_f1600_alt",call_sha3_keccak4_f1600_alt);
   timingtest(sha3,"sha3_keccak4_f1600_alt2",call_sha3_keccak4_f1600_alt2);
-  timingtest(arm,"sha256_block_data_order_hw (1 block)",call_sha256_block_data_order_hw__1);
-  timingtest(arm,"sha256_block_data_order_hw (16 blocks)",call_sha256_block_data_order_hw__16);
+  timingtest(all,"sha256_block_data_order_hw (1 block)",call_sha256_block_data_order_hw__1);
+  timingtest(all,"sha256_block_data_order_hw (16 blocks)",call_sha256_block_data_order_hw__16);
   timingtest(bmi,"sm2_montjadd",call_sm2_montjadd);
   timingtest(all,"sm2_montjadd_alt",call_sm2_montjadd_alt);
   timingtest(bmi,"sm2_montjdouble",call_sm2_montjdouble);
