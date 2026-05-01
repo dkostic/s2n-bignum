@@ -59,6 +59,20 @@ let LIST_8_EL_NOHW5 = prove
   FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_8_CONS_NOHW5) THEN STRIP_TAC THEN
   ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
 
+(* Destructuring lemma for sha256_compress output.  Used to unblock EL_CONV
+   reduction of EL j (sha256_compress n W H) when n is symbolic: introduce
+   fresh vars a_pk..h_pk so that EL j [a_pk;..;h_pk] reduces to literal vars
+   where `n` does not allow n+1 pattern-match on the compress definition.     *)
+
+let LIST_8_COMPRESS_NOHW5 = prove
+ (`!n W H:int32 list. LENGTH H = 8
+   ==> ?a b c d e f g h. sha256_compress n W H = [a;b;c;d;e;f;g;h]`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`sha256_compress n W (H:int32 list)`] LIST_8_EL_NOHW5) THEN
+  ANTS_TAC THENL
+   [MATCH_MP_TAC LENGTH_SHA256_COMPRESS THEN ASM_REWRITE_TAC[];
+    MESON_TAC[]]);;
+
 (* ------------------------------------------------------------------------- *)
 (* Slot-register map. The 16 schedule slots live in these registers in       *)
 (* circular order. `slot_reg k` is the register holding W[t + k mod 16]      *)
