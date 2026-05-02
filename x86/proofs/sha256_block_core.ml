@@ -139,6 +139,78 @@ let PALIGNR_8_WORD_JOIN4 = prove
 (* ------------------------------------------------------------------------- *)
 
 (* ========================================================================= *)
+(* Post-step re-folding infrastructure for SHA256RNDS2.                      *)
+(*                                                                           *)
+(* After X86_STEPS_TAC steps through a SHA256RNDS2, the resulting YMM        *)
+(* assumption has the 2-round SHA-256 compression unfolded into              *)
+(* sha256_Ch/Maj/Sigma0/Sigma1 applied to word_subword expressions on YMM    *)
+(* reads.  To match the Phase 3 bridge lemmas (which expect sha_ni_rnds2     *)
+(* applied to ABEF_PACK / CDGH_PACK / word_join4), we refold in 4 steps:     *)
+(*                                                                           *)
+(*   1. DEPTH_CONV NUM_EXP_CONV: normalize both sides' `2 EXP N` occurrences *)
+(*      to concrete numerals.  The stepper evaluates some but not all, so    *)
+(*      without this the GSYM rewrite fails to match on a single `2 EXP 64`. *)
+(*                                                                           *)
+(*   2. YMM_TO_XMM_SUBWORD: replace `word_subword (read YMMi s) (0,128)`     *)
+(*      by `read XMMi s` everywhere.  The x86 stepper reads through YMM      *)
+(*      (because XMM = YMM :> zerotop_128), but the bridge lemmas and the   *)
+(*      sha_ni_rnds2 definition use XMM reads.                               *)
+(*                                                                           *)
+(*   3. Refold sha256_Ch / sha256_Maj / sha256_Sigma0 / sha256_Sigma1 (the   *)
+(*      x86_SHA256RNDS2 definition expands these; GSYM them back).           *)
+(*                                                                           *)
+(*   4. GSYM SHA_NI_RNDS2_UNFOLDED: replace the giant 3-round sum by the     *)
+(*      sha_ni_rnds2 abstraction, which the Phase 3 bridge lemmas consume.   *)
+(*                                                                           *)
+(* The resulting shape is                                                    *)
+(*   read YMM_dst s = word_join (word_subword (read YMM_dst s_prev) (128,128))
+                                 (sha_ni_rnds2 (read XMM_dst s_prev)         *)
+(*                                              (read XMM_src s_prev)        *)
+(*                                              (read XMM0 s_prev))          *)
+(* and WORD_SUBWORD_JOIN_BOTTOM then gives the clean                         *)
+(*   read XMM_dst s = sha_ni_rnds2 (...) (...) (...).                        *)
+(* ------------------------------------------------------------------------- *)
+
+let YMM_TO_XMM_SUBWORD = prove
+ (`!(s:x86state).
+    (word_subword (read YMM0 s) (0,128) :int128) = read XMM0 s /\
+    (word_subword (read YMM1 s) (0,128) :int128) = read XMM1 s /\
+    (word_subword (read YMM2 s) (0,128) :int128) = read XMM2 s /\
+    (word_subword (read YMM3 s) (0,128) :int128) = read XMM3 s /\
+    (word_subword (read YMM4 s) (0,128) :int128) = read XMM4 s /\
+    (word_subword (read YMM5 s) (0,128) :int128) = read XMM5 s /\
+    (word_subword (read YMM6 s) (0,128) :int128) = read XMM6 s /\
+    (word_subword (read YMM7 s) (0,128) :int128) = read XMM7 s /\
+    (word_subword (read YMM8 s) (0,128) :int128) = read XMM8 s /\
+    (word_subword (read YMM9 s) (0,128) :int128) = read XMM9 s /\
+    (word_subword (read YMM10 s) (0,128) :int128) = read XMM10 s`,
+  GEN_TAC THEN
+  REWRITE_TAC[XMM0;XMM1;XMM2;XMM3;XMM4;XMM5;XMM6;XMM7;XMM8;XMM9;XMM10;
+              READ_ZEROTOP_128] THEN
+  CONV_TAC WORD_BLAST);;
+
+let WORD_SUBWORD_JOIN_BOTTOM = prove
+ (`!(u:int128) (l:int128).
+     word_subword ((word_join:int128->int128->int256) u l) (0,128) :int128 = l`,
+  REPEAT GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* sha_ni_rnds2 let-expanded with numeric EXPs evaluated; REWRITE_RULE's     *)
+(* GSYM of this theorem refolds the stepper's unfolded 2-round compression. *)
+let SHA_NI_RNDS2_UNFOLDED =
+  CONV_RULE(TOP_DEPTH_CONV let_CONV THENC DEPTH_CONV NUM_EXP_CONV)
+    sha_ni_rnds2;;
+
+(* FOLD_SHA_NI_RNDS2_TAC: run this after an X86_STEPS_TAC chunk that        *)
+(* included at least one SHA256RNDS2.  Refolds the new YMM assumption into   *)
+(* sha_ni_rnds2 form.                                                        *)
+let FOLD_SHA_NI_RNDS2_TAC =
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_EXP_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM sha256_Ch; GSYM sha256_Maj;
+                               GSYM sha256_Sigma0; GSYM sha256_Sigma1]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM SHA_NI_RNDS2_UNFOLDED]);;
+
+(* ========================================================================= *)
 (* Postcondition tactic.                                                     *)
 (* ========================================================================= *)
 
