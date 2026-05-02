@@ -325,6 +325,7 @@ let SHA256_BLOCK_CORE_CORRECT = prove
     (w0:int32) w1 w2 w3 w4 w5 w6 w7
     w8 w9 w10 w11 w12 w13 w14 w15
     rdx_in.
+    aligned 16 kptr /\
     nonoverlapping (data_ptr:int64, 64) (word pc, 829) /\
     nonoverlapping (kptr:int64, 272) (word pc, 829) /\
     nonoverlapping (data_ptr:int64, 64) (kptr:int64, 272)
