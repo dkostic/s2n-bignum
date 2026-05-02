@@ -1201,6 +1201,12 @@ extern void sha256_block_data_order_nohw4(uint32_t state[S2N_BIGNUM_STATIC 8],co
 // Inputs state[8], data[64*num_blocks], num_blocks, K[64]; output state[8]
 extern void sha256_block_data_order_nohw5(uint32_t state[S2N_BIGNUM_STATIC 8],const uint8_t *data,uint64_t num_blocks,const uint32_t k[S2N_BIGNUM_STATIC 64]);
 
+// SHA-256 multi-block processing (scalar, optimised: nohw5 + cyclic
+// state-register naming eliminating the 6 MOVs per round), no SHA-256
+// hardware extensions, ARM only
+// Inputs state[8], data[64*num_blocks], num_blocks, K[64]; output state[8]
+extern void sha256_block_data_order_nohw6(uint32_t state[S2N_BIGNUM_STATIC 8],const uint8_t *data,uint64_t num_blocks,const uint32_t k[S2N_BIGNUM_STATIC 64]);
+
 // Point addition on CC curve SM2 in Montgomery-Jacobian coordinates
 // Inputs p1[12], p2[12]; output p3[12]
 extern void sm2_montjadd(uint64_t p3[S2N_BIGNUM_STATIC 12],const uint64_t p1[S2N_BIGNUM_STATIC 12],const uint64_t p2[S2N_BIGNUM_STATIC 12]);
