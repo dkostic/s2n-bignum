@@ -210,6 +210,32 @@ let FOLD_SHA_NI_RNDS2_TAC =
                                GSYM sha256_Sigma0; GSYM sha256_Sigma1]) THEN
   RULE_ASSUM_TAC(REWRITE_RULE[GSYM SHA_NI_RNDS2_UNFOLDED]);;
 
+(* After GHOST_INTRO_TAC-ing `read YMMi` as `ymmi_init`, a register write at *)
+(* step n produces `read YMMi s_n = <expression involving ymm_j_init>`.     *)
+(* To bridge these back to `read YMMi s0` (the initial-state form that     *)
+(* YMM_TO_XMM_SUBWORD recognises), we collect all `read YMMi s_k =         *)
+(* ymmi_init` assumptions and rewrite in reverse.  After this, any         *)
+(* `ymm_j_init` in an assumption becomes `read YMMj s0`, and               *)
+(* YMM_TO_XMM_SUBWORD reduces `word_subword (read YMMj s0) (0,128)` to     *)
+(* `read XMMj s0`.                                                          *)
+
+let REFOLD_INIT_GHOSTS_TAC (asl,w) =
+  let is_init_rewrite tm =
+    try
+      let s = string_of_term tm in
+      String.length s > 15 &&
+      String.sub s 0 5 = "read " &&
+      (try let pos = String.index s '=' in
+           let rhs = String.sub s (pos+2) (String.length s - pos - 2) in
+           String.length rhs >= 4 &&
+           String.sub rhs (String.length rhs - 4) 4 = "init"
+       with _ -> false)
+    with _ -> false in
+  let ghost_asms = List.filter is_init_rewrite (map concl (map snd asl)) in
+  let ghost_thms = List.map ASSUME ghost_asms in
+  (RULE_ASSUM_TAC(REWRITE_RULE (List.map GSYM ghost_thms)) THEN
+   RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD])) (asl,w);;
+
 (* ========================================================================= *)
 (* Postcondition tactic.                                                     *)
 (* ========================================================================= *)
