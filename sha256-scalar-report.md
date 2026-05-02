@@ -2,7 +2,7 @@
 
 ## Overview
 
-This report summarises the formal verification of four ARM64
+This report summarises the formal verification of five ARM64
 SHA-256 implementations that use *only* base integer instructions (no
 SHA-256 crypto extensions, no NEON):
 
@@ -14,8 +14,11 @@ SHA-256 crypto extensions, no NEON):
 - **`sha256_block_data_order_nohw5`** -- nohw4 fusions +
   message schedule kept in 16 registers instead of stack scratch
   (1.52-1.53x speedup)
+- **`sha256_block_data_order_nohw6`** -- nohw5 + cyclic state-register
+  naming + intra-round schedule/compression interleaving
+  (1.61x speedup; proof partially CHEATed, see below)
 
-All four are scalar complements to `sha256_block_data_order_hw`
+All five are scalar complements to `sha256_block_data_order_hw`
 (verified in the SHA-256 pilot; see `pilot-report.md`) and can be
 linked into the same `libs2nbignum.a`.
 
@@ -33,14 +36,17 @@ void sha256_block_data_order_nohw(
 The K round-constant table is passed as a pointer (rather than embedded
 via PC-relative addressing) to match the convention of the HW variant.
 
-All top-level theorems for all four variants load without
-`CHEAT_TAC` on top of the existing s2n-bignum ARM infrastructure:
+All top-level theorems for nohw, nohw2, nohw4, and nohw5 load without
+`CHEAT_TAC` on top of the existing s2n-bignum ARM infrastructure.
+The nohw6 top-level theorems also load but currently carry two
+CHEATs inside the core theorem body (see the nohw6 section below):
 
 ```
-needs "arm/proofs/sha256_block_data_order_nohw.ml";;
-needs "arm/proofs/sha256_block_data_order_nohw2.ml";;
-needs "arm/proofs/sha256_block_data_order_nohw4.ml";;
-needs "arm/proofs/sha256_block_data_order_nohw5.ml";;
+needs "arm/proofs/sha256_block_data_order_nohw.ml";;   (* CHEAT-free *)
+needs "arm/proofs/sha256_block_data_order_nohw2.ml";;  (* CHEAT-free *)
+needs "arm/proofs/sha256_block_data_order_nohw4.ml";;  (* CHEAT-free *)
+needs "arm/proofs/sha256_block_data_order_nohw5.ml";;  (* CHEAT-free *)
+needs "arm/proofs/sha256_block_data_order_nohw6.ml";;  (* 2 CHEATs   *)
 ```
 
 ## What has been proven
@@ -191,13 +197,22 @@ ports.
 
 On Graviton (2.5 GHz Neoverse-V1):
 
-| Function                                         | 1 block | 16 blocks | vs baseline |
-|--------------------------------------------------|---------|-----------|-------------|
-| `sha256_block_data_order_hw` (SHA-256 extension) | 38 ns   | 575 ns    | 7.3x / 7.6x |
-| `sha256_block_data_order_nohw` (baseline scalar) | 276 ns  | 4393 ns   | 1.00x       |
-| `sha256_block_data_order_nohw2` (fusion)         | 243 ns  | 3891 ns   | 1.14x / 1.13x |
-| `sha256_block_data_order_nohw4` (fusion + interleave) | 198 ns | 3236 ns | 1.39x / 1.36x |
-| `sha256_block_data_order_nohw5` (nohw4 + W in registers) | 181 ns | 2872 ns | **1.52x / 1.53x** |
+| Function                                                       | 1 block | 16 blocks | vs baseline |
+|----------------------------------------------------------------|---------|-----------|-------------|
+| `sha256_block_data_order_hw` (SHA-256 extension)               | 38 ns   | 575 ns    | 7.3x / 7.6x |
+| `sha256_block_data_order_nohw` (baseline scalar)               | 276 ns  | 4393 ns   | 1.00x       |
+| `sha256_block_data_order_nohw2` (fusion)                       | 243 ns  | 3891 ns   | 1.14x / 1.13x |
+| `sha256_block_data_order_nohw4` (fusion + interleave)          | 198 ns | 3236 ns    | 1.39x / 1.36x |
+| `sha256_block_data_order_nohw5` (nohw4 + W in registers)       | 181 ns | 2872 ns    | 1.52x / 1.53x |
+| `sha256_block_data_order_nohw6` (nohw5 + cyclic state naming)  | 171 ns | 2710 ns    | **1.61x / 1.62x** |
+
+For reference, the AWS-LC `sha256_block_data_order_nohw` (based on
+OpenSSL's hand-written AArch64 scalar implementation) runs at
+approximately 164 ns/block on the same host, so the gap from nohw6 to
+a best-in-class hand-tuned scalar is ~4%. The remaining gap is mostly
+explained by AWS-LC's 64-bit `ldp` data loads (the s2n-bignum proof
+infrastructure does not yet model 32-bit `ldp w*`, see
+`feedback_32bit_ldp_stp_fail.md`).
 
 `nohw5` keeps the full message-schedule window in 16 registers
 (`w12..w17, w19..w28`) with a rotating logical-to-physical slot
@@ -504,6 +519,88 @@ axioms from this proof).
 | `benchmarks/benchmark.c`                                   | Benchmark entry                          |
 | `tests/test.c`                                             | Cross-check test vs baseline + reference |
 
+### Optimisations in `nohw6`
+
+nohw6 is the first scalar variant aimed explicitly at *matching*
+AWS-LC's hand-written `sha256_block_data_order_nohw`. It keeps all
+of nohw5's fusions (shifted-register EOR, fused Maj, schedule/
+compression interleaving, register-resident schedule window) and adds
+two further optimisations:
+
+1. **Cyclic state-register naming.** The logical state positions
+   `a..h` live in a rotating set of eight registers (`w4..w11`). At
+   round `t` with `t mod 8 = k`, logical state position `j` (0..7 for
+   a..h) is held in physical register `w[4 + ((j-k) mod 8)]`. Each
+   round writes only *two* registers -- new_e (into the slot that
+   held d) and new_a (into the slot that held h); all other state
+   positions stay in the same physical register and are merely
+   re-interpreted by the next round's macro. This removes the six
+   state-rotation MOVs per round (384 per block) that nohw5 executes.
+
+   Because the rotation cycle has period 8 and each period of the
+   schedule loop is 16 rounds, state returns to canonical
+   `w4..w11 = a..h` at every period boundary (0, 16, 32, 48) and at
+   round 64. The proof invariant shape at those boundaries is therefore
+   identical to nohw5's.
+
+2. **Intra-round schedule/compression interleaving.** The SCHED step
+   (which reads `W[t+1]`, `W[t+9]`, `W[t+14]` and writes `W[t+16]`
+   back to the slot that held `W[t]`) is dependency-independent of
+   the compression's Maj+Sigma0 tail. The ROUND_SCHED body is
+   reordered to issue the new_e `add _d, _d, T1` immediately after
+   T1 is complete (so the d-slot forwarding opens up), then issue
+   the sigma0/sigma1 ror/eor chain for the schedule, then the
+   Maj/Sigma0 chain for T2, and finally the new_a `add _h, T1, T2`.
+   This keeps both ALU pipes busy on Neoverse-V1 throughout the body.
+
+Measured speedup: **1.61x on 1-block, 1.62x on 16-block** relative to
+the `nohw` baseline; **1.05x** on top of the `nohw5`
+register-resident-W variant. On the same host, AWS-LC's scalar
+implementation runs at ~164 ns/block; nohw6 closes to within ~4%.
+
+### Proof changes (nohw6)
+
+Structural offsets change (30 instr/round instead of nohw5's 36;
+total program 0xe28 bytes instead of 0x1128). The outer multi-block
+`ENSURES_WHILE_UP_TAC` structure, the body preamble (ghost intros,
+`H_i`, `M_i` destructure, `dptr_i` normalisation), Phase A (16 ldr
++rev), Phase C (8 state ldrs), Phase E (8 add-back pairs), Phase F
++ postamble (writeback + x1/x2 advance), and the `ARM_ADD_RETURN_STACK_TAC`
+subroutine wrapper are all **fully proved without CHEAT**, on the same
+pattern as nohw5.
+
+The inner period loop (48 fused rounds, rounds 0..47) and the
+D-tail (16 compression-only rounds, rounds 48..63) currently carry
+`CHEAT_TAC` placeholders. `check_axioms()` reports **5 axioms**
+(3 standard HOL axioms + 2 CHEATs).
+
+The full per-round closures for these two blocks require porting
+each of nohw5's ~20 per-round `ENSURES_SEQUENCE_TAC` stanzas with
+rotated state-register post-condition subscripts per the cyclic
+naming map. This is mechanical but voluminous (~5000 additional
+lines of proof) and was not completed in this changeset.
+
+An interactive holctl validation of D-tail round 48 confirms that
+`ARM_STEPS_TAC NOHW6_EXEC (1--21)` steps through the rotated round
+body cleanly, arrives at the expected exit PC (`pc+0x8a4`), and
+`MONOTONE_MAYCHANGE_TAC` closes the frame condition -- i.e. the
+cyclic-naming scheme is compatible with both symbolic execution and
+MAYCHANGE closure. The per-round postcondition reconstruction
+(the same `SIMP_TAC[WORD_ZX_ZX; GSYM WORD_SUBWORD_JOIN_SELF]`
++ `WORD_RULE` + `LIST_8_COMPRESS` destructuring pattern used in
+nohw5) transfers directly with subscripts rotated.
+
+### Artefacts (nohw6)
+
+| Path                                                       | Purpose                                  |
+|------------------------------------------------------------|------------------------------------------|
+| `arm/sha2/sha256_block_data_order_nohw6.S`                 | Optimised assembly                       |
+| `arm/proofs/sha256_block_data_order_nohw6.ml`              | HOL-Light proof (skeleton, 2 CHEATs)     |
+| `include/s2n-bignum.h`                                     | C declaration                            |
+| `arm/Makefile`                                             | Build integration                        |
+| `benchmarks/benchmark.c`                                   | Benchmark entry                          |
+| `tests/test.c`                                             | Cross-check test vs baseline + reference |
+
 ### Explorations that did not pan out
 
 One intermediate variant (`nohw3`) was explored and then abandoned:
@@ -524,6 +621,27 @@ body, and back-edge subgoals respectively. The smaller Option B
 design -- WHILE over just periods 1 and 2, with the existing
 period-0 inline proof preserved -- succeeded on the first complete
 compile and was adopted.
+
+For nohw6, an early design variant kept Phase A loads *interleaved*
+with the first 16 rounds (each round would `ldr wT, [x1, #off]` +
+`rev wT, wT` before running a compression-only body, saving 1-2 ns
+of Phase A warm-up latency). This was abandoned for two reasons:
+
+1. The round body's `w1` scratch aliases with `x1` (the data pointer),
+   so the first round body would destroy the x1 value before the next
+   round could load its word.
+
+2. More fundamentally, the register-resident sliding-schedule window
+   *requires* every round (including rounds 0..15) to run the SCHED
+   step, because the slot that holds `W[t]` is overwritten to
+   `W[t+16]` at round `t`. AWS-LC's stack-based schedule doesn't
+   have this constraint (new slots are written to different stack
+   offsets). Skipping SCHED in rounds 0..15 produced visibly wrong
+   output.
+
+   A safe-scratch workaround (replacing `w1` with `w30` for
+   rounds 0..15) benchmarked at 168 ns/block but was ruled out by
+   the second constraint.
 
 ## Artefacts (baseline nohw)
 
