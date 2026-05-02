@@ -2,7 +2,7 @@
 
 ## Overview
 
-This report summarises the formal verification of three ARM64
+This report summarises the formal verification of four ARM64
 SHA-256 implementations that use *only* base integer instructions (no
 SHA-256 crypto extensions, no NEON):
 
@@ -11,8 +11,11 @@ SHA-256 crypto extensions, no NEON):
   fused Maj (1.13x speedup)
 - **`sha256_block_data_order_nohw4`** -- nohw2 fusions +
   message-schedule/compression interleaving (1.36-1.39x speedup)
+- **`sha256_block_data_order_nohw5`** -- nohw4 fusions +
+  message schedule kept in 16 registers instead of stack scratch
+  (1.52-1.53x speedup)
 
-All three are scalar complements to `sha256_block_data_order_hw`
+All four are scalar complements to `sha256_block_data_order_hw`
 (verified in the SHA-256 pilot; see `pilot-report.md`) and can be
 linked into the same `libs2nbignum.a`.
 
@@ -30,13 +33,14 @@ void sha256_block_data_order_nohw(
 The K round-constant table is passed as a pointer (rather than embedded
 via PC-relative addressing) to match the convention of the HW variant.
 
-All top-level theorems for all three variants load without
+All top-level theorems for all four variants load without
 `CHEAT_TAC` on top of the existing s2n-bignum ARM infrastructure:
 
 ```
 needs "arm/proofs/sha256_block_data_order_nohw.ml";;
 needs "arm/proofs/sha256_block_data_order_nohw2.ml";;
 needs "arm/proofs/sha256_block_data_order_nohw4.ml";;
+needs "arm/proofs/sha256_block_data_order_nohw5.ml";;
 ```
 
 ## What has been proven
@@ -192,18 +196,16 @@ On Graviton (2.5 GHz Neoverse-V1):
 | `sha256_block_data_order_hw` (SHA-256 extension) | 38 ns   | 575 ns    | 7.3x / 7.6x |
 | `sha256_block_data_order_nohw` (baseline scalar) | 276 ns  | 4393 ns   | 1.00x       |
 | `sha256_block_data_order_nohw2` (fusion)         | 243 ns  | 3891 ns   | 1.14x / 1.13x |
-| `sha256_block_data_order_nohw4` (fusion + interleave) | 198 ns | 3236 ns | **1.39x / 1.36x** |
-| `sha256_block_data_order_nohw5` (nohw4 + W in registers, **proof WIP**) | 181 ns | 2872 ns | **1.52x / 1.53x** |
+| `sha256_block_data_order_nohw4` (fusion + interleave) | 198 ns | 3236 ns | 1.39x / 1.36x |
+| `sha256_block_data_order_nohw5` (nohw4 + W in registers) | 181 ns | 2872 ns | **1.52x / 1.53x** |
 
 `nohw5` keeps the full message-schedule window in 16 registers
 (`w12..w17, w19..w28`) with a rotating logical-to-physical slot
 mapping, eliminating the 256-byte stack scratch used by the prior
 variants. The .S is verified correct via the test harness (201 random
-tests + NIST "abc" vector across 1- and 2-block inputs). The proof
-skeleton loads without axioms from `CHEAT_TAC` for `SUBROUTINE_CORRECT`
-and for the multi-block outer induction of `CORRECT`; the per-block
-body proof (slot-rotation invariant across the 16-round period) is
-currently `CHEAT_TAC` pending completion.
+tests + NIST "abc" vector across 1- and 2-block inputs), and the
+full HOL Light proof closes without `CHEAT_TAC` (`check_axioms()`
+reports only the three standard HOL axioms).
 
 The baseline scalar variant is intentionally written for
 verifiability rather than peak throughput: a single round per loop
@@ -389,6 +391,119 @@ additional axioms.
 | `benchmarks/benchmark.c`                                   | Benchmark entry                          |
 | `tests/test.c`                                             | Cross-check test vs baseline + reference |
 
+### Optimisations in `nohw5`
+
+nohw5 keeps all of nohw4's fusions (shifted-register EOR, fused Maj,
+schedule/compression interleaving) and further eliminates the
+256-byte stack scratch used for the 16-word sliding schedule window.
+The entire window lives in 16 registers (`w12..w17, w19..w28`), and
+each compression round reads `W[t]` from the slot register currently
+holding it and writes `W[t+16]` back to the same slot once `W[t]` is
+consumed. The logical-to-physical slot mapping rotates by one every
+round, so after 16 rounds every slot has been overwritten exactly
+once with the corresponding 16-advanced schedule word, returning the
+mapping to its starting shape.
+
+To keep the fused B+D loop unrolled at instruction level without
+blowing up code size, the 48 fused rounds are expressed as **three
+iterations of a 16-round unrolled "period"**. Rounds 48..63 remain
+in a 16-round unrolled D-tail (identical in shape to nohw4's D-tail
+body but reading `w*` from slot registers instead of from stack).
+
+Net effect per block relative to nohw4:
+
+- **Stack scratch gone.** 48 `str` (write schedule to stack) + 64
+  `ldr` (read schedule during compression, across the 48 fused rounds
+  + 16 D-tail rounds) eliminated. Stack frame shrinks from 336 bytes
+  to 112 bytes (just the 16 callee-saved-register slots + 16 bytes
+  for spilling `x1`/`x2`).
+- **Slot-register rotation replaces one post-round `str`**. Each fused
+  round previously wrote `W[t+16]` to stack (1 instruction); now the
+  register that held `W[t]` is simply overwritten by the schedule-side
+  result. Reads are zero-cost (the slot reg is already the operand).
+- **No new scratch register required** -- the three bookkeeping
+  registers (`x0..x2`) previously used for schedule arithmetic and
+  `K[t]` load remain in the same roles.
+
+Measured speedup: **1.52x on 1-block, 1.53x on 16-block** relative to
+the `nohw` baseline; **1.09x / 1.13x** on top of the `nohw4`
+schedule/compression interleaving alone.
+
+### Proof changes (nohw5)
+
+The proof (`arm/proofs/sha256_block_data_order_nohw5.ml`, ~5800
+lines) is substantially larger than nohw4's because it cannot reuse
+nohw4's stack-based schedule invariants -- the sliding-register
+window has to be tracked through every round. Key structural
+elements:
+
+- **`LIST_8_COMPRESS_NOHW5` helper lemma.** Destructures
+  `sha256_compress n W H` into eight fresh `int32` variables for
+  symbolic `n`. Needed because `EL j (sha256_compress n W H)` does
+  not reduce by `EL_CONV` when `n` is a symbolic `num` -- it
+  requires a concrete `n+1` pattern to unfold via the definition's
+  recursive clause. Destructuring bypasses the definition entirely:
+  after the lemma introduces `a_pk..h_pk` with
+  `sha256_compress n W H = [a_pk;..;h_pk]`, subsequent `EL_CONV` on
+  the list reduces directly to the fresh variables.
+
+- **Period 0 (rounds 0..15): 16 ROUND_SCHED bodies unrolled inline**,
+  each concrete-index. The per-round proof uses the standard Step-1
+  single-round tactic with added `SHA256_W_EXTEND + SCHEDULE_MONO`
+  bridging to fold `schedule k M_i` (still incomplete at round k)
+  into `schedule 48 M_i = W` for the indices actually read
+  (`k, k+1, k+9, k+14`). The initial `EL t M_i = EL t W` bridge for
+  `t < 16` is discharged with `SHA256_SCHEDULE_PREFIX`.
+
+- **Periods 1, 2: `ENSURES_WHILE_UP_TAC` over two iterations.**
+  Preserves the 16 inline p=0 rounds; replaces only the post-p=0
+  back-edge and two remaining periods. Invariant is parameterized
+  by iteration index `i`:
+  ```
+  X30 = word (2 - i),  X3 = word_add kptr (word (64 * (i + 1))),
+  X4..X11 = sha256_compress (16 * (i + 1)) W H_i,
+  slot(m) = EL (16 * (i + 1) + m) W  for m in 0..15.
+  ```
+  Entry from `pc+0x9c8` (post-p=0-round-15) to `pc+0xc8` is
+  two ARM steps (sub + cbnz taken). Body is a generic-`i` 16-round
+  chain plus sub, using a parameterized round-k tactic with
+  `ARITH_RULE` normalisation of indices of the form
+  `(16*(i+1)+k)+N = 16*(i+1)+(k+N)` to align
+  `SHA256_SCHEDULE_MONO` specializations with the
+  post-`SHA256_W_EXTEND` goal form. Back-edge is one step
+  (cbnz taken at `X30 != 0` for `0 < i < 2`), exit is one step
+  (cbnz not taken at `i = 2`).
+
+- **D-tail (rounds 48..63): 16 ROUND_NOSCHED bodies unrolled inline**,
+  each concrete-index (48..63). Uses `LIST_8_COMPRESS_NOHW5`
+  destructuring again (because `sha256_compress 48 W H_i` with
+  concrete 48 still doesn't unfold past the definition's step case
+  without 48 repetitions of the `n+1` unfolder). No schedule step;
+  closure is just 2 `CONV_TAC WORD_RULE` conjuncts per round (T1+T2
+  and d+T1).
+
+The proof file grew from ~300 lines of early scaffolding to ~5800
+lines overall: approximately 2000 lines of inline period-0 rounds,
+1800 lines of WHILE_UP for periods 1-2, 1400 lines of D-tail, and
+~600 lines of Phase A/C/E/F and helper-lemma setup.
+
+Both `SHA256_BLOCK_DATA_ORDER_NOHW5_CORRECT` and
+`SHA256_BLOCK_DATA_ORDER_NOHW5_SUBROUTINE_CORRECT` close without
+`CHEAT_TAC`. `check_axioms()` on a fresh session reports three
+axioms total (the three standard HOL-Light axioms; no additional
+axioms from this proof).
+
+### Artefacts (nohw5)
+
+| Path                                                       | Purpose                                  |
+|------------------------------------------------------------|------------------------------------------|
+| `arm/sha2/sha256_block_data_order_nohw5.S`                 | Optimised assembly                       |
+| `arm/proofs/sha256_block_data_order_nohw5.ml`              | Full HOL-Light proof (~5800 lines)       |
+| `include/s2n-bignum.h`                                     | C declaration                            |
+| `arm/Makefile`                                             | Build integration                        |
+| `benchmarks/benchmark.c`                                   | Benchmark entry                          |
+| `tests/test.c`                                             | Cross-check test vs baseline + reference |
+
 ### Explorations that did not pan out
 
 One intermediate variant (`nohw3`) was explored and then abandoned:
@@ -400,6 +515,15 @@ by the rename stage at 0 cycles, so the eliminated instructions were
 never on the critical path. This confirmed that nohw2's bottleneck is
 frontend bandwidth on the serial compression chain, not instruction
 count, motivating the schedule/compression interleaving in nohw4.
+
+For nohw5, a first attempt at a *full* ENSURES_WHILE_UP restructure
+(iterating all three periods 0..2 rather than keeping period 0
+unrolled) was abandoned after three compile iterations failed with
+REWRITES_CONV, WORD_RULE, and MATCH_MP_TAC errors in the entry,
+body, and back-edge subgoals respectively. The smaller Option B
+design -- WHILE over just periods 1 and 2, with the existing
+period-0 inline proof preserved -- succeeded on the first complete
+compile and was adopted.
 
 ## Artefacts (baseline nohw)
 
@@ -429,3 +553,13 @@ Commits on branch `sha256-arm-scalar`:
 - nohw4:
   - `bc869fc5` Add sha256_block_data_order_nohw4 (WIP proof with CHEAT_TAC).
   - `2f1e449e` sha256_block_data_order_nohw4: complete fused-loop body proof.
+- nohw5 (on branch `sha256-arm-scalar-opt`):
+  - Early commits through `9a58e3ac` prove Phase A/C/E/F + period p=0
+    rounds 0..15 inline (WIP with CHEAT_TAC for periods 1-2 and D-tail).
+  - `62b541c2` nohw5: add `LIST_8_COMPRESS_NOHW5` helper lemma for
+    WHILE restructure.
+  - `151b396b` nohw5: prove D-tail (16 ROUND_NOSCHED at
+    pc+0x9d0..pc+0x1090). Reduces axioms from 7 to 4.
+  - `bfdec6ac` nohw5: prove periods p=1, p=2 via ENSURES_WHILE_UP_TAC.
+    Reduces axioms from 4 to 3 (the three standard HOL axioms only);
+    the nohw5 proof is now fully CHEAT-free against FIPS 180-4.
