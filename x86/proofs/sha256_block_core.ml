@@ -427,16 +427,22 @@ let has_sub_string sub s =
 
 let SUBSTITUTE_XMM_CLEANS_TAC : tactic = fun g ->
   let (asl,_) = g in
+  let is_clean_thm s =
+    has_sub_string "read XMM" s
+    && (has_sub_string "= word_join4" s
+        || has_sub_string "= ABEF_PACK" s
+        || has_sub_string "= CDGH_PACK" s
+        || has_sub_string "= pshufb_mask_val" s) in
   let clean_thms = List.filter_map (fun (_,th) ->
     let s = string_of_term (concl th) in
-    if has_sub_string "read XMM" s
-       && (has_sub_string "= word_join4" s
-           || has_sub_string "= ABEF_PACK" s
-           || has_sub_string "= CDGH_PACK" s
-           || has_sub_string "= pshufb_mask_val" s)
-    then Some th
-    else None) asl in
-  RULE_ASSUM_TAC(REWRITE_RULE clean_thms) g;;
+    if is_clean_thm s then Some th else None) asl in
+  (* Skip the clean assumptions themselves when rewriting — otherwise
+     REWRITE_RULE on `read XMM_i s = C` rewrites its own LHS to RHS and the
+     assumption collapses to `C = C` → T → dropped. *)
+  RULE_ASSUM_TAC(fun th ->
+    if is_clean_thm (string_of_term (concl th))
+    then th
+    else REWRITE_RULE clean_thms th) g;;
 
 (* ------------------------------------------------------------------------- *)
 (* PADDD_REFOLD_TAC: after an X86_VERBOSE_STEP_TAC for                        *)
