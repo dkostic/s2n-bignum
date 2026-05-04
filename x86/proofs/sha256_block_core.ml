@@ -99,6 +99,60 @@ let pshufb_mask_val_bytes = prove
 (*     `word_subword (word_join ymm_top (usimd16 ... ...)) (0,128)`.         *)
 (* ------------------------------------------------------------------------- *)
 
+(* ------------------------------------------------------------------------- *)
+(* PSHUFB_BYTEREVERSE_TAC : int -> string -> term*term*term*term -> tactic    *)
+(*                                                                           *)
+(* Usage: applied AFTER `X86_VERBOSE_STEP_TAC HW_EXEC "s<n>"` for a           *)
+(*   `PSHUFB xmm_i, xmm7` step (with `read XMM7 s<n-1> = pshufb_mask_val`     *)
+(*   and `read YMM<i> s<n-1> = word_join top (word_join4 (bytereverse w_j)    *)
+(*   (bytereverse w_{j+1}) (bytereverse w_{j+2}) (bytereverse w_{j+3}))`      *)
+(*   visible as assumptions).                                                 *)
+(*                                                                           *)
+(* Produces the clean `read XMM<i> s<n> = word_join4 w_j w_{j+1} w_{j+2}     *)
+(* w_{j+3}` assumption without attempting to prove it with WORD_BLAST on the *)
+(* raw usimd16 expansion (which is too expensive).  Instead: folds the       *)
+(* pshufb_mask_val using the byte-level split lemma, reduces the             *)
+(* `if bit 7 (word_subword pshufb_mask_val …)` ifs, then finishes with       *)
+(* WORD_BLAST on the resulting structural equality.                           *)
+(*                                                                           *)
+(* The prerequisites assumed in the caller:                                   *)
+(*   - `read XMM7 s<n-1> = pshufb_mask_val` (the mask register)               *)
+(*   - `read YMM<i> s<n-1>` holds the pre-shuffle byte-reversed payload.      *)
+(*   - The caller has run `RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD])`  *)
+(*     and used the XMM7 fact to substitute `read XMM7 s<n-1>` with          *)
+(*     `pshufb_mask_val` in the YMM<i> s<n> assumption.                       *)
+(* ------------------------------------------------------------------------- *)
+
+let PSHUFB_BYTEREVERSE_TAC (xmm_idx:int) (sname:string)
+                           ((w0,w1,w2,w3):term*term*term*term) : tactic =
+  let xmm_name = "XMM" ^ string_of_int xmm_idx in
+  let ymm_name = "YMM" ^ string_of_int xmm_idx in
+  let xmm_tm = mk_const(xmm_name, []) in
+  let s_tm = mk_var(sname, `:x86state`) in
+  let read_tm = `read:(x86state,int128)component->x86state->int128` in
+  let goal_tm = mk_eq(
+    mk_comb(mk_comb(read_tm, xmm_tm), s_tm),
+    list_mk_comb(`word_join4:int32->int32->int32->int32->int128`,
+                 [w0;w1;w2;w3])) in
+  let has_sub sub s =
+    let ls = String.length s and lsub = String.length sub in
+    let rec try_at i =
+      i + lsub <= ls && (String.sub s i lsub = sub || try_at (i+1)) in
+    try_at 0 in
+  let ymm_needle = ymm_name ^ " " ^ sname ^ " =" in
+  SUBGOAL_THEN goal_tm ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; XMM1; XMM2; XMM3; XMM4; XMM5; XMM6;
+                XMM7; XMM8; XMM9; XMM10; READ_ZEROTOP_128] THEN
+    FIRST_X_ASSUM(MP_TAC o check (fun th ->
+      has_sub ymm_needle (string_of_term (concl th)))) THEN
+    DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+    REWRITE_TAC[pshufb_mask_val_bytes] THEN
+    CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+    CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+    REWRITE_TAC[word_join4] THEN
+    CONV_TAC WORD_BLAST;
+    ALL_TAC];;
+
 let PSHUFB_BYTEREVERSE = prove
  (`!(w0:int32) (w1:int32) (w2:int32) (w3:int32).
      (usimd16
