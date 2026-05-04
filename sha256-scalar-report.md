@@ -38,15 +38,16 @@ via PC-relative addressing) to match the convention of the HW variant.
 
 All top-level theorems for nohw, nohw2, nohw4, and nohw5 load without
 `CHEAT_TAC` on top of the existing s2n-bignum ARM infrastructure.
-The nohw6 top-level theorems also load but currently carry two
-CHEATs inside the core theorem body (see the nohw6 section below):
+The nohw6 top-level theorems also load but currently carry one
+CHEAT (period loop) inside the core theorem body; the D-tail is
+fully proved (see the nohw6 section below):
 
 ```
 needs "arm/proofs/sha256_block_data_order_nohw.ml";;   (* CHEAT-free *)
 needs "arm/proofs/sha256_block_data_order_nohw2.ml";;  (* CHEAT-free *)
 needs "arm/proofs/sha256_block_data_order_nohw4.ml";;  (* CHEAT-free *)
 needs "arm/proofs/sha256_block_data_order_nohw5.ml";;  (* CHEAT-free *)
-needs "arm/proofs/sha256_block_data_order_nohw6.ml";;  (* 2 CHEATs   *)
+needs "arm/proofs/sha256_block_data_order_nohw6.ml";;  (* 1 CHEAT    *)
 ```
 
 ## What has been proven
@@ -569,33 +570,35 @@ total program 0xe28 bytes instead of 0x1128). The outer multi-block
 subroutine wrapper are all **fully proved without CHEAT**, on the same
 pattern as nohw5.
 
-The inner period loop (48 fused rounds, rounds 0..47) and the
-D-tail (16 compression-only rounds, rounds 48..63) currently carry
-`CHEAT_TAC` placeholders. `check_axioms()` reports **5 axioms**
-(3 standard HOL axioms + 2 CHEATs).
+The D-tail (16 compression-only rounds 48..63, pc+0x850..pc+0xd90)
+is now **fully proved without CHEAT**, mirroring nohw5's 16 nested
+ENSURES_SEQUENCE_TAC stanzas but with per-round post-condition
+subscripts rotated through the cyclic-naming map (m-th logical
+position at rotation k lives in `X[4 + ((m - k) mod 8)]`). Each
+round closes via the same tactic shape: `ENSURES_INIT_TAC` →
+K-pointer hypothesis specialization → `ARM_STEPS_TAC (1--21)` →
+`ENSURES_FINAL_STATE_TAC` → compress-unfold + `GSYM WORD_SUBWORD_JOIN_SELF`
++ `LIST_8_COMPRESS_NOHW6` destructuring + `EL_CONV` + `WORD_ZX_INJ`
++ 2 `CONV_TAC WORD_RULE` conjuncts for the new_a / new_e bridges.
 
-The full per-round closures for these two blocks require porting
-each of nohw5's ~20 per-round `ENSURES_SEQUENCE_TAC` stanzas with
-rotated state-register post-condition subscripts per the cyclic
-naming map. This is mechanical but voluminous (~5000 additional
-lines of proof) and was not completed in this changeset.
+The inner period loop (48 fused rounds 0..47, pc+0xc8..pc+0x850)
+still carries a `CHEAT_TAC` placeholder. `check_axioms()` reports
+**4 axioms** (3 standard HOL axioms + 1 CHEAT).
 
-An interactive holctl validation of D-tail round 48 confirms that
-`ARM_STEPS_TAC NOHW6_EXEC (1--21)` steps through the rotated round
-body cleanly, arrives at the expected exit PC (`pc+0x8a4`), and
-`MONOTONE_MAYCHANGE_TAC` closes the frame condition -- i.e. the
-cyclic-naming scheme is compatible with both symbolic execution and
-MAYCHANGE closure. The per-round postcondition reconstruction
-(the same `SIMP_TAC[WORD_ZX_ZX; GSYM WORD_SUBWORD_JOIN_SELF]`
-+ `WORD_RULE` + `LIST_8_COMPRESS` destructuring pattern used in
-nohw5) transfers directly with subscripts rotated.
+Interactive holctl validation of period-0 round 0 confirms the
+same ported tactic works for the fused body (with a
+`SHA256_W_EXTEND` bridge for the schedule-step output). Completing
+the period loop requires 16 further per-round stanzas for period 0
+and an `ENSURES_WHILE_UP_TAC` for periods 1, 2 (with
+`SHA256_SCHEDULE_MONO` bridging), mirroring nohw5's ~3800-line
+period proof. This is mechanical but voluminous and was deferred.
 
 ### Artefacts (nohw6)
 
 | Path                                                       | Purpose                                  |
 |------------------------------------------------------------|------------------------------------------|
 | `arm/sha2/sha256_block_data_order_nohw6.S`                 | Optimised assembly                       |
-| `arm/proofs/sha256_block_data_order_nohw6.ml`              | HOL-Light proof (skeleton, 2 CHEATs)     |
+| `arm/proofs/sha256_block_data_order_nohw6.ml`              | HOL-Light proof (D-tail proved, period CHEAT remains) |
 | `include/s2n-bignum.h`                                     | C declaration                            |
 | `arm/Makefile`                                             | Build integration                        |
 | `benchmarks/benchmark.c`                                   | Benchmark entry                          |
