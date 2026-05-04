@@ -2273,8 +2273,129 @@ let SHA256_BLOCK_DATA_ORDER_NOHW6_CORRECT = prove
                                         ALL_TAC] THEN
                                       CONV_TAC WORD_RULE];
 
-                                    (* Remaining rounds still CHEAT *)
-                                    CHEAT_TAC]]]]]]]]]]]]]]]];
+                                    (* ===== Periods 1, 2 via ENSURES_WHILE_UP_TAC.
+                                       Runs 2 iterations from pc+0xc8 to pc+0x84c.
+                                       After p=0 round 15 (at pc+0x848): X30=word 3,
+                                       compress(16), slots[0..15] = W[16..31].  *)
+                                    ENSURES_WHILE_UP_TAC `2:num` `pc + 0xc8` `pc + 0x84c`
+                                      `\i s. aligned_bytes_loaded s (word pc) sha256_block_data_order_nohw6_mc /\
+                                             read SP s = stackpointer /\
+                                             read X29 s = state_ptr /\
+                                             read X30 s = word (2 - i) /\
+                                             read X3 s = word_add kptr (word (64 * (i + 1))) /\
+                                             read X4 s = word_zx (EL 0 (sha256_compress (16 * (i + 1)) W [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X5 s = word_zx (EL 1 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X6 s = word_zx (EL 2 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X7 s = word_zx (EL 3 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X8 s = word_zx (EL 4 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X9 s = word_zx (EL 5 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X10 s = word_zx (EL 6 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X11 s = word_zx (EL 7 (sha256_compress (16 * (i + 1)) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
+                                             read X19 s = word_zx (EL (16 * (i + 1) + 0) (W:int32 list)) /\
+                                             read X20 s = word_zx (EL (16 * (i + 1) + 1) (W:int32 list)) /\
+                                             read X21 s = word_zx (EL (16 * (i + 1) + 2) (W:int32 list)) /\
+                                             read X22 s = word_zx (EL (16 * (i + 1) + 3) (W:int32 list)) /\
+                                             read X23 s = word_zx (EL (16 * (i + 1) + 4) (W:int32 list)) /\
+                                             read X24 s = word_zx (EL (16 * (i + 1) + 5) (W:int32 list)) /\
+                                             read X25 s = word_zx (EL (16 * (i + 1) + 6) (W:int32 list)) /\
+                                             read X26 s = word_zx (EL (16 * (i + 1) + 7) (W:int32 list)) /\
+                                             read X27 s = word_zx (EL (16 * (i + 1) + 8) (W:int32 list)) /\
+                                             read X28 s = word_zx (EL (16 * (i + 1) + 9) (W:int32 list)) /\
+                                             read X12 s = word_zx (EL (16 * (i + 1) + 10) (W:int32 list)) /\
+                                             read X13 s = word_zx (EL (16 * (i + 1) + 11) (W:int32 list)) /\
+                                             read X14 s = word_zx (EL (16 * (i + 1) + 12) (W:int32 list)) /\
+                                             read X15 s = word_zx (EL (16 * (i + 1) + 13) (W:int32 list)) /\
+                                             read X16 s = word_zx (EL (16 * (i + 1) + 14) (W:int32 list)) /\
+                                             read X17 s = word_zx (EL (16 * (i + 1) + 15) (W:int32 list)) /\
+                                             read (memory :> bytes64 (word_add stackpointer (word 96))) s = dptr_i /\
+                                             read (memory :> bytes64 (word_add stackpointer (word 104))) s = word(num_blocks - ii) /\
+                                             (!t. t < 8 ==>
+                                                  read (memory :> bytes32(word_add state_ptr (word(4*t)))) s =
+                                                  EL t [a_i:int32;b_i;c_i;d_i;e_i;f_i;g_i;h_i]) /\
+                                             (!j t. j < num_blocks /\ t < 16 ==>
+                                                  read (memory :> bytes32
+                                                        (word_add data_ptr (word(64 * j + 4*t)))) s =
+                                                  word_bytereverse (EL t (EL j blocks))) /\
+                                             (!t. t < 64 ==>
+                                                  read (memory :> bytes32(word_add kptr (word(4*t)))) s =
+                                                  EL t sha256_K)` THEN
+                                    ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+                                     [ARITH_TAC;   (* k != 0 *)
+
+                                      (* ENTRY: sub + cbnz taken from pc+0x848 to pc+0xc8.
+                                         At entry: X30=word 3, compress=16, slots=W[16..31].
+                                         After sub: X30=word 2. After cbnz taken: PC=pc+0xc8.
+                                         invariant(0) says: X30=word(2-0)=word 2, compress=16,
+                                         slots=W[16..]. *)
+                                      REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+                                      SUBGOAL_THEN `(3:num) < 2 EXP 64` ASSUME_TAC THENL
+                                       [ARITH_TAC; ALL_TAC] THEN
+                                      VAL_INT64_TAC `3:num` THEN
+                                      ENSURES_INIT_TAC "s0" THEN
+                                      ARM_STEPS_TAC NOHW6_EXEC (1--2) THEN
+                                      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+                                      REWRITE_TAC[ARITH_RULE `2 - 0 = 2`;
+                                                  ARITH_RULE `16 * (0 + 1) = 16`;
+                                                  ARITH_RULE `16 * (0 + 1) + 0 = 16`;
+                                                  ARITH_RULE `16 * (0 + 1) + 1 = 17`;
+                                                  ARITH_RULE `16 * (0 + 1) + 2 = 18`;
+                                                  ARITH_RULE `16 * (0 + 1) + 3 = 19`;
+                                                  ARITH_RULE `16 * (0 + 1) + 4 = 20`;
+                                                  ARITH_RULE `16 * (0 + 1) + 5 = 21`;
+                                                  ARITH_RULE `16 * (0 + 1) + 6 = 22`;
+                                                  ARITH_RULE `16 * (0 + 1) + 7 = 23`;
+                                                  ARITH_RULE `16 * (0 + 1) + 8 = 24`;
+                                                  ARITH_RULE `16 * (0 + 1) + 9 = 25`;
+                                                  ARITH_RULE `16 * (0 + 1) + 10 = 26`;
+                                                  ARITH_RULE `16 * (0 + 1) + 11 = 27`;
+                                                  ARITH_RULE `16 * (0 + 1) + 12 = 28`;
+                                                  ARITH_RULE `16 * (0 + 1) + 13 = 29`;
+                                                  ARITH_RULE `16 * (0 + 1) + 14 = 30`;
+                                                  ARITH_RULE `16 * (0 + 1) + 15 = 31`;
+                                                  ARITH_RULE `64 * (0 + 1) = 64`] THEN
+                                      REWRITE_TAC[ADD_CLAUSES] THEN
+                                      REPEAT CONJ_TAC THEN CONV_TAC WORD_RULE;
+
+                                      (* BODY i (0 or 1): invariant(i) at pc+0xc8 -> invariant(i+1) at pc+0x84c.
+                                         TODO: port 16 generic-i ROUND_SCHED from nohw5. *)
+                                      CHEAT_TAC;
+
+                                      (* BACK-EDGE: cbnz taken at pc+0x84c (X30 = word(2-i) != 0 for i<2) *)
+                                      X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+                                      REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+                                      SUBGOAL_THEN `2 - i < 2 EXP 64` ASSUME_TAC THENL
+                                       [ASM_ARITH_TAC; ALL_TAC] THEN
+                                      VAL_INT64_TAC `2 - i` THEN
+                                      ENSURES_INIT_TAC "s0" THEN
+                                      ARM_STEPS_TAC NOHW6_EXEC (1--1) THEN
+                                      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+                                      ASM_SIMP_TAC[ARITH_RULE `0 < i /\ i < 2 ==> ~(2 - i = 0)`];
+
+                                      (* EXIT: cbnz not taken at pc+0x84c (X30 = word(2-2) = word 0) *)
+                                      REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+                                      ENSURES_INIT_TAC "s0" THEN
+                                      ARM_STEPS_TAC NOHW6_EXEC (1--1) THEN
+                                      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+                                      REWRITE_TAC[ARITH_RULE `2 - 2 = 0`;
+                                                  ARITH_RULE `16 * (2 + 1) = 48`;
+                                                  ARITH_RULE `16 * (2 + 1) + 0 = 48`;
+                                                  ARITH_RULE `16 * (2 + 1) + 1 = 49`;
+                                                  ARITH_RULE `16 * (2 + 1) + 2 = 50`;
+                                                  ARITH_RULE `16 * (2 + 1) + 3 = 51`;
+                                                  ARITH_RULE `16 * (2 + 1) + 4 = 52`;
+                                                  ARITH_RULE `16 * (2 + 1) + 5 = 53`;
+                                                  ARITH_RULE `16 * (2 + 1) + 6 = 54`;
+                                                  ARITH_RULE `16 * (2 + 1) + 7 = 55`;
+                                                  ARITH_RULE `16 * (2 + 1) + 8 = 56`;
+                                                  ARITH_RULE `16 * (2 + 1) + 9 = 57`;
+                                                  ARITH_RULE `16 * (2 + 1) + 10 = 58`;
+                                                  ARITH_RULE `16 * (2 + 1) + 11 = 59`;
+                                                  ARITH_RULE `16 * (2 + 1) + 12 = 60`;
+                                                  ARITH_RULE `16 * (2 + 1) + 13 = 61`;
+                                                  ARITH_RULE `16 * (2 + 1) + 14 = 62`;
+                                                  ARITH_RULE `16 * (2 + 1) + 15 = 63`;
+                                                  ARITH_RULE `64 * (2 + 1) = 192`] THEN
+                                      REWRITE_TAC[ADD_CLAUSES]]]]]]]]]]]]]]]]]];
 
     ALL_TAC] THEN
 
