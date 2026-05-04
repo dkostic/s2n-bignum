@@ -339,6 +339,23 @@ let SHA_NI_RNDS2_WK_DONTCARE = prove
    (fun th -> REWRITE_TAC[th]) THEN
   REWRITE_TAC[WORD_JOIN4_SUBWORD]);;
 
+(* ------------------------------------------------------------------------- *)
+(* MK_WK_DONTCARE_REWRITES : int list -> thm list                            *)
+(*                                                                           *)
+(* Build two specialized instances of SHA_NI_RNDS2_WK_DONTCARE for the       *)
+(* PSHUFD-garbage wk upper lanes that arise from group i.  Pattern:          *)
+(*                                                                           *)
+(*   inner : word_join4 (K_{4i+0}+w_{4i+0}) (K_{4i+1}+w_{4i+1})              *)
+(*                      (K_{4i+2}+w_{4i+2}) (K_{4i+3}+w_{4i+3})              *)
+(*           ~~> word_join4 (K_{4i+0}+w_{4i+0}) (K_{4i+1}+w_{4i+1})          *)
+(*                          (word 0) (word 0)                                *)
+(*                                                                           *)
+(*   outer : word_join4 (K_{4i+2}+w_{4i+2}) (K_{4i+3}+w_{4i+3})              *)
+(*                      (K_{4i+0}+w_{4i+0}) (K_{4i+0}+w_{4i+0})              *)
+(*           ~~> word_join4 (K_{4i+2}+w_{4i+2}) (K_{4i+3}+w_{4i+3})          *)
+(*                          (word 0) (word 0)                                *)
+(* ------------------------------------------------------------------------- *)
+
 (* ========================================================================= *)
 (* Post-step re-folding infrastructure for SHA256RNDS2.                      *)
 (*                                                                           *)
@@ -549,8 +566,16 @@ let POSTCOND_TAC_HW = GEN_POSTCOND_TAC_HW h_list_tm;;
 (* ABEF/CDGH packs of sha256_compress (4*(i+1)) W H.                         *)
 (* ========================================================================= *)
 
+(* XMM1 target: state after 4 compress rounds of this group, ABEF lane.     *)
+(* XMM2 target: state after 2 compress rounds of this group, ABEF lane —    *)
+(*   the XMM2 register physically holds the intermediate result of the      *)
+(*   first SHA256RNDS2 in the group, which by GROUP_BRIDGE_H2.(i) equals    *)
+(*   the ABEF pack of `sha256_compress (4i+2) W H`.  (At the x86 level      *)
+(*   XMM2 is re-used as the CDGH input for the next group; we defer the     *)
+(*   CDGH_EQ_ABEF bridge to Phase 5 when the final loop exits.)             *)
 let GEN_CUT_POINT_TAC_HW h_tm i sname =
   let target = mk_small_numeral(4 * (i + 1)) in
+  let mid = mk_small_numeral(4 * i + 2) in
   let len_h_thm =
     prove(mk_eq(mk_comb(`LENGTH:int32 list->num`, h_tm), `8`),
           REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
@@ -564,12 +589,12 @@ let GEN_CUT_POINT_TAC_HW h_tm i sname =
        (EL 1 (sha256_compress t W H))
        (EL 4 (sha256_compress t W H))
        (EL 5 (sha256_compress t W H))` in
-  let xmm2_tm = subst [sname, `s:x86state`; target, `t:num`; h_tm, `H:int32 list`]
-    `read XMM2 s = CDGH_PACK
-       (EL 2 (sha256_compress t W (H:int32 list)))
-       (EL 3 (sha256_compress t W H))
-       (EL 6 (sha256_compress t W H))
-       (EL 7 (sha256_compress t W H))` in
+  let xmm2_tm = subst [sname, `s:x86state`; mid, `m:num`; h_tm, `H:int32 list`]
+    `read XMM2 s = ABEF_PACK
+       (EL 0 (sha256_compress m W (H:int32 list)))
+       (EL 1 (sha256_compress m W H))
+       (EL 4 (sha256_compress m W H))
+       (EL 5 (sha256_compress m W H))` in
   let CUT_SUBGOAL_TAC bridge =
     ASM_REWRITE_TAC[bridge] THEN
     TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha256_compress)))) THEN
@@ -577,6 +602,7 @@ let GEN_CUT_POINT_TAC_HW h_tm i sname =
     REWRITE_TAC EL_W_ALL_LIST THEN
     REWRITE_TAC[SHA256_COMPRESS_ROUND_EL_LIST;
                 WORD_JOIN4_SUBWORD] THEN
+    REWRITE_TAC[WORD_ADD_SYM] THEN
     REFL_TAC in
   SUBGOAL_THEN xmm1_tm ASSUME_TAC THENL
    [CUT_SUBGOAL_TAC bridge_h; ALL_TAC] THEN
