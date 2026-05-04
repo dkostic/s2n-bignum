@@ -315,6 +315,30 @@ let SHA256SU_X86_BRIDGE = prove
 (* prologue/epilogue handled by Phase 5.                                    *)
 (* ------------------------------------------------------------------------- *)
 
+(* ------------------------------------------------------------------------- *)
+(* SHA256RNDS2 only reads the LOW 64 bits of its wkval argument (lanes 0,1). *)
+(* After `PSHUFD xmm0, xmm0, 0x0e` brings (K2+w2, K3+w3) into lanes (0,1),   *)
+(* the upper lanes (2,3) hold irrelevant PSHUFD garbage — (K0+w0, K0+w0) in  *)
+(* the asm's case.  GROUP_BRIDGE_H_UNIV expects canonical `word 0` in those  *)
+(* slots, so we need this don't-care lemma to rewrite XMM1 s14 into the      *)
+(* bridge-ready shape.                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA_NI_RNDS2_WK_DONTCARE = prove
+ (`!cdgh abef kw0 kw1 wk2 wk3 wk2' wk3':int32.
+     sha_ni_rnds2 cdgh abef (word_join4 kw0 kw1 wk2 wk3) =
+     sha_ni_rnds2 cdgh abef (word_join4 kw0 kw1 wk2' wk3')`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[sha_ni_rnds2] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN
+   `word_subword (word_join4 kw0 kw1 wk2 wk3:int128) (0,32) :int32 = kw0 /\
+    word_subword (word_join4 kw0 kw1 wk2 wk3:int128) (32,32) :int32 = kw1 /\
+    word_subword (word_join4 kw0 kw1 wk2' wk3':int128) (0,32) :int32 = kw0 /\
+    word_subword (word_join4 kw0 kw1 wk2' wk3':int128) (32,32) :int32 = kw1`
+   (fun th -> REWRITE_TAC[th]) THEN
+  REWRITE_TAC[WORD_JOIN4_SUBWORD]);;
+
 (* ========================================================================= *)
 (* Post-step re-folding infrastructure for SHA256RNDS2.                      *)
 (*                                                                           *)
