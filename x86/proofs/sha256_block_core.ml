@@ -616,6 +616,172 @@ let GEN_CUT_POINT_TAC_HW h_tm i sname =
 let CUT_POINT_TAC_HW i sname = GEN_CUT_POINT_TAC_HW h_list_tm i sname;;
 
 (* ========================================================================= *)
+(* PROLOGUE_PLUS_GROUP0_TAC: complete symbolic execution of steps 1-14 of    *)
+(* the loop body (prologue MOVDQU/PSHUFB/MOVDQA loads + group-0 MSG+PADDD+   *)
+(* RNDS2+PSHUFD+RNDS2) followed by CUT_POINT_TAC_HW 0 at s14.                *)
+(*                                                                           *)
+(* Preconditions (from the loop-top precondition):                           *)
+(*   read XMM1 s0 = ABEF_PACK a b e ff                                       *)
+(*   read XMM2 s0 = CDGH_PACK c d g h                                        *)
+(*   read XMM7 s0 = read XMM8 s0 = pshufb_mask_val                           *)
+(*   data/K memory populated; RIP = pc+64; RSI = data_ptr; RCX = kptr.       *)
+(*                                                                           *)
+(* Postcondition (added to assumption list):                                 *)
+(*   read XMM1 s14 = ABEF_PACK (EL 0 (compress 4 W H)) … (EL 5 …)            *)
+(*   read XMM2 s14 = ABEF_PACK (EL 0 (compress 2 W H)) … (EL 5 …)            *)
+(*   where `W = sha256_message_schedule 48 [w0;…;w15]` is an abbreviation.   *)
+(* ========================================================================= *)
+
+let PROLOGUE_PLUS_GROUP0_TAC : tactic =
+  (* Specialised wk don't-care rewrites for group 0. *)
+  let WKDC_OUTER_0 = SPECL
+   [`ABEF_PACK a b e ff :int128`;
+    `sha_ni_rnds2 (CDGH_PACK c d g h) (ABEF_PACK a b e ff)
+       (word_join4 (word_add (EL 0 sha256_K) w0)
+                   (word_add (EL 1 sha256_K) w1)
+                   (word 0) (word 0)) :int128`;
+    `word_add (EL 2 sha256_K) w2 :int32`;
+    `word_add (EL 3 sha256_K) w3 :int32`;
+    `word_add (EL 0 sha256_K) w0 :int32`;
+    `word_add (EL 0 sha256_K) w0 :int32`;
+    `word 0:int32`; `word 0:int32`]
+   SHA_NI_RNDS2_WK_DONTCARE in
+  let WKDC_INNER_0 = SPECL
+   [`CDGH_PACK c d g h :int128`;
+    `ABEF_PACK a b e ff :int128`;
+    `word_add (EL 0 sha256_K) w0 :int32`;
+    `word_add (EL 1 sha256_K) w1 :int32`;
+    `word_add (EL 2 sha256_K) w2 :int32`;
+    `word_add (EL 3 sha256_K) w3 :int32`;
+    `word 0:int32`; `word 0:int32`]
+   SHA_NI_RNDS2_WK_DONTCARE in
+  GHOST_INTRO_TAC `ymm0_init:int256` `read YMM0` THEN
+  GHOST_INTRO_TAC `ymm1_init:int256` `read YMM1` THEN
+  GHOST_INTRO_TAC `ymm2_init:int256` `read YMM2` THEN
+  GHOST_INTRO_TAC `ymm3_init:int256` `read YMM3` THEN
+  GHOST_INTRO_TAC `ymm4_init:int256` `read YMM4` THEN
+  GHOST_INTRO_TAC `ymm5_init:int256` `read YMM5` THEN
+  GHOST_INTRO_TAC `ymm6_init:int256` `read YMM6` THEN
+  GHOST_INTRO_TAC `ymm9_init:int256` `read YMM9` THEN
+  GHOST_INTRO_TAC `ymm10_init:int256` `read YMM10` THEN
+  ENSURES_INIT_TAC "s0" THEN
+  EXPAND_K_TAC THEN
+  ABBREV_TAC `W:int32 list = sha256_message_schedule 48
+                 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15]` THEN
+  X86_STEPS_TAC HW_EXEC [1;2;3] THEN
+  (* Step 4: pshufb xmm3, xmm7 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s4" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  UNDISCH_THEN `read XMM7 s3 = pshufb_mask_val` (fun th ->
+    RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  PSHUFB_BYTEREVERSE_TAC 3 "s4"
+    (`w0:int32`,`w1:int32`,`w2:int32`,`w3:int32`) THEN
+  FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1000)) THEN
+  DISCARD_OLDSTATE_TAC "s4" THEN
+  (* Steps 5-6: movdqu xmm6; movdqa xmm0, [rcx] (K0..K3 load) *)
+  X86_STEPS_TAC HW_EXEC [5;6] THEN
+  SUBGOAL_THEN
+   `read XMM0 s6 = word_join4 (EL 0 sha256_K) (EL 1 sha256_K)
+                              (EL 2 sha256_K) (EL 3 sha256_K) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 7: paddd xmm0, xmm3 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s7" THEN PADDD_REFOLD_TAC THEN
+  SUBGOAL_THEN
+   `read XMM0 s7 =
+      word_join4 (word_add (EL 0 sha256_K) w0) (word_add (EL 1 sha256_K) w1)
+                 (word_add (EL 2 sha256_K) w2) (word_add (EL 3 sha256_K) w3)
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s7" THEN
+  (* Step 8: pshufb xmm4, xmm7 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s8" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  UNDISCH_THEN `read XMM7 s7 = pshufb_mask_val` (fun th ->
+    RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  PSHUFB_BYTEREVERSE_TAC 4 "s8"
+    (`w4:int32`,`w5:int32`,`w6:int32`,`w7:int32`) THEN
+  FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1000)) THEN
+  DISCARD_OLDSTATE_TAC "s8" THEN
+  (* Step 9: movdqa xmm10, xmm2 (save initial CDGH) *)
+  X86_STEPS_TAC HW_EXEC [9] THEN
+  (* Step 10: sha256rnds2 xmm2, xmm1 — first 2 rounds of group 0 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s10" THEN
+  FOLD_SHA_NI_RNDS2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  SUBGOAL_THEN
+   `read XMM2 s10 =
+      sha_ni_rnds2 (CDGH_PACK c d g h) (ABEF_PACK a b e ff)
+        (word_join4 (word_add (EL 0 sha256_K) w0)
+                    (word_add (EL 1 sha256_K) w1)
+                    (word_add (EL 2 sha256_K) w2)
+                    (word_add (EL 3 sha256_K) w3)) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1500))) THEN
+  DISCARD_OLDSTATE_TAC "s10" THEN
+  (* Step 11: pshufd xmm0, xmm0, 0x0e (swap lane pairs) *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s11" THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM0 s11 =
+      word_join4 (word_add (EL 2 sha256_K) w2)
+                 (word_add (EL 3 sha256_K) w3)
+                 (word_add (EL 0 sha256_K) w0)
+                 (word_add (EL 0 sha256_K) w0) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s11" THEN
+  (* Steps 12-13: nop-like intermediates *)
+  X86_STEPS_TAC HW_EXEC [12;13] THEN
+  (* Step 14: sha256rnds2 xmm1, xmm2 — second 2 rounds of group 0 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s14" THEN
+  FOLD_SHA_NI_RNDS2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  (* SUBSTITUTE_XMM_CLEANS_TAC only folds word_join4 / ABEF / CDGH / mask
+     shapes — not sha_ni_rnds2 results.  Manually plug in XMM2 s13's
+     clean sha_ni_rnds2 form into the YMM1 s14 write. *)
+  FIRST_ASSUM(fun th ->
+    let s = string_of_term (concl th) in
+    if has_sub_string "XMM2 s13 =" s && has_sub_string "sha_ni_rnds2" s
+    then RULE_ASSUM_TAC(REWRITE_RULE[th]) else FAIL_TAC "not found") THEN
+  SUBGOAL_THEN
+   `read XMM1 s14 =
+      sha_ni_rnds2 (ABEF_PACK a b e ff)
+        (sha_ni_rnds2 (CDGH_PACK c d g h) (ABEF_PACK a b e ff)
+           (word_join4 (word_add (EL 0 sha256_K) w0)
+                       (word_add (EL 1 sha256_K) w1)
+                       (word_add (EL 2 sha256_K) w2)
+                       (word_add (EL 3 sha256_K) w3)))
+        (word_join4 (word_add (EL 2 sha256_K) w2)
+                    (word_add (EL 3 sha256_K) w3)
+                    (word_add (EL 0 sha256_K) w0)
+                    (word_add (EL 0 sha256_K) w0)) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1500))) THEN
+  DISCARD_OLDSTATE_TAC "s14" THEN
+  (* Normalize wk don't-cares, then apply the group-0 bridge. *)
+  RULE_ASSUM_TAC(REWRITE_RULE[WKDC_INNER_0; WKDC_OUTER_0]) THEN
+  CUT_POINT_TAC_HW 0 `s14:x86state`;;
+
+(* ========================================================================= *)
 (* Single-block register core theorem.                                       *)
 (*                                                                           *)
 (* Starting at pc+64 (loop-top: first MOVDQU xmm3, [rsi]) with:              *)
