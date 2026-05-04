@@ -66,6 +66,87 @@ let pshufb_mask_val = define
               (word 0x08090a0b)
               (word 0x0c0d0e0f)`;;
 
+(* Byte-level fully-split form of pshufb_mask_val.  Needed to expose the     *)
+(* constant as a nested word_join chain so USIMD2 can peel off layers during *)
+(* PSHUFB simplification.                                                    *)
+let pshufb_mask_val_bytes = prove
+ (`pshufb_mask_val =
+   (word_join:int64->int64->int128)
+    ((word_join:int32->int32->int64)
+      ((word_join:int16->int16->int32)
+        ((word_join:byte->byte->int16) (word 0x0c) (word 0x0d))
+        ((word_join:byte->byte->int16) (word 0x0e) (word 0x0f)))
+      ((word_join:int16->int16->int32)
+        ((word_join:byte->byte->int16) (word 0x08) (word 0x09))
+        ((word_join:byte->byte->int16) (word 0x0a) (word 0x0b))))
+    ((word_join:int32->int32->int64)
+      ((word_join:int16->int16->int32)
+        ((word_join:byte->byte->int16) (word 0x04) (word 0x05))
+        ((word_join:byte->byte->int16) (word 0x06) (word 0x07)))
+      ((word_join:int16->int16->int32)
+        ((word_join:byte->byte->int16) (word 0x00) (word 0x01))
+        ((word_join:byte->byte->int16) (word 0x02) (word 0x03))))`,
+  REWRITE_TAC[pshufb_mask_val; word_join4] THEN CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
+(* PSHUFB with pshufb_mask_val byte-reverses each 32-bit lane.                *)
+(*                                                                           *)
+(* Two shapes arise from the x86 stepper:                                    *)
+(*   • PSHUFB_BYTEREVERSE — the raw usimd16-applied lambda equals word_join4 *)
+(*     of the non-byte-reversed words.                                       *)
+(*   • PSHUFB_XMM_BYTEREVERSE — the shape matching what ASSUMPTION_STATE_    *)
+(*     UPDATE_TAC leaves in the YMM read assumption, namely                  *)
+(*     `word_subword (word_join ymm_top (usimd16 ... ...)) (0,128)`.         *)
+(* ------------------------------------------------------------------------- *)
+
+let PSHUFB_BYTEREVERSE = prove
+ (`!(w0:int32) (w1:int32) (w2:int32) (w3:int32).
+     (usimd16
+          ((\i:byte.
+              if bit 7 i then word 0:byte
+              else word_subword
+                     (word_join4 (word_bytereverse w0) (word_bytereverse w1)
+                                 (word_bytereverse w2) (word_bytereverse w3))
+                     (8 * val(word_subword i (0,4):nybble),8):byte))
+          pshufb_mask_val:int128) =
+     (word_join4 w0 w1 w2 w3:int128)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[pshufb_mask_val_bytes; usimd16; usimd8; usimd4; USIMD2] THEN
+  CONV_TAC(DEPTH_CONV BETA_CONV) THEN
+  CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  REWRITE_TAC[word_join4] THEN
+  CONV_TAC WORD_BLAST);;
+
+let PSHUFB_XMM_BYTEREVERSE = prove
+ (`!(ymm_top:int128) (w0:int32) (w1:int32) (w2:int32) (w3:int32).
+     word_subword
+       (word_join ymm_top
+          (usimd16
+            ((\i:byte.
+                if bit 7 i then word 0:byte
+                else word_subword
+                       (word_subword
+                         (word_join ymm_top
+                           (word_join4 (word_bytereverse w0)
+                                       (word_bytereverse w1)
+                                       (word_bytereverse w2)
+                                       (word_bytereverse w3))
+                            :int256)
+                         (0,128):int128)
+                       (8 * val(word_subword i (0,4):nybble),8):byte))
+             pshufb_mask_val)
+        :int256)
+       (0,128):int128 =
+     (word_join4 w0 w1 w2 w3:int128)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[pshufb_mask_val_bytes; usimd16; usimd8; usimd4; USIMD2] THEN
+  CONV_TAC(DEPTH_CONV BETA_CONV) THEN
+  CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  REWRITE_TAC[word_join4] THEN
+  CONV_TAC WORD_BLAST);;
+
 (* ========================================================================= *)
 (* Packing-level lemmas for the hardware SSE operations used in the body.   *)
 (* ========================================================================= *)
