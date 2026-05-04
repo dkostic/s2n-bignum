@@ -413,6 +413,53 @@ let REFOLD_INIT_GHOSTS_TAC (asl,w) =
   (RULE_ASSUM_TAC(REWRITE_RULE (List.map GSYM ghost_thms)) THEN
    RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD])) (asl,w);;
 
+(* ------------------------------------------------------------------------- *)
+(* Helper: collect known `read XMM_i s_k = word_join4 ...` / `= ABEF_PACK …`  *)
+(* / `= CDGH_PACK …` / `= pshufb_mask_val` assumptions from the goal, so we   *)
+(* can rewrite with them without specifying each one individually.            *)
+(* ------------------------------------------------------------------------- *)
+
+let has_sub_string sub s =
+  let ls = String.length s and lsub = String.length sub in
+  let rec try_at i =
+    i + lsub <= ls && (String.sub s i lsub = sub || try_at (i+1)) in
+  try_at 0;;
+
+let SUBSTITUTE_XMM_CLEANS_TAC : tactic = fun g ->
+  let (asl,_) = g in
+  let clean_thms = List.filter_map (fun (_,th) ->
+    let s = string_of_term (concl th) in
+    if has_sub_string "read XMM" s
+       && (has_sub_string "= word_join4" s
+           || has_sub_string "= ABEF_PACK" s
+           || has_sub_string "= CDGH_PACK" s
+           || has_sub_string "= pshufb_mask_val" s)
+    then Some th
+    else None) asl in
+  RULE_ASSUM_TAC(REWRITE_RULE clean_thms) g;;
+
+(* ------------------------------------------------------------------------- *)
+(* PADDD_REFOLD_TAC: after an X86_VERBOSE_STEP_TAC for                        *)
+(*   PADDD xmm_dst, xmm_src                                                   *)
+(* produces a YMM_dst assumption with nested word_add / word_subword /        *)
+(* word_join over the expanded simd4 of lane-wise adds, refold back into     *)
+(*   word_join (top_preserved)                                                *)
+(*             (word_join4 (c0+v0) (c1+v1) (c2+v2) (c3+v3)).                  *)
+(*                                                                           *)
+(* Relies on the caller having clean `read XMM_src s_prev = word_join4 v0..`  *)
+(* and `read XMM_dst s_prev = word_join4 c0..` assumptions visible so         *)
+(* SUBSTITUTE_XMM_CLEANS_TAC can plug them in.  The final step folds the     *)
+(* right-leaning word_join chain back to word_join4 via GSYM                  *)
+(* WORD_JOIN4_BALANCED.                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let PADDD_REFOLD_TAC : tactic =
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]);;
+
 (* ========================================================================= *)
 (* EXPAND_K_TAC: specialize the quantified K-memory assumption                *)
 (*   !i. i < 16 ==> read (memory :> bytes128 (word_add kptr (word (16 * i))))  *)
