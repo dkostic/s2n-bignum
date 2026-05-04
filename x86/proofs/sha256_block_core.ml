@@ -128,6 +128,48 @@ let PALIGNR_8_WORD_JOIN4 = prove
   REPEAT GEN_TAC THEN REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST);;
 
 (* ------------------------------------------------------------------------- *)
+(* SHA256SU_X86_BRIDGE: the fused 4-word schedule-extension across a group.  *)
+(*                                                                           *)
+(* In the x86 loop body, each schedule register's extension from             *)
+(* (w_i, w_{i+1}, w_{i+2}, w_{i+3}) to (w_{i+16}, ..., w_{i+19}) spans       *)
+(* three adjacent groups:                                                    *)
+(*   group k+0: SHA256MSG1 xmm_i, xmm_{i+1}   (applies sha_ni_msg1)          *)
+(*   group k+1: PALIGNR xmm7, (xmm_{i+3},xmm_{i+2}), 4  and PADDD xmm_i,xmm7 *)
+(*   group k+2: SHA256MSG2 xmm_i, xmm_{i+3}   (applies sha_ni_msg2)          *)
+(*                                                                           *)
+(* The net effect, in terms of the 16-word schedule prefix                   *)
+(*   (w0,w1,...,w15), is to produce (w16,w17,w18,w19) where                  *)
+(*     w_{16+j} = w_j + sigma0 w_{j+1} + w_{j+9} + sigma1 w_{j+14}           *)
+(* — i.e., the standard SHA-256 message-schedule extension for four          *)
+(* consecutive new words.                                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA256SU_X86_BRIDGE = prove
+ (`!w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15:int32.
+    let w16 = word_add (word_add (word_add w0 (sha256_sigma0 w1)) w9)
+                       (sha256_sigma1 w14) in
+    let w17 = word_add (word_add (word_add w1 (sha256_sigma0 w2)) w10)
+                       (sha256_sigma1 w15) in
+    let w18 = word_add (word_add (word_add w2 (sha256_sigma0 w3)) w11)
+                       (sha256_sigma1 w16) in
+    let w19 = word_add (word_add (word_add w3 (sha256_sigma0 w4)) w12)
+                       (sha256_sigma1 w17) in
+    sha_ni_msg2
+      (simd4 (word_add:int32->int32->int32)
+         (sha_ni_msg1 (word_join4 w0 w1 w2 w3) (word_join4 w4 w5 w6 w7))
+         (word_subword
+            ((word_join:int128->int128->int256)
+              (word_join4 w12 w13 w14 w15) (word_join4 w8 w9 w10 w11))
+            (32,128)))
+      (word_join4 w12 w13 w14 w15) =
+    word_join4 w16 w17 w18 w19`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[PALIGNR_4_WORD_JOIN4; SHA256MSG1_BRIDGE; PADDD_WORD_JOIN4;
+              SHA256MSG2_BRIDGE] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* PSHUFD imm8=0x1b selects lanes (3,2,1,0) — lane-reversal.                 *)
 (* PSHUFD imm8=0xb1 selects lanes (1,0,3,2) — swap adjacent 32-bit pairs.   *)
 (* PSHUFD imm8=0x0e selects lanes (2,3,0,1) — used after paddd for the      *)
@@ -235,6 +277,28 @@ let REFOLD_INIT_GHOSTS_TAC (asl,w) =
   let ghost_thms = List.map ASSUME ghost_asms in
   (RULE_ASSUM_TAC(REWRITE_RULE (List.map GSYM ghost_thms)) THEN
    RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD])) (asl,w);;
+
+(* ========================================================================= *)
+(* EXPAND_K_TAC: specialize the quantified K-memory assumption                *)
+(*   !i. i < 16 ==> read (memory :> bytes128 (word_add kptr (word (16 * i))))  *)
+(*                    s = word_join4 (EL (4*i) sha256_K) ... (EL (4*i+3) K)   *)
+(* into 16 concrete assumptions for i = 0, 1, ..., 15.  After NUM_MULT_CONV   *)
+(* and NUM_ADD_CONV the addresses become `word 0`, `word 16`, ..., `word 240` *)
+(* and the EL indices become concrete numerals.                               *)
+(* ========================================================================= *)
+
+let EXPAND_K_TAC =
+  FIRST_ASSUM(fun th ->
+    if can (find_term (fun t ->
+      try fst(dest_const t) = "sha256_K" with _ -> false)) (concl th)
+    then
+      MAP_EVERY (fun i ->
+        let spec = SPEC (mk_small_numeral i) th in
+        let mp = MP spec (prove(lhand(concl spec), ARITH_TAC)) in
+        ASSUME_TAC(CONV_RULE
+          (DEPTH_CONV NUM_MULT_CONV THENC DEPTH_CONV NUM_ADD_CONV) mp))
+        (0--15)
+    else FAIL_TAC "no K assumption");;
 
 (* ========================================================================= *)
 (* Postcondition tactic.                                                     *)
