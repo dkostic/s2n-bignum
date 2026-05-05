@@ -346,9 +346,23 @@ let CUT_POINT_TAC_512 i sname =
            `(word_join:int64->int64->int128)
               (EL 5 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
               (EL 4 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
+  (* Shift lemma: for group i>=1, specialise EL_COMPRESS_SHIFT2_H8 at n=2*(i-1)
+     so EL 2/3/6/7 (compress 2i W H) = EL 0/1/4/5 (compress 2(i-1) W H).
+     For i=0 the bridge bottoms out at `compress 0 W H`, which unfolds via
+     CONJUNCT1 sha512_compress + EL_CONV below. *)
+  let shift2_thm =
+    if i = 0 then TRUTH
+    else CONV_RULE(ONCE_DEPTH_CONV NUM_ADD_CONV)
+           (SPECL [mk_small_numeral(2*(i-1));
+                   `W:int64 list`;
+                   `a:int64`;`b:int64`;`c:int64`;`d:int64`;
+                   `e:int64`;`f:int64`;`g:int64`;`h:int64`]
+             EL_COMPRESS_SHIFT2_H8) in
   let CUT_SUBGOAL_TAC bridge =
     ASM_REWRITE_TAC[bridge] THEN
-    REWRITE_TAC[EL_COMPRESS_SHIFT2_H8; EL_COMPRESS_2_RAW] THEN
+    REWRITE_TAC[shift2_thm] THEN
+    REWRITE_TAC[CONJUNCT1 sha512_compress] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN
     REWRITE_TAC EL_W_ALL_LIST_512 THEN
     REFL_TAC in
   SUBGOAL_THEN q_res_tm ASSUME_TAC THENL
