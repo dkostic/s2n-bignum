@@ -198,6 +198,98 @@ let EL_W_ALL_LIST_512 =
   !el_w_acc;;
 
 (* ========================================================================= *)
+(* Shift lemmas: sha512_compress_round and sha512_compress at LENGTH 8 shift *)
+(* positions 1..3 and 5..7 to positions 0..2 and 4..6 respectively.          *)
+(* These express the fact that one round of compression pushes state letters *)
+(* down by one position, keeping the algorithm correct while hardware layout *)
+(* stays in place.                                                           *)
+(* ========================================================================= *)
+
+let LEN8_DESTRUCTURE = prove
+ (`!l:int64 list. LENGTH l = 8 ==>
+    ?x0 x1 x2 x3 x4 x5 x6 x7. l = [x0;x1;x2;x3;x4;x5;x6;x7]`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM MP_TAC THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `8 = SUC (SUC (SUC (SUC (SUC (SUC (SUC (SUC 0)))))))`] THEN
+  REWRITE_TAC[LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN
+  STRIP_TAC THEN
+  ASM_MESON_TAC[]);;
+
+let SHA512_COMPRESS_ROUND_SHIFT = prove
+ (`!K W state:int64 list. LENGTH state = 8 ==>
+    EL 1 (sha512_compress_round K W state) = EL 0 state /\
+    EL 2 (sha512_compress_round K W state) = EL 1 state /\
+    EL 3 (sha512_compress_round K W state) = EL 2 state /\
+    EL 5 (sha512_compress_round K W state) = EL 4 state /\
+    EL 6 (sha512_compress_round K W state) = EL 5 state /\
+    EL 7 (sha512_compress_round K W state) = EL 6 state`,
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(MP_TAC o MATCH_MP LEN8_DESTRUCTURE) THEN
+  STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[sha512_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[EL; HD; TL] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  REWRITE_TAC[]);;
+
+let SHA512_COMPRESS_SHIFT = prove
+ (`!n W state:int64 list. LENGTH state = 8 ==>
+    EL 1 (sha512_compress (n+1) W state) = EL 0 (sha512_compress n W state) /\
+    EL 2 (sha512_compress (n+1) W state) = EL 1 (sha512_compress n W state) /\
+    EL 3 (sha512_compress (n+1) W state) = EL 2 (sha512_compress n W state) /\
+    EL 5 (sha512_compress (n+1) W state) = EL 4 (sha512_compress n W state) /\
+    EL 6 (sha512_compress (n+1) W state) = EL 5 (sha512_compress n W state) /\
+    EL 7 (sha512_compress (n+1) W state) = EL 6 (sha512_compress n W state)`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  SUBGOAL_THEN `LENGTH (sha512_compress n W (state:int64 list)) = 8` ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_SHA512_COMPRESS THEN ASM_REWRITE_TAC[];
+    ASM_MESON_TAC[SHA512_COMPRESS_ROUND_SHIFT; sha512_compress]]);;
+
+let SHA512_COMPRESS_SHIFT2 = prove
+ (`!n W state:int64 list. LENGTH state = 8 ==>
+    EL 2 (sha512_compress (n+2) W state) = EL 0 (sha512_compress n W state) /\
+    EL 3 (sha512_compress (n+2) W state) = EL 1 (sha512_compress n W state) /\
+    EL 6 (sha512_compress (n+2) W state) = EL 4 (sha512_compress n W state) /\
+    EL 7 (sha512_compress (n+2) W state) = EL 5 (sha512_compress n W state)`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(SPECL [`n+1`; `W:int64 list`; `state:int64 list`] SHA512_COMPRESS_SHIFT) THEN
+  MP_TAC(SPECL [`n:num`; `W:int64 list`; `state:int64 list`] SHA512_COMPRESS_SHIFT) THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[ARITH_RULE `(n+1)+1 = n+2`] THEN
+  MESON_TAC[]);;
+
+(* Specialized forms for H = [a;b;c;d;e;f;g;h]: SHIFT2 with LENGTH hypothesis
+   discharged, and EL-to-raw for compress 2. *)
+
+let EL_COMPRESS_SHIFT2_H8 = prove
+ (`!n W a b c d e f g h:int64.
+    EL 2 (sha512_compress (n+2) W [a;b;c;d;e;f;g;h]) =
+     EL 0 (sha512_compress n W [a;b;c;d;e;f;g;h]) /\
+    EL 3 (sha512_compress (n+2) W [a;b;c;d;e;f;g;h]) =
+     EL 1 (sha512_compress n W [a;b;c;d;e;f;g;h]) /\
+    EL 6 (sha512_compress (n+2) W [a;b;c;d;e;f;g;h]) =
+     EL 4 (sha512_compress n W [a;b;c;d;e;f;g;h]) /\
+    EL 7 (sha512_compress (n+2) W [a;b;c;d;e;f;g;h]) =
+     EL 5 (sha512_compress n W [a;b;c;d;e;f;g;h])`,
+  REPEAT GEN_TAC THEN
+  MATCH_MP_TAC SHA512_COMPRESS_SHIFT2 THEN
+  REWRITE_TAC[LENGTH] THEN ARITH_TAC);;
+
+let EL_COMPRESS_2_RAW = prove
+ (`!W a b c d e f g h:int64.
+    EL 2 (sha512_compress 2 W [a;b;c;d;e;f;g;h]) = a /\
+    EL 3 (sha512_compress 2 W [a;b;c;d;e;f;g;h]) = b /\
+    EL 6 (sha512_compress 2 W [a;b;c;d;e;f;g;h]) = e /\
+    EL 7 (sha512_compress 2 W [a;b;c;d;e;f;g;h]) = f`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(SPECL [`0`; `W:int64 list`; `a:int64`; `b:int64`; `c:int64`;
+                `d:int64`; `e:int64`; `f:int64`; `g:int64`; `h:int64`]
+    EL_COMPRESS_SHIFT2_H8) THEN
+  REWRITE_TAC[ARITH_RULE `0+2 = 2`; sha512_compress] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  REWRITE_TAC[]);;
+
+(* ========================================================================= *)
 (* Machine code and execution rule.                                          *)
 (* ========================================================================= *)
 
@@ -205,6 +297,75 @@ let sha512_block_core_mc = define_from_elf "sha512_block_core_mc"
   (file_on_path !load_path "arm/sha2/sha512_block_core.o");;
 
 let EXEC = ARM_MK_EXEC_RULE sha512_block_core_mc;;
+
+(* ========================================================================= *)
+(* ADD_SIMP_RULE_512: normalize SIMD outputs of ADD V.2D / EXT V.16B #8       *)
+(* after symbolic execution of each round group.                             *)
+(* ========================================================================= *)
+
+let ADD_SIMP_RULE_512 = REWRITE_RULE[WORD_JOIN_64_HI_LO; WORD_JOIN_MID64];;
+
+(* ========================================================================= *)
+(* Phase register arrays for aws-lc's 5-phase cycle.                          *)
+(*   Phase p (0..4): BA, DC, FE, HG, RES, MID are v-register indices.         *)
+(*   HG coincides with RES (destination of sha512h/h2).                       *)
+(*   Group i has phase (i mod 5).                                             *)
+(* ========================================================================= *)
+
+let phase_res_arr_512 = [|3;2;4;1;0|];;   (* RES / HG: new {b,a} pack reg *)
+let phase_mid_arr_512 = [|4;1;0;3;2|];;   (* MID:      new {d,c} pack reg *)
+
+(* ========================================================================= *)
+(* CUT_POINT_TAC_512 for group i at state s_name:                             *)
+(*   Assert 2 cut subgoals (read Q(RES) s = compress-form, Q(MID) = ... ),    *)
+(*   prove each via ASM_REWRITE with the fused H+H2 / MID bridge +            *)
+(*   EL_COMPRESS_2_RAW + SHIFT2 + EL_W_ALL_LIST_512.                          *)
+(*   Then discard residual sha512h/sha512h2 assumptions, and for groups 0..31 *)
+(*   apply SHA512SU_BRIDGE_FLAT to any sha512su1 term.                        *)
+(* ========================================================================= *)
+
+let CUT_POINT_TAC_512 i sname =
+  let target_n = 2 * (i + 1) in
+  let target = mk_small_numeral target_n in
+  let p = i mod 5 in
+  let q_res = mk_const("Q" ^ string_of_int phase_res_arr_512.(p),[]) in
+  let q_mid = mk_const("Q" ^ string_of_int phase_mid_arr_512.(p),[]) in
+  let bridge_h = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int64 list`; `[a:int64;b;c;d;e;f;g;h]`] GROUP_BRIDGE_H512.(i)) in
+  let bridge_mid = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int64 list`; `[a:int64;b;c;d;e;f;g;h]`] GROUP_BRIDGE_MID.(i)) in
+  let q_res_tm = subst [sname, `s:armstate`; target, `t:num`]
+    (mk_eq(mk_comb(mk_comb(`read:(armstate,int128)component->armstate->int128`, q_res),
+                   `s:armstate`),
+           `(word_join:int64->int64->int128)
+              (EL 1 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
+              (EL 0 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
+  let q_mid_tm = subst [sname, `s:armstate`; target, `t:num`]
+    (mk_eq(mk_comb(mk_comb(`read:(armstate,int128)component->armstate->int128`, q_mid),
+                   `s:armstate`),
+           `(word_join:int64->int64->int128)
+              (EL 5 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
+              (EL 4 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
+  let CUT_SUBGOAL_TAC bridge =
+    ASM_REWRITE_TAC[bridge] THEN
+    REWRITE_TAC[EL_COMPRESS_SHIFT2_H8; EL_COMPRESS_2_RAW] THEN
+    REWRITE_TAC EL_W_ALL_LIST_512 THEN
+    REFL_TAC in
+  SUBGOAL_THEN q_res_tm ASSUME_TAC THENL
+   [CUT_SUBGOAL_TAC bridge_h; ALL_TAC] THEN
+  SUBGOAL_THEN q_mid_tm ASSUME_TAC THENL
+   [CUT_SUBGOAL_TAC bridge_mid; ALL_TAC] THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    can (find_term (fun t ->
+      try let n = fst(dest_const t) in n = "sha512h" || n = "sha512h2"
+      with _ -> false)) (concl th)))) THEN
+  (if i < 32 then
+    RULE_ASSUM_TAC(fun th ->
+      if can (find_term (fun t ->
+          try fst(dest_const t) = "sha512su1" with _ -> false)) (concl th)
+      then REWRITE_RULE[SHA512SU_BRIDGE_FLAT] th
+      else th)
+   else ALL_TAC);;
 
 (* ========================================================================= *)
 (* Correctness theorem (Phase D work in progress — body is CHEAT_TAC).      *)
