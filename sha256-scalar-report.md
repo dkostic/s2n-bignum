@@ -16,7 +16,7 @@ SHA-256 crypto extensions, no NEON):
   (1.52-1.53x speedup)
 - **`sha256_block_data_order_nohw6`** -- nohw5 + cyclic state-register
   naming + intra-round schedule/compression interleaving
-  (1.61x speedup; proof partially CHEATed, see below)
+  (1.61x speedup)
 
 All five are scalar complements to `sha256_block_data_order_hw`
 (verified in the SHA-256 pilot; see `pilot-report.md`) and can be
@@ -36,18 +36,15 @@ void sha256_block_data_order_nohw(
 The K round-constant table is passed as a pointer (rather than embedded
 via PC-relative addressing) to match the convention of the HW variant.
 
-All top-level theorems for nohw, nohw2, nohw4, and nohw5 load without
-`CHEAT_TAC` on top of the existing s2n-bignum ARM infrastructure.
-The nohw6 top-level theorems also load but currently carry one
-CHEAT (period loop) inside the core theorem body; the D-tail is
-fully proved (see the nohw6 section below):
+All top-level theorems for all five variants load without
+`CHEAT_TAC` on top of the existing s2n-bignum ARM infrastructure:
 
 ```
 needs "arm/proofs/sha256_block_data_order_nohw.ml";;   (* CHEAT-free *)
 needs "arm/proofs/sha256_block_data_order_nohw2.ml";;  (* CHEAT-free *)
 needs "arm/proofs/sha256_block_data_order_nohw4.ml";;  (* CHEAT-free *)
 needs "arm/proofs/sha256_block_data_order_nohw5.ml";;  (* CHEAT-free *)
-needs "arm/proofs/sha256_block_data_order_nohw6.ml";;  (* 1 CHEAT    *)
+needs "arm/proofs/sha256_block_data_order_nohw6.ml";;  (* CHEAT-free *)
 ```
 
 ## What has been proven
@@ -567,38 +564,47 @@ total program 0xe28 bytes instead of 0x1128). The outer multi-block
 `H_i`, `M_i` destructure, `dptr_i` normalisation), Phase A (16 ldr
 +rev), Phase C (8 state ldrs), Phase E (8 add-back pairs), Phase F
 + postamble (writeback + x1/x2 advance), and the `ARM_ADD_RETURN_STACK_TAC`
-subroutine wrapper are all **fully proved without CHEAT**, on the same
-pattern as nohw5.
+subroutine wrapper are all proved on the same pattern as nohw5.
 
 The D-tail (16 compression-only rounds 48..63, pc+0x850..pc+0xd90)
-is now **fully proved without CHEAT**, mirroring nohw5's 16 nested
-ENSURES_SEQUENCE_TAC stanzas but with per-round post-condition
-subscripts rotated through the cyclic-naming map (m-th logical
-position at rotation k lives in `X[4 + ((m - k) mod 8)]`). Each
-round closes via the same tactic shape: `ENSURES_INIT_TAC` →
-K-pointer hypothesis specialization → `ARM_STEPS_TAC (1--21)` →
-`ENSURES_FINAL_STATE_TAC` → compress-unfold + `GSYM WORD_SUBWORD_JOIN_SELF`
-+ `LIST_8_COMPRESS_NOHW6` destructuring + `EL_CONV` + `WORD_ZX_INJ`
-+ 2 `CONV_TAC WORD_RULE` conjuncts for the new_a / new_e bridges.
+mirrors nohw5's 16 nested ENSURES_SEQUENCE_TAC stanzas but with
+per-round post-condition subscripts rotated through the cyclic-naming
+map (m-th logical position at rotation k lives in
+`X[4 + ((m - k) mod 8)]`). Each round closes via the same tactic
+shape: `ENSURES_INIT_TAC` → K-pointer hypothesis specialization →
+`ARM_STEPS_TAC (1--21)` → `ENSURES_FINAL_STATE_TAC` → compress-unfold
++ `GSYM WORD_SUBWORD_JOIN_SELF` + `LIST_8_COMPRESS_NOHW6` destructuring
++ `EL_CONV` + `WORD_ZX_INJ` + 2 `CONV_TAC WORD_RULE` conjuncts for
+the new_a / new_e bridges.
 
 The inner period loop (48 fused rounds 0..47, pc+0xc8..pc+0x850)
-still carries a `CHEAT_TAC` placeholder. `check_axioms()` reports
-**4 axioms** (3 standard HOL axioms + 1 CHEAT).
+is handled as period 0 (16 inlined round stanzas, pc+0xc8..pc+0x848)
+followed by `ENSURES_WHILE_UP_TAC` over periods 1 and 2 (with X30
+as the loop counter). The BODY of the WHILE_UP is a 16-round nested
+`ENSURES_SEQUENCE_TAC`/`CONJ_TAC` chain ending with the `sub x30,
+x30, #1` at pc+0x848 to reach invariant(i+1). Each round within
+the generic-i body uses `SHA256_W_EXTEND` at `n = 16*(i+1)+k`
+combined with `SHA256_SCHEDULE_MONO` bridging at slot indices
+`{n, n+1, n+9, n+14}` to close the schedule-extension conjunct;
+the two state bridges (new_a, new_e) close via plain `WORD_RULE`
+because the schedule slots at BODY entry already hold W values
+(no M_i→W bridge is needed in the generic body, unlike period 0).
 
-Interactive holctl validation of period-0 round 0 confirms the
-same ported tactic works for the fused body (with a
-`SHA256_W_EXTEND` bridge for the schedule-step output). Completing
-the period loop requires 16 further per-round stanzas for period 0
-and an `ENSURES_WHILE_UP_TAC` for periods 1, 2 (with
-`SHA256_SCHEDULE_MONO` bridging), mirroring nohw5's ~3800-line
-period proof. This is mechanical but voluminous and was deferred.
+The full proof is **CHEAT-free end-to-end**. `check_axioms()`
+reports **3 axioms** -- the three standard HOL Light axioms only:
+
+```
+|- ?f. ONE_ONE f /\ ~ONTO f            (* ax_INFINITY *)
+|- !P x. P x ==> P ((@) P)             (* ax_SELECT *)
+|- !t. (\x. t x) = t                   (* ax_ETA *)
+```
 
 ### Artefacts (nohw6)
 
 | Path                                                       | Purpose                                  |
 |------------------------------------------------------------|------------------------------------------|
 | `arm/sha2/sha256_block_data_order_nohw6.S`                 | Optimised assembly                       |
-| `arm/proofs/sha256_block_data_order_nohw6.ml`              | HOL-Light proof (D-tail proved, period CHEAT remains) |
+| `arm/proofs/sha256_block_data_order_nohw6.ml`              | Full HOL-Light proof (~5800 lines, CHEAT-free) |
 | `include/s2n-bignum.h`                                     | C declaration                            |
 | `arm/Makefile`                                             | Build integration                        |
 | `benchmarks/benchmark.c`                                   | Benchmark entry                          |
@@ -684,3 +690,22 @@ Commits on branch `sha256-arm-scalar`:
   - `bfdec6ac` nohw5: prove periods p=1, p=2 via ENSURES_WHILE_UP_TAC.
     Reduces axioms from 4 to 3 (the three standard HOL axioms only);
     the nohw5 proof is now fully CHEAT-free against FIPS 180-4.
+- nohw6 (on branch `sha256-arm-scalar-opt`):
+  - Early commits through `66300833` prove Phase A/C/E/F + D-tail
+    (WIP with CHEAT_TAC for period loop).
+  - `7d21b90b..b2c0183e` prove period 0 rounds 0..15 inline
+    (pc+0xc8..pc+0x848).
+  - `0165b8f5` install `ENSURES_WHILE_UP_TAC` skeleton for periods
+    1, 2 with k!=0, ENTRY (sub+cbnz), BACK-EDGE, EXIT proved; BODY
+    still CHEAT. Axioms remain at 4.
+  - `77fdb14c` prove BODY round 0 (generic-i, canonical rotation k=0,
+    pc+0xc8..pc+0x140).
+  - `07db854d` prove BODY round 1 (generic-i, rotation k=1,
+    pc+0x140..pc+0x1b8); validates the ARITH_RULE normalization
+    pattern for the SCHEDULE_MONO bridge at round indices k>=1.
+  - `f4cd8eb7` prove BODY rounds 2..15 + `sub x30, x30, #1` at
+    pc+0x848. Final closure normalizes
+    `16*(i+1)+16 = 16*((i+1)+1)`, `64*(i+1)+64 = 64*((i+1)+1)`,
+    and `2-i = (2-(i+1))+1` to match invariant(i+1). Reduces axioms
+    from 4 to 3; the nohw6 proof is now fully CHEAT-free against
+    FIPS 180-4.
