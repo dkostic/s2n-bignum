@@ -1092,6 +1092,296 @@ let GROUP1_TAC : tactic =
   CUT_POINT_TAC_HW 1 `s22:x86state`;;
 
 (* ========================================================================= *)
+(* GROUP2_TAC: symbolic execution of group 2 (steps 23-33) + CUT_POINT 2.    *)
+(*                                                                           *)
+(* Group 2 is the first group with the full schedule-extension machinery:    *)
+(*   • Steps 28/29 `movdqa xmm7,xmm6` then `palignr xmm7,xmm5,0x4` give the  *)
+(*     palignr intermediate word_join4 w9 w10 w11 w12.                        *)
+(*   • Step 31 `paddd xmm3,xmm7` combines the prior group's msg1 output      *)
+(*     (word_join4 (w_j+sigma0 w_{j+1})...) with the palignr word_join4.     *)
+(*     XMM3 must first be SHA256MSG1_BRIDGE'd from its sha_ni_msg1 form into *)
+(*     a word_join4 so PADDD_REFOLD_TAC can operate.                          *)
+(*   • Step 32 `sha256msg1 xmm4,xmm5` starts the next schedule-extension     *)
+(*     triple for w_{16..19} — uses FOLD_SHA_NI_MSG1_TAC.                     *)
+(*                                                                           *)
+(* Important gotcha at step 28: `movdqa xmm7,xmm6` stepper produces a YMM7   *)
+(* s28 assumption that references `read YMM7 s27` and `read YMM6 s27` —     *)
+(* neither of which is in asl (we only kept XMM clean forms).  Apply        *)
+(* YMM_TO_XMM_SUBWORD to the assumption list BEFORE asserting the clean     *)
+(* XMM7 s28 form.                                                            *)
+(* ========================================================================= *)
+
+let GROUP2_TAC : tactic =
+  let WKDC_OUTER_2 = SPECL
+   [`ABEF_PACK (EL 0 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 1 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 4 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 5 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])) :int128`;
+    `sha_ni_rnds2
+       (CDGH_PACK (EL 2 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                  (EL 3 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                  (EL 6 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                  (EL 7 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+       (ABEF_PACK (EL 0 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                  (EL 1 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                  (EL 4 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                  (EL 5 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+       (word_join4 (word_add (EL 8 sha256_K) w8)
+                   (word_add (EL 9 sha256_K) w9)
+                   (word 0) (word 0)) :int128`;
+    `word_add (EL 10 sha256_K) w10 :int32`;
+    `word_add (EL 11 sha256_K) w11 :int32`;
+    `word_add (EL 8 sha256_K) w8 :int32`;
+    `word_add (EL 8 sha256_K) w8 :int32`;
+    `word 0:int32`; `word 0:int32`]
+   SHA_NI_RNDS2_WK_DONTCARE in
+  let WKDC_INNER_2 = SPECL
+   [`CDGH_PACK (EL 2 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 3 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 6 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 7 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])) :int128`;
+    `ABEF_PACK (EL 0 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 1 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 4 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+               (EL 5 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])) :int128`;
+    `word_add (EL 8 sha256_K) w8 :int32`;
+    `word_add (EL 9 sha256_K) w9 :int32`;
+    `word_add (EL 10 sha256_K) w10 :int32`;
+    `word_add (EL 11 sha256_K) w11 :int32`;
+    `word 0:int32`; `word 0:int32`]
+   SHA_NI_RNDS2_WK_DONTCARE in
+  let len_h_thm = prove
+   (`LENGTH [a:int32;b;c;d;e;ff;g;h] = 8`,
+    REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+  let compress_el_shift_1 =
+    CONV_RULE(DEPTH_CONV NUM_ADD_CONV)
+     (MATCH_MP
+        (SPECL [`6`; `W:int32 list`; `[a:int32;b;c;d;e;ff;g;h]`]
+               COMPRESS_EL_SHIFT_2)
+        len_h_thm) in
+  (* Step 23: movdqa xmm0, [rcx+32] (K8..K11) *)
+  X86_STEPS_TAC HW_EXEC [23] THEN
+  SUBGOAL_THEN
+   `read XMM0 s23 = word_join4 (EL 8 sha256_K) (EL 9 sha256_K)
+                              (EL 10 sha256_K) (EL 11 sha256_K) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 24: paddd xmm0, xmm5 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s24" THEN PADDD_REFOLD_TAC THEN
+  SUBGOAL_THEN
+   `read XMM0 s24 =
+      word_join4 (word_add (EL 8 sha256_K) w8) (word_add (EL 9 sha256_K) w9)
+                 (word_add (EL 10 sha256_K) w10) (word_add (EL 11 sha256_K) w11)
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s24" THEN
+  (* Step 25: pshufb xmm6, xmm7 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s25" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  UNDISCH_THEN `read XMM7 s24 = pshufb_mask_val` (fun th ->
+    RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  PSHUFB_BYTEREVERSE_TAC 6 "s25"
+    (`w12:int32`,`w13:int32`,`w14:int32`,`w15:int32`) THEN
+  FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1000)) THEN
+  DISCARD_OLDSTATE_TAC "s25" THEN
+  (* Shift XMM2 from ABEF_PACK (compress 6) to CDGH_PACK (compress 8) *)
+  SUBGOAL_THEN
+   `read XMM2 s25 = CDGH_PACK
+     (EL 2 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 3 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 6 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 7 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))`
+   ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[CDGH_EQ_ABEF] THEN
+    REWRITE_TAC[compress_el_shift_1]; ALL_TAC] THEN
+  UNDISCH_TAC `read XMM2 s25 = ABEF_PACK
+     (EL 0 (sha256_compress 6 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 6 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 6 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 6 W [a; b; c; d; e; ff; g; h]))` THEN
+  DISCH_THEN(K ALL_TAC) THEN
+  (* Step 26: sha256rnds2 xmm2, xmm1 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s26" THEN
+  FOLD_SHA_NI_RNDS2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  UNDISCH_THEN
+   `read XMM2 s25 = CDGH_PACK
+     (EL 2 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 3 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 6 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 7 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  UNDISCH_THEN
+   `read XMM1 s25 = ABEF_PACK
+     (EL 0 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  SUBGOAL_THEN
+   `read XMM2 s26 =
+      sha_ni_rnds2
+        (CDGH_PACK (EL 2 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 3 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 6 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 7 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+        (ABEF_PACK (EL 0 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 1 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 4 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 5 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+        (word_join4 (word_add (EL 8 sha256_K) w8) (word_add (EL 9 sha256_K) w9)
+                    (word_add (EL 10 sha256_K) w10) (word_add (EL 11 sha256_K) w11))
+     :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1500))) THEN
+  DISCARD_OLDSTATE_TAC "s26" THEN
+  (* Step 27: pshufd xmm0, xmm0, 0x0e *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s27" THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM0 s27 =
+      word_join4 (word_add (EL 10 sha256_K) w10) (word_add (EL 11 sha256_K) w11)
+                 (word_add (EL 8 sha256_K) w8) (word_add (EL 8 sha256_K) w8)
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 28: movdqa xmm7, xmm6 — need YMM_TO_XMM_SUBWORD to simplify the
+     stepper's `word_subword (read YMM6 s_prev) (0,128)` down to XMM6 s_prev. *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s28" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  SUBGOAL_THEN
+   `read XMM7 s28 = word_join4 w12 w13 w14 w15 :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM7; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s28" THEN
+  (* Step 29: palignr xmm7, xmm5, 0x4 — shifts (xmm7 || xmm5) right by 4 bytes *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s29" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[PALIGNR_4_WORD_JOIN4]) THEN
+  SUBGOAL_THEN
+   `read XMM7 s29 = word_join4 w9 w10 w11 w12 :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM7; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s29" THEN
+  (* Step 30: nop *)
+  X86_STEPS_TAC HW_EXEC [30] THEN
+  (* Expand XMM3 from sha_ni_msg1 to word_join4 via SHA256MSG1_BRIDGE so
+     PADDD_REFOLD can consume it at step 31. *)
+  SUBGOAL_THEN
+   `read XMM3 s30 =
+      word_join4 (word_add w0 (sha256_sigma0 w1))
+                 (word_add w1 (sha256_sigma0 w2))
+                 (word_add w2 (sha256_sigma0 w3))
+                 (word_add w3 (sha256_sigma0 w4)) :int128`
+   ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[SHA256MSG1_BRIDGE]; ALL_TAC] THEN
+  UNDISCH_TAC
+   `read XMM3 s30 = sha_ni_msg1 (word_join4 w0 w1 w2 w3) (word_join4 w4 w5 w6 w7)` THEN
+  DISCH_THEN(K ALL_TAC) THEN
+  (* Step 31: paddd xmm3, xmm7 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s31" THEN PADDD_REFOLD_TAC THEN
+  (* PADDD_REFOLD didn't collapse xmm3's word_subword lanes because the
+     clean XMM3 s30 form has `word_add w_i (sigma0 w_{i+1})` lanes.  Manually
+     substitute + simplify. *)
+  UNDISCH_THEN
+   `read XMM3 s30 =
+      word_join4 (word_add w0 (sha256_sigma0 w1))
+                 (word_add w1 (sha256_sigma0 w2))
+                 (word_add w2 (sha256_sigma0 w3))
+                 (word_add w3 (sha256_sigma0 w4))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM3 s31 =
+      word_join4 (word_add (word_add w0 (sha256_sigma0 w1)) w9)
+                 (word_add (word_add w1 (sha256_sigma0 w2)) w10)
+                 (word_add (word_add w2 (sha256_sigma0 w3)) w11)
+                 (word_add (word_add w3 (sha256_sigma0 w4)) w12) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM3; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s31" THEN
+  (* Step 32: sha256msg1 xmm4, xmm5 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s32" THEN
+  FOLD_SHA_NI_MSG1_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  SUBGOAL_THEN
+   `read XMM4 s32 =
+      sha_ni_msg1 (word_join4 w4 w5 w6 w7) (word_join4 w8 w9 w10 w11) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM4; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s32" THEN
+  (* Step 33: sha256rnds2 xmm1, xmm2 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s33" THEN
+  FOLD_SHA_NI_RNDS2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  FIRST_ASSUM(fun th ->
+    let s = string_of_term (concl th) in
+    if has_sub_string "XMM2 s32 =" s && has_sub_string "sha_ni_rnds2" s
+    then RULE_ASSUM_TAC(REWRITE_RULE[th]) else FAIL_TAC "not found") THEN
+  UNDISCH_THEN
+   `read XMM1 s32 = ABEF_PACK
+     (EL 0 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 8 W [a; b; c; d; e; ff; g; h]))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  SUBGOAL_THEN
+   `read XMM1 s33 =
+      sha_ni_rnds2
+        (ABEF_PACK (EL 0 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 1 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 4 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                   (EL 5 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+        (sha_ni_rnds2
+           (CDGH_PACK (EL 2 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                      (EL 3 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                      (EL 6 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                      (EL 7 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+           (ABEF_PACK (EL 0 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                      (EL 1 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                      (EL 4 (sha256_compress 8 W [a;b;c;d;e;ff;g;h]))
+                      (EL 5 (sha256_compress 8 W [a;b;c;d;e;ff;g;h])))
+           (word_join4 (word_add (EL 8 sha256_K) w8)
+                       (word_add (EL 9 sha256_K) w9)
+                       (word_add (EL 10 sha256_K) w10)
+                       (word_add (EL 11 sha256_K) w11)))
+        (word_join4 (word_add (EL 10 sha256_K) w10)
+                    (word_add (EL 11 sha256_K) w11)
+                    (word_add (EL 8 sha256_K) w8)
+                    (word_add (EL 8 sha256_K) w8)) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1500))) THEN
+  DISCARD_OLDSTATE_TAC "s33" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WKDC_INNER_2; WKDC_OUTER_2]) THEN
+  CUT_POINT_TAC_HW 2 `s33:x86state`;;
+
+(* ========================================================================= *)
 (* Single-block register core theorem.                                       *)
 (*                                                                           *)
 (* Starting at pc+64 (loop-top: first MOVDQU xmm3, [rsi]) with:              *)
