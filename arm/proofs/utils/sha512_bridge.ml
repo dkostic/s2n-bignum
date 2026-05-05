@@ -390,3 +390,77 @@ let SHA512_BLOCK_EL = prove
              (H:int64 list)) = 8` ASSUME_TAC THENL
    [MATCH_MP_TAC LENGTH_SHA512_COMPRESS THEN ASM_REWRITE_TAC[];
     ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC]);;
+
+(* ========================================================================= *)
+(* Phase 8: Fused H+H2 and MID bridges.                                      *)
+(*                                                                           *)
+(* These are the bridges actually used to lift the 2-round hw kernel into   *)
+(* per-group spec-level reasoning. Expressed via sha512_compress_round      *)
+(* (analogous to SHA256H_BRIDGE's compress_round form), so that specializing *)
+(* state=sb and applying EL_RECONSTRUCT collapses the inner                  *)
+(* `[EL 0 sb; EL 1 sb; ...; EL 7 sb]` list back to sb.                       *)
+(* ========================================================================= *)
+
+(* The fused H+H2 bridge: two SHA512 HW instructions with K+W pre-added      *)
+(* produce the new {b',a'} pair = word_join (EL 1 s2) (EL 0 s2) where s2 is  *)
+(* the state after 2 rounds of sha512_compress_round over initial state.     *)
+
+let SHA512_H_H2_BRIDGE = prove
+ (`!a b c d e f g h kw0 kw1:int64.
+    let s0 = [a;b;c;d;e;f;g;h] in
+    let s1 = sha512_compress_round kw0 (word 0) s0 in
+    let s2 = sha512_compress_round kw1 (word 0) s1 in
+    sha512h2
+      (sha512h ((word_join:int64->int64->int128) (word_add h kw0) (word_add g kw1))
+               ((word_join:int64->int64->int128) g f)
+               ((word_join:int64->int64->int128) e d))
+      ((word_join:int64->int64->int128) d c)
+      ((word_join:int64->int64->int128) b a) =
+    (word_join:int64->int64->int128) (EL 1 s2) (EL 0 s2)`,
+  REPEAT GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[sha512_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[EL; HD; TL] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  ONCE_REWRITE_TAC[SHA512H_BRIDGE_FLAT] THEN
+  ONCE_REWRITE_TAC[SHA512H2_BRIDGE_FLAT] THEN
+  CONV_TAC WORD_RULE);;
+
+(* The MID bridge: the `add v_MID = v_DC + v_RES` step combined with the    *)
+(* preceding sha512h produces the new {d',c'} pair.                          *)
+
+let SHA512_MID_BRIDGE = prove
+ (`!a b c d e f g h kw0 kw1:int64.
+    let s0 = [a;b;c;d;e;f;g;h] in
+    let s1 = sha512_compress_round kw0 (word 0) s0 in
+    let s2 = sha512_compress_round kw1 (word 0) s1 in
+    (word_join:int64->int64->int128)
+      (word_add d
+        (word_subword
+          (sha512h ((word_join:int64->int64->int128) (word_add h kw0) (word_add g kw1))
+                   ((word_join:int64->int64->int128) g f)
+                   ((word_join:int64->int64->int128) e d)) (64,64)))
+      (word_add c
+        (word_subword
+          (sha512h ((word_join:int64->int64->int128) (word_add h kw0) (word_add g kw1))
+                   ((word_join:int64->int64->int128) g f)
+                   ((word_join:int64->int64->int128) e d)) (0,64))) =
+    (word_join:int64->int64->int128) (EL 5 s2) (EL 4 s2)`,
+  REPEAT GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[sha512_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC[EL; HD; TL] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  ONCE_REWRITE_TAC[SHA512H_BRIDGE_FLAT] THEN
+  REWRITE_TAC[WORD_JOIN_64_HI_LO] THEN
+  CONV_TAC WORD_RULE);;
+
+(* Flat forms (let bindings eliminated) for direct use in REWRITE_TAC. *)
+let SHA512_H_H2_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA512_H_H2_BRIDGE;;
+let SHA512_MID_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA512_MID_BRIDGE;;
