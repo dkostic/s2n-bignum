@@ -365,36 +365,57 @@ let SHA_NI_RNDS2_WK_DONTCARE = prove
 (* H)` (via CDGH_EQ_ABEF), which lets us rewrite the physical x86 XMM2       *)
 (* (carrying `ABEF_PACK (compress (4i+2))`) into the CDGH_PACK form that    *)
 (* GROUP_BRIDGE_H.(i+1) expects as the inner sha_ni_rnds2's first operand.  *)
-(*                                                                           *)
-(* COMPRESS_EL_SHIFT.(i) is the group-i instance, proven per-group because   *)
-(* a general `!n. LENGTH H = 8 ==> EL 2 (compress (n+2) W H) = EL 0          *)
-(* (compress n W H)` would require a list-reconstruction lemma we don't     *)
-(* have.  Concrete numerals let SHA256_COMPRESS_UNROLL_CONV fully evaluate.  *)
 (* ------------------------------------------------------------------------- *)
 
-let mk_compress_el_shift i =
-  let mid_s = mk_small_numeral(4*i+2) in
-  let next_s = mk_small_numeral(4*(i+1)) in
-  prove(subst[mid_s,`m:num`; next_s,`n:num`]
-   `!W (H:int32 list). LENGTH H = 8 ==>
-      EL 2 (sha256_compress n W H) = EL 0 (sha256_compress m W H) /\
-      EL 3 (sha256_compress n W H) = EL 1 (sha256_compress m W H) /\
-      EL 6 (sha256_compress n W H) = EL 4 (sha256_compress m W H) /\
-      EL 7 (sha256_compress n W H) = EL 5 (sha256_compress m W H)`,
-   REPEAT STRIP_TAC THEN
-   CONV_TAC(DEPTH_CONV(REWR_CONV (SHA256_COMPRESS_UNROLL_CONV
-     (subst[next_s,`n:num`] `sha256_compress n W (H:int32 list)`)))) THEN
-   CONV_TAC(DEPTH_CONV(REWR_CONV (SHA256_COMPRESS_UNROLL_CONV
-     (subst[mid_s,`m:num`] `sha256_compress m W (H:int32 list)`)))) THEN
-   REWRITE_TAC[sha256_compress_round] THEN
-   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-   CONV_TAC(DEPTH_CONV EL_CONV) THEN
-   REFL_TAC);;
+(* SHA256_COMPRESS_ROUND_2_HW_FORM generalized from [a;…;h] to any length-8 *)
+(* state list.  Since `sha256_compress_round` reads `EL i state` symbolically, *)
+(* expanding with let_CONV + EL_CONV yields the shifted state for free.     *)
+let SHA256_COMPRESS_ROUND_2_HW_LIST = prove
+ (`!wk0 wk1 s:int32 list.
+     LENGTH s = 8 ==>
+     EL 2 (sha256_compress_round wk1 (word 0)
+            (sha256_compress_round wk0 (word 0) s)) = EL 0 s /\
+     EL 3 (sha256_compress_round wk1 (word 0)
+            (sha256_compress_round wk0 (word 0) s)) = EL 1 s /\
+     EL 6 (sha256_compress_round wk1 (word 0)
+            (sha256_compress_round wk0 (word 0) s)) = EL 4 s /\
+     EL 7 (sha256_compress_round wk1 (word 0)
+            (sha256_compress_round wk0 (word 0) s)) = EL 5 s`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[sha256_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  REFL_TAC);;
 
-(* Only proved on demand since later groups (especially i=15) take longer to
-   prove via SHA256_COMPRESS_UNROLL_CONV.  Callers of GROUPi_TAC may
-   instantiate additional indices as needed. *)
-let COMPRESS_EL_SHIFT_0 = mk_compress_el_shift 0;;
+(* General state-shift for sha256_compress: proved once for all n via the   *)
+(* HW_LIST form plus PREADD_SYM (which normalizes the two rounds to have    *)
+(* the (wk, word 0) shape that HW_LIST recognises).                          *)
+let COMPRESS_EL_SHIFT_2 = prove
+ (`!n W (H:int32 list). LENGTH H = 8 ==>
+     EL 2 (sha256_compress (n+2) W H) = EL 0 (sha256_compress n W H) /\
+     EL 3 (sha256_compress (n+2) W H) = EL 1 (sha256_compress n W H) /\
+     EL 6 (sha256_compress (n+2) W H) = EL 4 (sha256_compress n W H) /\
+     EL 7 (sha256_compress (n+2) W H) = EL 5 (sha256_compress n W H)`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  SUBGOAL_THEN `n + 2 = (n+1)+1`(fun th -> ONCE_REWRITE_TAC[th])
+    THENL [ARITH_TAC; ALL_TAC] THEN
+  ONCE_REWRITE_TAC[sha256_compress] THEN
+  ONCE_REWRITE_TAC[sha256_compress] THEN
+  ONCE_REWRITE_TAC[GSYM SHA256_COMPRESS_ROUND_PREADD_SYM] THEN
+  SUBGOAL_THEN
+   `sha256_compress_round (EL n sha256_K) (EL n W) (sha256_compress n W H) =
+    sha256_compress_round (word_add (EL n W) (EL n sha256_K)) (word 0)
+                          (sha256_compress n W H)`
+   (fun th -> ONCE_REWRITE_TAC[th]) THENL
+   [REWRITE_TAC[SHA256_COMPRESS_ROUND_PREADD_SYM]; ALL_TAC] THEN
+  MATCH_MP_TAC SHA256_COMPRESS_ROUND_2_HW_LIST THEN
+  MATCH_MP_TAC LENGTH_SHA256_COMPRESS THEN
+  ASM_REWRITE_TAC[]);;
+
+(* Group-i instance is obtained by:                                          *)
+(*   let shift_i = CONV_RULE(DEPTH_CONV NUM_ADD_CONV)                        *)
+(*     (MATCH_MP (SPECL [mk_small_numeral(4i+2); `W`; H_tm] COMPRESS_EL_SHIFT_2) *)
+(*               length_H_thm) in …                                           *)
 
 (* ========================================================================= *)
 (* Post-step re-folding infrastructure for SHA256RNDS2.                      *)
@@ -892,7 +913,12 @@ let GROUP1_TAC : tactic =
   let len_h_thm = prove
    (`LENGTH [a:int32;b;c;d;e;ff;g;h] = 8`,
     REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
-  let compress_el_shift_0 = MATCH_MP COMPRESS_EL_SHIFT_0 len_h_thm in
+  let compress_el_shift_0 =
+    CONV_RULE(DEPTH_CONV NUM_ADD_CONV)
+     (MATCH_MP
+        (SPECL [`2`; `W:int32 list`; `[a:int32;b;c;d;e;ff;g;h]`]
+               COMPRESS_EL_SHIFT_2)
+        len_h_thm) in
   (* Step 15: movdqa xmm0, [rcx+16] (K4..K7 load) *)
   X86_STEPS_TAC HW_EXEC [15] THEN
   SUBGOAL_THEN
