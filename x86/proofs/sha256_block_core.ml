@@ -4562,6 +4562,353 @@ let GROUP11_TAC : tactic =
   CUT_POINT_TAC_HW 11 `s132:x86state`;;
 
 (* ========================================================================= *)
+(* GROUP12_TAC: symbolic execution of group 12 (steps 133-143) + CUT_POINT 12.*)
+(*                                                                           *)
+(* Register rotation: cur=XMM3, MSG2_dst=XMM4, ext_dst=XMM5, MSG1_dst=XMM6.  *)
+(* (Same rotation as G8, G4.)                                                *)
+(*                                                                           *)
+(* Instruction layout (pc+623..pc+671, steps 133-143):                       *)
+(*   133: movdqa     xmm0, [rcx+192] — K48..K51 load                         *)
+(*   134: paddd      xmm0, xmm3      — K48..K51 + w48..w51                   *)
+(*   135: sha256msg2 xmm4, xmm3      — completes w_{52..55} in XMM4          *)
+(*   136: sha256rnds2 xmm2, xmm1                                             *)
+(*   137: pshufd     xmm0, xmm0, 0x0e                                        *)
+(*   138: movdqa     xmm7, xmm4                                              *)
+(*   139: palignr    xmm7, xmm3, 4                                           *)
+(*   140: nop                                                                *)
+(*   141: paddd      xmm5, xmm7      — schedule extension                    *)
+(*   142: sha256msg1 xmm6, xmm3      — starts triple w_{56..59}              *)
+(*   143: sha256rnds2 xmm1, xmm2                                             *)
+(* ========================================================================= *)
+
+let GROUP12_TAC : tactic =
+  let WKDC_OUTER_12 = SPECL
+   [`ABEF_PACK (EL 0 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 1 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 4 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 5 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])) :int128`;
+    `sha_ni_rnds2
+       (CDGH_PACK (EL 2 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                  (EL 3 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                  (EL 6 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                  (EL 7 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+       (ABEF_PACK (EL 0 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                  (EL 1 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                  (EL 4 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                  (EL 5 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+       (word_join4 (word_add (EL 48 sha256_K) (EL 48 W))
+                   (word_add (EL 49 sha256_K) (EL 49 W))
+                   (word 0) (word 0)) :int128`;
+    `word_add (EL 50 sha256_K) (EL 50 W) :int32`;
+    `word_add (EL 51 sha256_K) (EL 51 W) :int32`;
+    `word_add (EL 48 sha256_K) (EL 48 W) :int32`;
+    `word_add (EL 48 sha256_K) (EL 48 W) :int32`;
+    `word 0:int32`; `word 0:int32`]
+   SHA_NI_RNDS2_WK_DONTCARE in
+  let WKDC_INNER_12 = SPECL
+   [`CDGH_PACK (EL 2 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 3 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 6 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 7 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])) :int128`;
+    `ABEF_PACK (EL 0 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 1 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 4 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+               (EL 5 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])) :int128`;
+    `word_add (EL 48 sha256_K) (EL 48 W) :int32`;
+    `word_add (EL 49 sha256_K) (EL 49 W) :int32`;
+    `word_add (EL 50 sha256_K) (EL 50 W) :int32`;
+    `word_add (EL 51 sha256_K) (EL 51 W) :int32`;
+    `word 0:int32`; `word 0:int32`]
+   SHA_NI_RNDS2_WK_DONTCARE in
+  let len_h_thm = prove
+   (`LENGTH [a:int32;b;c;d;e;ff;g;h] = 8`,
+    REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+  let compress_el_shift_11 =
+    CONV_RULE(DEPTH_CONV NUM_ADD_CONV)
+     (MATCH_MP
+        (SPECL [`46`; `W:int32 list`; `[a:int32;b;c;d;e;ff;g;h]`]
+               COMPRESS_EL_SHIFT_2)
+        len_h_thm) in
+  (* Step 89: movdqa xmm0, [rcx+192] (K32..K35) *)
+  X86_STEPS_TAC HW_EXEC [133] THEN
+  SUBGOAL_THEN
+   `read XMM0 s133 = word_join4 (EL 48 sha256_K) (EL 49 sha256_K)
+                              (EL 50 sha256_K) (EL 51 sha256_K) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 90: paddd xmm0, xmm3 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s134" THEN PADDD_REFOLD_TAC THEN
+  SUBGOAL_THEN
+   `read XMM0 s134 =
+      word_join4 (word_add (EL 48 sha256_K) (EL 48 W))
+                 (word_add (EL 49 sha256_K) (EL 49 W))
+                 (word_add (EL 50 sha256_K) (EL 50 W))
+                 (word_add (EL 51 sha256_K) (EL 51 W))
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s134" THEN
+  (* Step 91: sha256msg2 xmm4, xmm3.  Assert the raw sha_ni_msg2 form, apply
+     SHA256MSG2_BRIDGE, then two-phase lane normalization to EL 52..55 W. *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s135" THEN
+  FOLD_SHA_NI_MSG2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  SUBGOAL_THEN
+   `read XMM4 s135 =
+      sha_ni_msg2
+        (word_join4
+           (word_add (word_add (EL 36 W) (sha256_sigma0 (EL 37 W))) (EL 45 W))
+           (word_add (word_add (EL 37 W) (sha256_sigma0 (EL 38 W))) (EL 46 W))
+           (word_add (word_add (EL 38 W) (sha256_sigma0 (EL 39 W))) (EL 47 W))
+           (word_add (word_add (EL 39 W) (sha256_sigma0 (EL 40 W))) (EL 48 W)))
+        (word_join4 (EL 48 W) (EL 49 W) (EL 50 W) (EL 51 W))
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM4; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  UNDISCH_THEN
+   `read XMM4 s135 =
+      sha_ni_msg2
+        (word_join4
+           (word_add (word_add (EL 36 W) (sha256_sigma0 (EL 37 W))) (EL 45 W))
+           (word_add (word_add (EL 37 W) (sha256_sigma0 (EL 38 W))) (EL 46 W))
+           (word_add (word_add (EL 38 W) (sha256_sigma0 (EL 39 W))) (EL 47 W))
+           (word_add (word_add (EL 39 W) (sha256_sigma0 (EL 40 W))) (EL 48 W)))
+        (word_join4 (EL 48 W) (EL 49 W) (EL 50 W) (EL 51 W))`
+   (fun th ->
+      ASSUME_TAC(CONV_RULE(RAND_CONV(REWR_CONV SHA256MSG2_BRIDGE THENC
+                                     TOP_DEPTH_CONV let_CONV)) th)) THEN
+  (* MSG2 output lanes: phase 1 (lanes 0,1 → EL 52/53 W). *)
+  SUBGOAL_THEN
+   `word_add (word_add (word_add (EL 36 W) (sha256_sigma0 (EL 37 W))) (EL 45 W))
+             (sha256_sigma1 (EL 50 W)) :int32 = EL 52 W`
+   ASSUME_TAC THENL [PROVE_LANE_EQ_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `word_add (word_add (word_add (EL 37 W) (sha256_sigma0 (EL 38 W))) (EL 46 W))
+             (sha256_sigma1 (EL 51 W)) :int32 = EL 53 W`
+   ASSUME_TAC THENL [PROVE_LANE_EQ_TAC; ALL_TAC] THEN
+  APPLY_TWO_EQS_TAC
+   `word_add (word_add (word_add (EL 36 W) (sha256_sigma0 (EL 37 W))) (EL 45 W))
+             (sha256_sigma1 (EL 50 W)) :int32 = EL 52 W`
+   `word_add (word_add (word_add (EL 37 W) (sha256_sigma0 (EL 38 W))) (EL 46 W))
+             (sha256_sigma1 (EL 51 W)) :int32 = EL 53 W` THEN
+  (* Phase 2 (lanes 2,3 → EL 54/55 W). *)
+  SUBGOAL_THEN
+   `word_add (word_add (word_add (EL 38 W) (sha256_sigma0 (EL 39 W))) (EL 47 W))
+             (sha256_sigma1 (EL 52 W)) :int32 = EL 54 W`
+   ASSUME_TAC THENL [PROVE_LANE_EQ_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `word_add (word_add (word_add (EL 39 W) (sha256_sigma0 (EL 40 W))) (EL 48 W))
+             (sha256_sigma1 (EL 53 W)) :int32 = EL 55 W`
+   ASSUME_TAC THENL [PROVE_LANE_EQ_TAC; ALL_TAC] THEN
+  APPLY_TWO_EQS_TAC
+   `word_add (word_add (word_add (EL 38 W) (sha256_sigma0 (EL 39 W))) (EL 47 W))
+             (sha256_sigma1 (EL 52 W)) :int32 = EL 54 W`
+   `word_add (word_add (word_add (EL 39 W) (sha256_sigma0 (EL 40 W))) (EL 48 W))
+             (sha256_sigma1 (EL 53 W)) :int32 = EL 55 W` THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 2000))) THEN
+  DISCARD_OLDSTATE_TAC "s135" THEN
+  (* Shift XMM2 from ABEF_PACK (compress 46) to CDGH_PACK (compress 48). *)
+  SUBGOAL_THEN
+   `read XMM2 s135 = CDGH_PACK
+     (EL 2 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 3 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 6 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 7 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))`
+   ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[CDGH_EQ_ABEF] THEN
+    REWRITE_TAC[compress_el_shift_11]; ALL_TAC] THEN
+  UNDISCH_TAC `read XMM2 s135 = ABEF_PACK
+     (EL 0 (sha256_compress 46 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 46 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 46 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 46 W [a; b; c; d; e; ff; g; h]))` THEN
+  DISCH_THEN(K ALL_TAC) THEN
+  (* Step 92: sha256rnds2 xmm2, xmm1 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s136" THEN
+  FOLD_SHA_NI_RNDS2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  UNDISCH_THEN
+   `read XMM2 s135 = CDGH_PACK
+     (EL 2 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 3 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 6 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 7 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  UNDISCH_THEN
+   `read XMM1 s135 = ABEF_PACK
+     (EL 0 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  SUBGOAL_THEN
+   `read XMM2 s136 =
+      sha_ni_rnds2
+        (CDGH_PACK (EL 2 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 3 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 6 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 7 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+        (ABEF_PACK (EL 0 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 1 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 4 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 5 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+        (word_join4 (word_add (EL 48 sha256_K) (EL 48 W))
+                    (word_add (EL 49 sha256_K) (EL 49 W))
+                    (word_add (EL 50 sha256_K) (EL 50 W))
+                    (word_add (EL 51 sha256_K) (EL 51 W)))
+     :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1500))) THEN
+  DISCARD_OLDSTATE_TAC "s136" THEN
+  (* Step 93: pshufd xmm0, xmm0, 0x0e *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s137" THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM0 s137 =
+      word_join4 (word_add (EL 50 sha256_K) (EL 50 W))
+                 (word_add (EL 51 sha256_K) (EL 51 W))
+                 (word_add (EL 48 sha256_K) (EL 48 W))
+                 (word_add (EL 48 sha256_K) (EL 48 W))
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 94: movdqa xmm7, xmm4 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s138" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  SUBGOAL_THEN
+   `read XMM7 s138 = word_join4 (EL 52 W) (EL 53 W) (EL 54 W) (EL 55 W) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM7; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s138" THEN
+  (* Step 95: palignr xmm7, xmm3, 0x4 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s139" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[YMM_TO_XMM_SUBWORD]) THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[PALIGNR_4_WORD_JOIN4]) THEN
+  SUBGOAL_THEN
+   `read XMM7 s139 =
+      word_join4 (EL 49 W) (EL 50 W) (EL 51 W) (EL 52 W) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM7; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s139" THEN
+  (* Step 96: nop *)
+  X86_STEPS_TAC HW_EXEC [140] THEN
+  (* Step 97: paddd xmm5, xmm7.  Pre-expand XMM5 s140 from sha_ni_msg1 to raw
+     word_join4 via SHA256MSG1_BRIDGE.  XMM5 s88 =
+     sha_ni_msg1 (word_join4 EL 40..43 W) (word_join4 EL 44..47 W);
+     post-bridge lane j = EL (40+j) W + σ0 (EL (41+j) W).  XMM7 s140 =
+     word_join4 (EL 49..52 W).  After PADDD lane j =
+     (EL (40+j) W + σ0 (EL (41+j) W)) + EL (j+49) W. *)
+  SUBGOAL_THEN
+   `read XMM5 s140 =
+      word_join4 (word_add (EL 40 W) (sha256_sigma0 (EL 41 W)))
+                 (word_add (EL 41 W) (sha256_sigma0 (EL 42 W)))
+                 (word_add (EL 42 W) (sha256_sigma0 (EL 43 W)))
+                 (word_add (EL 43 W) (sha256_sigma0 (EL 44 W))) :int128`
+   ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[SHA256MSG1_BRIDGE]; ALL_TAC] THEN
+  UNDISCH_TAC
+   `read XMM5 s140 =
+      sha_ni_msg1 (word_join4 (EL 40 W) (EL 41 W) (EL 42 W) (EL 43 W))
+                  (word_join4 (EL 44 W) (EL 45 W) (EL 46 W) (EL 47 W))` THEN
+  DISCH_THEN(K ALL_TAC) THEN
+  X86_VERBOSE_STEP_TAC HW_EXEC "s141" THEN PADDD_REFOLD_TAC THEN
+  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM5 s141 =
+      word_join4 (word_add (word_add (EL 40 W) (sha256_sigma0 (EL 41 W))) (EL 49 W))
+                 (word_add (word_add (EL 41 W) (sha256_sigma0 (EL 42 W))) (EL 50 W))
+                 (word_add (word_add (EL 42 W) (sha256_sigma0 (EL 43 W))) (EL 51 W))
+                 (word_add (word_add (EL 43 W) (sha256_sigma0 (EL 44 W))) (EL 52 W))
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM5; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s141" THEN
+  (* Step 98: sha256msg1 xmm6, xmm3 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s142" THEN
+  FOLD_SHA_NI_MSG1_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  SUBGOAL_THEN
+   `read XMM6 s142 =
+      sha_ni_msg1 (word_join4 (EL 44 W) (EL 45 W) (EL 46 W) (EL 47 W))
+                  (word_join4 (EL 48 W) (EL 49 W) (EL 50 W) (EL 51 W))
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM6; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s142" THEN
+  (* Step 99: sha256rnds2 xmm1, xmm2 *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s143" THEN
+  FOLD_SHA_NI_RNDS2_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_SUBWORD_JOIN_BOTTOM]) THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBSTITUTE_XMM_CLEANS_TAC THEN
+  FIRST_ASSUM(fun th ->
+    let s = string_of_term (concl th) in
+    if has_sub_string "XMM2 s142 =" s && has_sub_string "sha_ni_rnds2" s
+    then RULE_ASSUM_TAC(REWRITE_RULE[th]) else FAIL_TAC "not found") THEN
+  UNDISCH_THEN
+   `read XMM1 s142 = ABEF_PACK
+     (EL 0 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 48 W [a; b; c; d; e; ff; g; h]))`
+   (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]) THEN ASSUME_TAC th) THEN
+  SUBGOAL_THEN
+   `read XMM1 s143 =
+      sha_ni_rnds2
+        (ABEF_PACK (EL 0 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 1 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 4 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                   (EL 5 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+        (sha_ni_rnds2
+           (CDGH_PACK (EL 2 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                      (EL 3 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                      (EL 6 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                      (EL 7 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+           (ABEF_PACK (EL 0 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                      (EL 1 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                      (EL 4 (sha256_compress 48 W [a;b;c;d;e;ff;g;h]))
+                      (EL 5 (sha256_compress 48 W [a;b;c;d;e;ff;g;h])))
+           (word_join4 (word_add (EL 48 sha256_K) (EL 48 W))
+                       (word_add (EL 49 sha256_K) (EL 49 W))
+                       (word_add (EL 50 sha256_K) (EL 50 W))
+                       (word_add (EL 51 sha256_K) (EL 51 W))))
+        (word_join4 (word_add (EL 50 sha256_K) (EL 50 W))
+                    (word_add (EL 51 sha256_K) (EL 51 W))
+                    (word_add (EL 48 sha256_K) (EL 48 W))
+                    (word_add (EL 48 sha256_K) (EL 48 W))) :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  TRY(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    String.length (string_of_term (concl th)) > 1500))) THEN
+  DISCARD_OLDSTATE_TAC "s143" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WKDC_INNER_12; WKDC_OUTER_12]) THEN
+  CUT_POINT_TAC_HW 12 `s143:x86state`;;
+
+(* ========================================================================= *)
 (* Single-block register core theorem.                                       *)
 (*                                                                           *)
 (* Starting at pc+64 (loop-top: first MOVDQU xmm3, [rsi]) with:              *)
