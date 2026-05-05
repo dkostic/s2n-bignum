@@ -286,3 +286,107 @@ let SHA512_COMPRESS_ROUND_PREADD_SYM = prove
   REPEAT GEN_TAC THEN
   ONCE_REWRITE_TAC[WORD_RULE `word_add (W:int64) K = word_add K W`] THEN
   REWRITE_TAC[SHA512_COMPRESS_ROUND_PREADD]);;
+
+(* ========================================================================= *)
+(* Phase 6: Helper for the EXT #8 lane-rearrangement pattern used by the     *)
+(* SHA-512 hw core. Given a 128+128 concatenation of two word_join packs,   *)
+(* extracting bits [64..192] yields the "middle two" 64-bit halves.         *)
+(* ========================================================================= *)
+
+let WORD_JOIN_MID64 = prove
+ (`!(hi:int64) (mid1:int64) (mid2:int64) (lo:int64).
+     word_subword ((word_join:int128->int128->256 word)
+                    ((word_join:int64->int64->int128) hi mid1)
+                    ((word_join:int64->int64->int128) mid2 lo))
+                  (64,128) : int128 =
+     (word_join:int64->int64->int128) mid1 mid2`,
+  REPEAT GEN_TAC THEN BITBLAST_THEN (K ALL_TAC) THEN CONV_TAC TAUT);;
+
+(* ========================================================================= *)
+(* Phase 7: Schedule preservation/monotonicity/extension and block-EL       *)
+(* lemmas; exact SHA-256 analogues with :int32 -> :int64 and 48 -> 64.       *)
+(* ========================================================================= *)
+
+let LENGTH_SHA512_MESSAGE_SCHEDULE = prove
+ (`!n M:int64 list. LENGTH(sha512_message_schedule n M) = LENGTH M + n`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha512_message_schedule; ADD_CLAUSES];
+    GEN_TAC THEN REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha512_message_schedule;
+      sha512_extend_schedule; LENGTH_APPEND; LENGTH] THEN
+    ASM_REWRITE_TAC[] THEN ARITH_TAC]);;
+
+let SHA512_SCHEDULE_PREFIX = prove
+ (`!n M:int64 list. !k. k < LENGTH M ==>
+    EL k (sha512_message_schedule n M) = EL k M`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha512_message_schedule];
+    REPEAT STRIP_TAC THEN
+    REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha512_message_schedule;
+      sha512_extend_schedule; EL_APPEND] THEN
+    SUBGOAL_THEN `k < LENGTH(sha512_message_schedule n (M:int64 list))`
+      ASSUME_TAC THENL
+     [ASM_REWRITE_TAC[LENGTH_SHA512_MESSAGE_SCHEDULE] THEN ASM_ARITH_TAC;
+      ASM_REWRITE_TAC[] THEN FIRST_X_ASSUM MATCH_MP_TAC THEN
+      ASM_REWRITE_TAC[]]]);;
+
+let SHA512_SCHEDULE_MONO = prove
+ (`!n1 n2 M:int64 list. !k. k < LENGTH M + n1 /\ n1 <= n2 ==>
+    EL k (sha512_message_schedule n2 M) = EL k (sha512_message_schedule n1 M)`,
+  GEN_TAC THEN INDUCT_TAC THENL
+   [SIMP_TAC[LE] THEN MESON_TAC[];
+    REPEAT STRIP_TAC THEN ASM_CASES_TAC `n1 <= n2:num` THENL
+     [REWRITE_TAC[ARITH_RULE `SUC n2 = n2 + 1`; sha512_message_schedule;
+        sha512_extend_schedule; EL_APPEND] THEN
+      SUBGOAL_THEN `k < LENGTH(sha512_message_schedule n2 (M:int64 list))`
+        ASSUME_TAC THENL
+       [ASM_REWRITE_TAC[LENGTH_SHA512_MESSAGE_SCHEDULE] THEN ASM_ARITH_TAC;
+        ASM_REWRITE_TAC[] THEN FIRST_X_ASSUM MATCH_MP_TAC THEN
+        ASM_REWRITE_TAC[]];
+      SUBGOAL_THEN `n1 = SUC n2` SUBST_ALL_TAC THENL
+       [ASM_ARITH_TAC; REFL_TAC]]]);;
+
+let EL_APPEND_LENGTH = prove
+ (`!l:A list. !x. EL (LENGTH l) (APPEND l [x]) = x`,
+  REWRITE_TAC[EL_APPEND; LT_REFL; SUB_REFL; EL; HD]);;
+
+let SHA512_SCHEDULE_NEWEST = prove
+ (`!n M:int64 list. LENGTH M = 16 ==>
+    EL (n + 16) (sha512_message_schedule (n + 1) M) =
+    (let W = sha512_message_schedule n M in
+     word_add (sha512_sigma1 (EL (n + 14) W))
+       (word_add (EL (n + 9) W)
+         (word_add (sha512_sigma0 (EL (n + 1) W)) (EL n W))))`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[sha512_message_schedule; sha512_extend_schedule] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN `n + 16 = LENGTH(sha512_message_schedule n (M:int64 list))`
+    SUBST1_TAC THENL
+   [ASM_REWRITE_TAC[LENGTH_SHA512_MESSAGE_SCHEDULE] THEN ARITH_TAC;
+    REWRITE_TAC[EL_APPEND_LENGTH]]);;
+
+let SHA512_W_EXTEND = prove
+ (`!n M:int64 list. LENGTH M = 16 /\ n < 64 ==>
+    EL (n + 16) (sha512_message_schedule 64 M) =
+    (let W = sha512_message_schedule n M in
+     word_add (sha512_sigma1 (EL (n + 14) W))
+       (word_add (EL (n + 9) W)
+         (word_add (sha512_sigma0 (EL (n + 1) W)) (EL n W))))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `EL (n + 16) (sha512_message_schedule 64 (M:int64 list)) =
+                EL (n + 16) (sha512_message_schedule (n + 1) M)` SUBST1_TAC THENL
+   [MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_ARITH_TAC;
+    MATCH_MP_TAC SHA512_SCHEDULE_NEWEST THEN ASM_REWRITE_TAC[]]);;
+
+let SHA512_BLOCK_EL = prove
+ (`!M H:int64 list. LENGTH H = 8 ==>
+    !k. k < 8 ==> EL k (sha512_block M H) =
+      word_add (EL k (sha512_compress 80 (sha512_message_schedule 64 M) H))
+               (EL k H)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[sha512_block] THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  MATCH_MP_TAC EL_MAP2 THEN
+  SUBGOAL_THEN
+    `LENGTH (sha512_compress 80 (sha512_message_schedule 64 (M:int64 list))
+             (H:int64 list)) = 8` ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_SHA512_COMPRESS THEN ASM_REWRITE_TAC[];
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC]);;

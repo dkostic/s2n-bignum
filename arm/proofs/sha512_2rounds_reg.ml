@@ -40,22 +40,6 @@ let sha512_2rounds_reg_mc = define_assert_from_elf "sha512_2rounds_reg_mc"
 let EXEC = ARM_MK_EXEC_RULE sha512_2rounds_reg_mc;;
 
 (* ------------------------------------------------------------------------- *)
-(* Helper: a 128-bit slice from bit 64 of a word_join of two 128-bit halves  *)
-(* (each a word_join of two int64s) collapses to word_join of the two        *)
-(* middle 64-bit words. Reduces the output of EXT #8 to the intended lane    *)
-(* rearrangement.                                                            *)
-(* ------------------------------------------------------------------------- *)
-
-let WORD_JOIN_MID64 = prove
- (`!(hi:int64) (mid1:int64) (mid2:int64) (lo:int64).
-     word_subword ((word_join:int128->int128->256 word)
-                    ((word_join:int64->int64->int128) hi mid1)
-                    ((word_join:int64->int64->int128) mid2 lo))
-                  (64,128) : int128 =
-     (word_join:int64->int64->int128) mid1 mid2`,
-  REPEAT GEN_TAC THEN BITBLAST_THEN (K ALL_TAC) THEN CONV_TAC TAUT);;
-
-(* ------------------------------------------------------------------------- *)
 (* Correctness: the assembly computes 2 rounds of SHA-512 compression.       *)
 (*                                                                           *)
 (* Input:                                                                    *)
