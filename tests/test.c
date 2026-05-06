@@ -14914,9 +14914,9 @@ int test_sha512_block_data_order_nohw(void)
 #else
   uint64_t t;
   int i, j;
-  uint64_t ref_state[8], asm_state[8], asm2_state[8], block[16];
+  uint64_t ref_state[8], asm_state[8], asm2_state[8], asm3_state[8], block[16];
   uint8_t data[128];
-  printf("Testing sha512_block_data_order_nohw(+nohw2) with %d cases\n",tests);
+  printf("Testing sha512_block_data_order_nohw(+nohw2,+nohw3) with %d cases\n",tests);
 
   // Test 1: NIST "abc" (single block, padded)
   { uint64_t init[8] = {UINT64_C(0x6a09e667f3bcc908),UINT64_C(0xbb67ae8584caa73b),
@@ -14930,7 +14930,7 @@ int test_sha512_block_data_order_nohw(void)
                              UINT64_C(0x12e6fa4e89a97ea2),UINT64_C(0x0a9eeee64b55d39a),
                              UINT64_C(0x2192992a274fc1a8),UINT64_C(0x36ba3c23a3feebbd),
                              UINT64_C(0x454d4423643ce80e),UINT64_C(0x2a9ac94fa54ca49f)};
-    for (i = 0; i < 8; ++i) { asm_state[i] = init[i]; asm2_state[i] = init[i]; }
+    for (i = 0; i < 8; ++i) { asm_state[i] = init[i]; asm2_state[i] = init[i]; asm3_state[i] = init[i]; }
     for (i = 0; i < 16; ++i)
      { data[8*i+0] = (uint8_t)(msg[i] >> 56);
        data[8*i+1] = (uint8_t)(msg[i] >> 48);
@@ -14943,6 +14943,7 @@ int test_sha512_block_data_order_nohw(void)
      }
     sha512_block_data_order_nohw(asm_state, data, 1, sha512_K);
     sha512_block_data_order_nohw2(asm2_state, data, 1, sha512_K);
+    sha512_block_data_order_nohw3(asm3_state, data, 1, sha512_K);
     for (i = 0; i < 8; ++i)
      { if (asm_state[i] != expected[i])
         { printf("Error: SHA-512 NOHW(\"abc\") mismatch at [%d]: "
@@ -14956,14 +14957,20 @@ int test_sha512_block_data_order_nohw(void)
                  i, asm2_state[i], expected[i]);
           return 1;
         }
+       if (asm3_state[i] != expected[i])
+        { printf("Error: SHA-512 NOHW3(\"abc\") mismatch at [%d]: "
+                 "got 0x%016" PRIx64 ", expected 0x%016" PRIx64 "\n",
+                 i, asm3_state[i], expected[i]);
+          return 1;
+        }
      }
-    if (VERBOSE) printf("OK: SHA-512 nohw/nohw2(\"abc\") = ddaf35a193617aba...\n");
+    if (VERBOSE) printf("OK: SHA-512 nohw/nohw2/nohw3(\"abc\") = ddaf35a193617aba...\n");
   }
 
   // Test 2: random single-block tests against reference
   for (t = 0; t < tests; ++t)
    { for (i = 0; i < 8; ++i) random_bignum(1, &ref_state[i]);
-     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; }
+     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; asm3_state[i] = ref_state[i]; }
      for (i = 0; i < 16; ++i) random_bignum(1, &block[i]);
      reference_sha512_block(ref_state, block);
      for (i = 0; i < 16; ++i)
@@ -14978,6 +14985,7 @@ int test_sha512_block_data_order_nohw(void)
       }
      sha512_block_data_order_nohw(asm_state, data, 1, sha512_K);
      sha512_block_data_order_nohw2(asm2_state, data, 1, sha512_K);
+     sha512_block_data_order_nohw3(asm3_state, data, 1, sha512_K);
      for (i = 0; i < 8; ++i)
       { if (asm_state[i] != ref_state[i])
          { printf("Error in sha512_block_data_order_nohw at state[%d]: "
@@ -14991,6 +14999,12 @@ int test_sha512_block_data_order_nohw(void)
                   i, asm2_state[i], ref_state[i]);
            return 1;
          }
+        if (asm3_state[i] != ref_state[i])
+         { printf("Error in sha512_block_data_order_nohw3 at state[%d]: "
+                  "asm=0x%016" PRIx64 " ref=0x%016" PRIx64 "\n",
+                  i, asm3_state[i], ref_state[i]);
+           return 1;
+         }
       }
      if (VERBOSE)
        printf("OK: sha512_nohw_block(0x%016" PRIx64 "...) => 0x%016" PRIx64 "...\n",
@@ -15002,7 +15016,7 @@ int test_sha512_block_data_order_nohw(void)
    { uint8_t data2[256];
      uint64_t blocks2[2][16];
      for (i = 0; i < 8; ++i) random_bignum(1, &ref_state[i]);
-     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; }
+     for (i = 0; i < 8; ++i) { asm_state[i] = ref_state[i]; asm2_state[i] = ref_state[i]; asm3_state[i] = ref_state[i]; }
      for (j = 0; j < 2; ++j)
       { for (i = 0; i < 16; ++i) random_bignum(1, &blocks2[j][i]);
         reference_sha512_block(ref_state, blocks2[j]);
@@ -15019,6 +15033,7 @@ int test_sha512_block_data_order_nohw(void)
       }
      sha512_block_data_order_nohw(asm_state, data2, 2, sha512_K);
      sha512_block_data_order_nohw2(asm2_state, data2, 2, sha512_K);
+     sha512_block_data_order_nohw3(asm3_state, data2, 2, sha512_K);
      for (i = 0; i < 8; ++i)
       { if (asm_state[i] != ref_state[i])
          { printf("Error in sha512_block_data_order_nohw (2-block) at state[%d]: "
@@ -15030,6 +15045,12 @@ int test_sha512_block_data_order_nohw(void)
          { printf("Error in sha512_block_data_order_nohw2 (2-block) at state[%d]: "
                   "asm=0x%016" PRIx64 " ref=0x%016" PRIx64 "\n",
                   i, asm2_state[i], ref_state[i]);
+           return 1;
+         }
+        if (asm3_state[i] != ref_state[i])
+         { printf("Error in sha512_block_data_order_nohw3 (2-block) at state[%d]: "
+                  "asm=0x%016" PRIx64 " ref=0x%016" PRIx64 "\n",
+                  i, asm3_state[i], ref_state[i]);
            return 1;
          }
       }
