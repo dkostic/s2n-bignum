@@ -273,8 +273,71 @@ let PROLOGUE_HW_TAC : tactic =
 (* (ABEF/CDGH form), data pointer advanced by 64*i, counter decremented by i.*)
 (* ========================================================================= *)
 
-(* (Stubbed for now — the full theorem statement will be filled in on the
-   next pass; the skeleton is in place so subsequent commits can incrementally
-   close subgoals.) *)
+let SHA256_HW_CORRECT = time prove(
+ `!num_blocks state_ptr data_ptr kptr
+    (a:int32) b c d (e:int32) (ff:int32) g h
+    (blocks:(int32 list) list) pc.
+    1 <= num_blocks /\ num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    aligned 16 kptr /\
+    ALL (nonoverlapping (state_ptr, 32))
+        [(word pc, 829); (data_ptr, 64 * num_blocks); (kptr, 272)] /\
+    nonoverlapping (data_ptr, 64 * num_blocks) (word pc, 829) /\
+    nonoverlapping (kptr, 272) (word pc, 829)
+    ==> ensures x86
+     (\s. bytes_loaded s (word pc) sha256_hw_mc /\
+          read RIP s = word pc /\
+          read RDI s = state_ptr /\
+          read RSI s = data_ptr /\
+          read RDX s = word num_blocks /\
+          read RCX s = kptr /\
+          read (memory :> bytes128 state_ptr) s = word_join4 a b c d /\
+          read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+            word_join4 e ff g h /\
+          (!j. j < num_blocks ==>
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j)))) s =
+              word_join4 (word_bytereverse (EL 0 (EL j blocks)))
+                         (word_bytereverse (EL 1 (EL j blocks)))
+                         (word_bytereverse (EL 2 (EL j blocks)))
+                         (word_bytereverse (EL 3 (EL j blocks))) /\
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 16)))) s =
+              word_join4 (word_bytereverse (EL 4 (EL j blocks)))
+                         (word_bytereverse (EL 5 (EL j blocks)))
+                         (word_bytereverse (EL 6 (EL j blocks)))
+                         (word_bytereverse (EL 7 (EL j blocks))) /\
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 32)))) s =
+              word_join4 (word_bytereverse (EL 8 (EL j blocks)))
+                         (word_bytereverse (EL 9 (EL j blocks)))
+                         (word_bytereverse (EL 10 (EL j blocks)))
+                         (word_bytereverse (EL 11 (EL j blocks))) /\
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 48)))) s =
+              word_join4 (word_bytereverse (EL 12 (EL j blocks)))
+                         (word_bytereverse (EL 13 (EL j blocks)))
+                         (word_bytereverse (EL 14 (EL j blocks)))
+                         (word_bytereverse (EL 15 (EL j blocks)))) /\
+          (!i. i < 16 ==>
+            read (memory :> bytes128 (word_add kptr (word(16 * i)))) s =
+              word_join4 (EL (4*i) sha256_K) (EL (4*i+1) sha256_K)
+                         (EL (4*i+2) sha256_K) (EL (4*i+3) sha256_K)) /\
+          read (memory :> bytes128 (word_add kptr (word 256))) s =
+            pshufb_mask_val)
+     (\s. read RIP s = word(pc + 828) /\
+          (let result = sha256_hash_blocks num_blocks blocks
+                          [a;b;c;d;e;ff;g;h] in
+           read (memory :> bytes128 state_ptr) s =
+             word_join4 (EL 0 result) (EL 1 result)
+                        (EL 2 result) (EL 3 result) /\
+           read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+             word_join4 (EL 4 result) (EL 5 result)
+                        (EL 6 result) (EL 7 result)))
+     (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+      MAYCHANGE [YMM0_SSE; YMM1_SSE; YMM2_SSE; YMM3_SSE; YMM4_SSE;
+                 YMM5_SSE; YMM6_SSE; YMM7_SSE; YMM8_SSE;
+                 YMM9_SSE; YMM10_SSE] ,,
+      MAYCHANGE [memory :> bytes(state_ptr, 32)] ,,
+      MAYCHANGE [events])`,
+  CHEAT_TAC);;
+
 
 
