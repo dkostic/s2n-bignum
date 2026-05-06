@@ -109,3 +109,172 @@ let SHA256_BLOCK_CORE_CORRECT_PLUS = time prove
   GROUP9_TAC THEN GROUP10_TAC THEN GROUP11_TAC THEN GROUP12_TAC THEN
   GROUP13_TAC THEN GROUP14_TAC THEN GROUP15_TAC THEN
   POSTCOND_TAC_HW_NEW);;
+
+(* ========================================================================= *)
+(* Helper lemmas for multi-block body proof.                                 *)
+(* ========================================================================= *)
+
+let LENGTH_SHA256_HASH_BLOCKS = prove
+ (`!n blocks H:int32 list. LENGTH H = 8
+   ==> LENGTH(sha256_hash_blocks n blocks H) = 8`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha256_hash_blocks];
+    REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha256_hash_blocks] THEN
+    REPEAT STRIP_TAC THEN MATCH_MP_TAC LENGTH_SHA256_BLOCK THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]]);;
+
+let WORD_SUB_SUC_64 = prove
+ (`!n. word_sub (word(SUC n):int64) (word 1) = word n`,
+  GEN_TAC THEN REWRITE_TAC[ADD1] THEN CONV_TAC WORD_RULE);;
+
+let WORD_ADVANCE_64 = WORD_RULE
+ `word_add (word_add d (word(64 * ii):int64)) (word 64) =
+  word_add d (word(64 * (ii + 1)))`;;
+
+(* LENGTH_16_CONS: a list of length 16 is a 16-CONS chain.                   *)
+
+let LENGTH_16_CONS = prove
+ (`!L:A list. LENGTH L = 16
+   ==> ?a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15.
+       L = [a0;a1;a2;a3;a4;a5;a6;a7;a8;a9;a10;a11;a12;a13;a14;a15]`,
+  let suc16 = NUM_REDUCE_CONV
+    `SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC
+      (SUC(SUC(SUC(SUC 0)))))))))))))))` in
+  REWRITE_TAC[GSYM suc16; LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN MESON_TAC[]);;
+
+(* LIST_16_EL: a list of length 16 equals the list of its 16 elements.       *)
+
+let LIST_16_EL = prove
+ (`!L:A list. LENGTH L = 16 ==>
+    L = [EL 0 L; EL 1 L; EL 2 L; EL 3 L; EL 4 L; EL 5 L; EL 6 L; EL 7 L;
+         EL 8 L; EL 9 L; EL 10 L; EL 11 L; EL 12 L; EL 13 L; EL 14 L;
+         EL 15 L]`,
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_16_CONS) THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
+
+(* ========================================================================= *)
+(* Prologue (pc+0..pc+51) converts linear state[0..7] in XMM1,XMM2 into the  *)
+(* (ABEF, CDGH) pair expected at pc+64.  The shuffle chain is:               *)
+(*                                                                           *)
+(*   xmm1 = [a,b,c,d]  (lane 0..3 = state[0..3])                             *)
+(*   xmm2 = [e,f,g,h]  (lane 0..3 = state[4..7])                             *)
+(*   pshufd $0x1b xmm1,xmm0:  xmm0 = [d,c,b,a]                               *)
+(*   pshufd $0xb1 xmm1,xmm1:  xmm1 = [b,a,d,c]                               *)
+(*   pshufd $0x1b xmm2,xmm2:  xmm2 = [h,g,f,e]                               *)
+(*   movdqa    xmm8,xmm7:     (mask copy into xmm8, saves for epilogue)      *)
+(*   palignr  $0x8 xmm2,xmm1: xmm1 = [f,e,b,a] = ABEF_PACK a b e f           *)
+(*   punpcklqdq xmm0,xmm2:    xmm2 = [h,g,d,c] = CDGH_PACK c d g h           *)
+(*                                                                           *)
+(* PROLOGUE_HW_TAC symbolically runs these 11 instructions (steps 1..11) and *)
+(* asserts the clean ABEF_PACK / CDGH_PACK forms for XMM1, XMM2 at pc+64,    *)
+(* along with XMM7 = XMM8 = pshufb_mask_val, matching the preconditions of   *)
+(* the loop body (SHA256_BLOCK_CORE_CORRECT_PLUS).                           *)
+(* ========================================================================= *)
+
+let PROLOGUE_HW_TAC : tactic =
+  GHOST_INTRO_TAC `ymm0_init:int256` `read YMM0` THEN
+  GHOST_INTRO_TAC `ymm1_init:int256` `read YMM1` THEN
+  GHOST_INTRO_TAC `ymm2_init:int256` `read YMM2` THEN
+  GHOST_INTRO_TAC `ymm7_init:int256` `read YMM7` THEN
+  GHOST_INTRO_TAC `ymm8_init:int256` `read YMM8` THEN
+  ENSURES_INIT_TAC "s0" THEN
+  (* Steps 1-3: endbr64; MOVDQU xmm1,[rdi]; MOVDQU xmm2,[rdi+16] *)
+  X86_STEPS_TAC HW_EXEC [1;2;3] THEN
+  SUBGOAL_THEN `read XMM1 s3 = word_join4 a b c d` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  SUBGOAL_THEN `read XMM2 s3 = word_join4 e ff g h` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 4: MOVDQA xmm7, [rcx+256] *)
+  X86_STEPS_TAC HW_EXEC [4] THEN
+  SUBGOAL_THEN `read XMM7 s4 = pshufb_mask_val` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM7; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 5: PSHUFD xmm0, xmm1, 0x1b — full-lane reverse of xmm1 *)
+  X86_STEPS_TAC HW_EXEC [5] THEN
+  SUBGOAL_THEN `read XMM0 s5 = word_join4 d c b a` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 6: PSHUFD xmm1, xmm1, 0xb1 — pair-swap of xmm1 *)
+  X86_STEPS_TAC HW_EXEC [6] THEN
+  SUBGOAL_THEN `read XMM1 s6 = word_join4 b a d c` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 7: PSHUFD xmm2, xmm2, 0x1b — full-lane reverse of xmm2 *)
+  X86_STEPS_TAC HW_EXEC [7] THEN
+  SUBGOAL_THEN `read XMM2 s7 = word_join4 h g ff e` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 8: MOVDQA xmm8, xmm7 — copy mask so xmm8 holds a backup. *)
+  X86_STEPS_TAC HW_EXEC [8] THEN
+  SUBGOAL_THEN `read XMM8 s8 = pshufb_mask_val` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM8; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+          CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 9: PALIGNR xmm1, xmm2, 0x8 — xmm1 = high64(xmm2) || low64(xmm1)
+     = [f,e,b,a] = ABEF_PACK a b e ff. *)
+  X86_STEPS_TAC HW_EXEC [9] THEN
+  SUBGOAL_THEN `read XMM1 s9 = ABEF_PACK a b e ff` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM1; READ_ZEROTOP_128; ABEF_PACK] THEN
+          ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 10: PUNPCKLQDQ xmm2, xmm0 — xmm2 = low64(xmm0) || low64(xmm2)
+     = [h,g,d,c] = CDGH_PACK c d g h. *)
+  X86_STEPS_TAC HW_EXEC [10] THEN
+  SUBGOAL_THEN `read XMM2 s10 = CDGH_PACK c d g h` ASSUME_TAC
+   THENL [REWRITE_TAC[XMM2; READ_ZEROTOP_128; CDGH_PACK] THEN
+          ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Step 11: JMP +0xb → pc+64 (loop top) *)
+  X86_STEPS_TAC HW_EXEC [11];;
+
+(* ========================================================================= *)
+(* Epilogue (pc+794..pc+828): unpack ABEF/CDGH in XMM1,XMM2 back into linear *)
+(* state[0..7] layout and store it at state_ptr.  Inverse of the prologue:   *)
+(*                                                                           *)
+(*   pshufd $0xb1 xmm2,xmm2:  xmm2 = [g,h,c,d]  (from CDGH = [h,g,d,c])      *)
+(*   pshufd $0x1b xmm1,xmm7:  xmm7 = reverse  = [a,b,e,f]                    *)
+(*   pshufd $0xb1 xmm1,xmm1:  xmm1 = pair-swap = [e,f,a,b]                   *)
+(*   punpckhqdq xmm1,xmm2:    xmm1 = high64(xmm2) || high64(xmm1)            *)
+(*                                 = [c,d] || [a,b] = [a,b,c,d]              *)
+(*   palignr    $0x8 xmm2,xmm7: xmm2 = high64(xmm7) || low64(xmm2)           *)
+(*                                   = [e,f] || [g,h] = [e,f,g,h]            *)
+(*   movdqu xmm1,(%rdi):       store state[0..3] = [a,b,c,d]                 *)
+(*   movdqu xmm2,0x10(%rdi):   store state[4..7] = [e,f,g,h]                 *)
+(*                                                                           *)
+(* EPILOGUE_HW_TAC symbolically runs these 7 instructions (steps N..N+6 from *)
+(* the "end of last loop body + JNE-not-taken" entry point) and asserts the  *)
+(* final clean state-store forms.                                            *)
+(* ========================================================================= *)
+
+(* Note: The actual step numbers in the epilogue depend on how we arrive;
+   they start at `1` with ENSURES_INIT_TAC "s0" at pc+794 (post-JNE fall
+   through).  Instructions:
+     step 1: pshufd $0xb1 xmm2, xmm2
+     step 2: pshufd $0x1b xmm1, xmm7
+     step 3: pshufd $0xb1 xmm1, xmm1
+     step 4: punpckhqdq xmm1, xmm2
+     step 5: palignr $0x8 xmm2, xmm7
+     step 6: movdqu %xmm1, (%rdi)
+     step 7: movdqu %xmm2, 0x10(%rdi)
+   (step 8 would be RET, handled by the SUBROUTINE wrapper). *)
+
+(* ========================================================================= *)
+(* Multi-block correctness theorem.                                          *)
+(*                                                                           *)
+(* The `blocks` parameter represents the SHA-256-ready message blocks (each  *)
+(* a list of 16 int32 words in logical order, as processed by the compress   *)
+(* function).  Memory at data_ptr holds the word_bytereverse of each element *)
+(* (the raw little-endian bytes from the input stream); the assembly applies *)
+(* PSHUFB with pshufb_mask_val to convert.                                   *)
+(*                                                                           *)
+(* The loop invariant tracks sha256_hash_blocks i blocks H in XMM1/XMM2      *)
+(* (ABEF/CDGH form), data pointer advanced by 64*i, counter decremented by i.*)
+(* ========================================================================= *)
+
+(* (Stubbed for now — the full theorem statement will be filled in on the
+   next pass; the skeleton is in place so subsequent commits can incrementally
+   close subgoals.) *)
+
+
