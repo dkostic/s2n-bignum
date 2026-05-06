@@ -431,11 +431,25 @@ let CUT_POINT_TAC_512 i sname =
   abbrev_compress_el_tac i "e" 4 THEN
   abbrev_compress_el_tac i "f" 5 THEN
   (if i < 32 then
-    RULE_ASSUM_TAC(fun th ->
-      if can (find_term (fun t ->
-          try fst(dest_const t) = "sha512su1" with _ -> false)) (concl th)
-      then REWRITE_RULE[SHA512SU_BRIDGE_FLAT] th
-      else th)
+    (* Rewrite the sha512su1(...) output to its sigma expression via the
+       SU bridge, then fold the sigma expression back to
+       `EL (2i+16) W` / `EL (2i+17) W`. Apply the SU bridge in one pass,
+       then the EL-W fold in a second pass so the rewrite set in any
+       single pass stays small. This avoids the stack overflow seen when
+       a very long rule list is combined into a single REWRITE_RULE. *)
+    (let rec list_take n l =
+       if n <= 0 || l = [] then [] else List.hd l :: list_take (n-1) (List.tl l) in
+     let el_w_unfolds = list_take (2*i+16) EL_W_ALL_LIST_512 in
+     let su_folds =
+       [GSYM (List.nth EL_W_ALL_LIST_512 (2*i+16));
+        GSYM (List.nth EL_W_ALL_LIST_512 (2*i+17))] in
+     RULE_ASSUM_TAC(fun th ->
+       if can (find_term (fun t ->
+           try fst(dest_const t) = "sha512su1" with _ -> false)) (concl th)
+       then REWRITE_RULE su_folds
+              (REWRITE_RULE el_w_unfolds
+                (REWRITE_RULE [SHA512SU_BRIDGE_FLAT] th))
+       else th))
    else ALL_TAC);;
 
 (* ========================================================================= *)
