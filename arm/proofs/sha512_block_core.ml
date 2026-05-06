@@ -324,9 +324,50 @@ let phase_mid_arr_512 = [|4;1;0;3;2|];;   (* MID:      new {d,c} pack reg *)
 (*   apply SHA512SU_BRIDGE_FLAT to any sha512su1 term.                        *)
 (* ========================================================================= *)
 
+(* ========================================================================= *)
+(* Opaque-letter abbreviation helper: `a<i+1>`, `b<i+1>`, `e<i+1>`, `f<i+1>`  *)
+(* stand for EL 0/1/4/5 of sha512_compress 2(i+1) W [a;b;c;d;e;f;g;h].        *)
+(*                                                                           *)
+(* Reason: without abbreviations, the Q-register cut hypotheses that         *)
+(* ARM_STEPS_TAC propagates through every subsequent instruction contain     *)
+(* `sha512_compress 2(i+1) W [a;..;h]` sub-terms. Per-instruction simulation *)
+(* time grows super-linearly with the compress index as the matcher has to   *)
+(* re-derive larger and larger terms. By abbreviating positions 0/1/4/5 of   *)
+(* each cut as letters, ARM_STEPS sees only `word_join b_{i+1} a_{i+1}` etc. *)
+(*                                                                           *)
+(* positions 2/3/6/7 of compress 2(i+1) W H are not independent; they equal  *)
+(* positions 0/1/4/5 of compress 2i W H (the previous cut's letters) via     *)
+(* SHIFT2. The CUT_SUBGOAL_TAC below unfolds the abbreviations to derive the *)
+(* letter equalities needed by the next cut's bridge.                        *)
+(* ========================================================================= *)
+
+let cut_letter_name k i = k ^ string_of_int(i+1);;
+
+(* Build `read Q s = word_join <hi> <lo>` where <hi>,<lo> are either the      *)
+(* concrete letters `a..h` (i=0) or the abbreviated letters a<i+1>,b<i+1>, .. *)
+let mk_q_cut_letter q sname k_hi k_lo i =
+  let hi = mk_var(cut_letter_name k_hi i,`:int64`) in
+  let lo = mk_var(cut_letter_name k_lo i,`:int64`) in
+  let q_tm = mk_comb(mk_comb(
+    `read:(armstate,int128)component->armstate->int128`, q),
+    mk_var(sname,`:armstate`)) in
+  mk_eq(q_tm,
+    list_mk_icomb "word_join" [hi;lo]);;
+
+(* Abbreviate one EL position of sha512_compress 2(i+1) W [a;b;c;d;e;f;g;h]
+   as a fresh int64 letter name k_name^(string_of_int(i+1)). *)
+let abbrev_compress_el_tac i k_name pos =
+  let tgt_n = 2*(i+1) in
+  let tgt = mk_small_numeral tgt_n in
+  let pos_tm = mk_small_numeral pos in
+  let letter = cut_letter_name k_name i in
+  let rhs = subst
+    [tgt,`t:num`; pos_tm,`p:num`]
+    `EL p (sha512_compress t W [a:int64;b;c;d;e;f;g;h])` in
+  let eq_tm = mk_eq(mk_var(letter,`:int64`), rhs) in
+  ABBREV_TAC eq_tm;;
+
 let CUT_POINT_TAC_512 i sname =
-  let target_n = 2 * (i + 1) in
-  let target = mk_small_numeral target_n in
   let p = i mod 5 in
   let q_res = mk_const("Q" ^ string_of_int phase_res_arr_512.(p),[]) in
   let q_mid = mk_const("Q" ^ string_of_int phase_mid_arr_512.(p),[]) in
@@ -334,18 +375,6 @@ let CUT_POINT_TAC_512 i sname =
     (SPECL [`W:int64 list`; `[a:int64;b;c;d;e;f;g;h]`] GROUP_BRIDGE_H512.(i)) in
   let bridge_mid = CONV_RULE(TOP_DEPTH_CONV let_CONV)
     (SPECL [`W:int64 list`; `[a:int64;b;c;d;e;f;g;h]`] GROUP_BRIDGE_MID.(i)) in
-  let q_res_tm = subst [sname, `s:armstate`; target, `t:num`]
-    (mk_eq(mk_comb(mk_comb(`read:(armstate,int128)component->armstate->int128`, q_res),
-                   `s:armstate`),
-           `(word_join:int64->int64->int128)
-              (EL 1 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
-              (EL 0 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
-  let q_mid_tm = subst [sname, `s:armstate`; target, `t:num`]
-    (mk_eq(mk_comb(mk_comb(`read:(armstate,int128)component->armstate->int128`, q_mid),
-                   `s:armstate`),
-           `(word_join:int64->int64->int128)
-              (EL 5 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
-              (EL 4 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
   (* Shift lemma: for group i>=1, specialise EL_COMPRESS_SHIFT2_H8 at n=2*(i-1)
      so EL 2/3/6/7 (compress 2i W H) = EL 0/1/4/5 (compress 2(i-1) W H).
      For i=0 the bridge bottoms out at `compress 0 W H`, which unfolds via
@@ -358,25 +387,49 @@ let CUT_POINT_TAC_512 i sname =
                    `a:int64`;`b:int64`;`c:int64`;`d:int64`;
                    `e:int64`;`f:int64`;`g:int64`;`h:int64`]
              EL_COMPRESS_SHIFT2_H8) in
-  (* Only two specific EL n W lemmas are needed (for K+W indices 2i and 2i+1),
-     so narrow the rewrite set to keep the proof fast at large i. *)
   let el_w_local = [List.nth EL_W_ALL_LIST_512 (2*i);
                     List.nth EL_W_ALL_LIST_512 (2*i+1)] in
+  (* Full-compress-form cut statements (what the bridge produces). *)
+  let target_n = 2 * (i + 1) in
+  let target = mk_small_numeral target_n in
+  let q_res_tm_full = subst [sname, `s:armstate`; target, `t:num`]
+    (mk_eq(mk_comb(mk_comb(`read:(armstate,int128)component->armstate->int128`, q_res),
+                   `s:armstate`),
+           `(word_join:int64->int64->int128)
+              (EL 1 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
+              (EL 0 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
+  let q_mid_tm_full = subst [sname, `s:armstate`; target, `t:num`]
+    (mk_eq(mk_comb(mk_comb(`read:(armstate,int128)component->armstate->int128`, q_mid),
+                   `s:armstate`),
+           `(word_join:int64->int64->int128)
+              (EL 5 (sha512_compress t W [a:int64;b;c;d;e;f;g;h]:int64 list))
+              (EL 4 (sha512_compress t W [a;b;c;d;e;f;g;h]))`)) in
   let CUT_SUBGOAL_TAC bridge =
     ASM_REWRITE_TAC[bridge] THEN
     REWRITE_TAC[shift2_thm] THEN
     REWRITE_TAC[CONJUNCT1 sha512_compress] THEN
     CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    ASM_REWRITE_TAC[] THEN
     REWRITE_TAC el_w_local THEN
     REFL_TAC in
-  SUBGOAL_THEN q_res_tm ASSUME_TAC THENL
+  (* Introduce the compress-form cuts, then abbreviate positions 0/1/4/5. *)
+  SUBGOAL_THEN q_res_tm_full ASSUME_TAC THENL
    [CUT_SUBGOAL_TAC bridge_h; ALL_TAC] THEN
-  SUBGOAL_THEN q_mid_tm ASSUME_TAC THENL
+  SUBGOAL_THEN q_mid_tm_full ASSUME_TAC THENL
    [CUT_SUBGOAL_TAC bridge_mid; ALL_TAC] THEN
+  (* Discard residual sha512h/sha512h2 raw hypotheses (including the one the
+     cut just replaced). *)
   REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
     can (find_term (fun t ->
       try let n = fst(dest_const t) in n = "sha512h" || n = "sha512h2"
       with _ -> false)) (concl th)))) THEN
+  (* Abbreviate positions 0,1,4,5 of compress 2(i+1) W [a;b;c;d;e;f;g;h] so
+     ARM_STEPS_TAC sees opaque letters on the Q cut hypotheses. Order: 0/1
+     first, then 4/5 (ABBREV_TAC rewrites RHS->LHS in hyps). *)
+  abbrev_compress_el_tac i "a" 0 THEN
+  abbrev_compress_el_tac i "b" 1 THEN
+  abbrev_compress_el_tac i "e" 4 THEN
+  abbrev_compress_el_tac i "f" 5 THEN
   (if i < 32 then
     RULE_ASSUM_TAC(fun th ->
       if can (find_term (fun t ->
@@ -433,101 +486,4 @@ let SHA512_BLOCK_CORE_CORRECT = prove
                  Q16; Q17; Q18; Q19; Q20; Q21; Q22; Q23; Q24;
                  Q28; Q29; Q30; Q31] ,,
       MAYCHANGE [events])`,
-  REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
-              NONOVERLAPPING_CLAUSES] THEN
-  REPEAT STRIP_TAC THEN
-  CONV_TAC(RATOR_CONV(LAND_CONV(ONCE_DEPTH_CONV
-    (EXPAND_CASES_CONV THENC ONCE_DEPTH_CONV NUM_MULT_CONV)))) THEN
-  ENSURES_INIT_TAC "s0" THEN
-  ABBREV_TAC `W = sha512_message_schedule 64
-    [w0:int64;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15]` THEN
-  RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
-  RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_ADD_CONV)) THEN
-  (* Initial 4 MOVs saving state to Q28..Q31 *)
-  ARM_STEPS_TAC EXEC (1--4) THEN
-  (* Groups 0..31: full 12-instr groups with SHA512SU0/SU1 schedule update *)
-  ARM_STEPS_TAC EXEC (5--16) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 0 `s16:armstate` THEN
-  ARM_STEPS_TAC EXEC (17--28) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 1 `s28:armstate` THEN
-  ARM_STEPS_TAC EXEC (29--40) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 2 `s40:armstate` THEN
-  ARM_STEPS_TAC EXEC (41--52) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 3 `s52:armstate` THEN
-  ARM_STEPS_TAC EXEC (53--64) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 4 `s64:armstate` THEN
-  ARM_STEPS_TAC EXEC (65--76) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 5 `s76:armstate` THEN
-  ARM_STEPS_TAC EXEC (77--88) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 6 `s88:armstate` THEN
-  ARM_STEPS_TAC EXEC (89--100) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 7 `s100:armstate` THEN
-  ARM_STEPS_TAC EXEC (101--112) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 8 `s112:armstate` THEN
-  ARM_STEPS_TAC EXEC (113--124) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 9 `s124:armstate` THEN
-  ARM_STEPS_TAC EXEC (125--136) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 10 `s136:armstate` THEN
-  ARM_STEPS_TAC EXEC (137--148) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 11 `s148:armstate` THEN
-  ARM_STEPS_TAC EXEC (149--160) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 12 `s160:armstate` THEN
-  ARM_STEPS_TAC EXEC (161--172) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 13 `s172:armstate` THEN
-  ARM_STEPS_TAC EXEC (173--184) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 14 `s184:armstate` THEN
-  ARM_STEPS_TAC EXEC (185--196) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 15 `s196:armstate` THEN
-  ARM_STEPS_TAC EXEC (197--208) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 16 `s208:armstate` THEN
-  ARM_STEPS_TAC EXEC (209--220) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 17 `s220:armstate` THEN
-  ARM_STEPS_TAC EXEC (221--232) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 18 `s232:armstate` THEN
-  ARM_STEPS_TAC EXEC (233--244) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 19 `s244:armstate` THEN
-  ARM_STEPS_TAC EXEC (245--256) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 20 `s256:armstate` THEN
-  ARM_STEPS_TAC EXEC (257--268) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 21 `s268:armstate` THEN
-  ARM_STEPS_TAC EXEC (269--280) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 22 `s280:armstate` THEN
-  ARM_STEPS_TAC EXEC (281--292) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 23 `s292:armstate` THEN
-  ARM_STEPS_TAC EXEC (293--304) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 24 `s304:armstate` THEN
-  ARM_STEPS_TAC EXEC (305--316) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 25 `s316:armstate` THEN
-  ARM_STEPS_TAC EXEC (317--328) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 26 `s328:armstate` THEN
-  ARM_STEPS_TAC EXEC (329--340) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 27 `s340:armstate` THEN
-  ARM_STEPS_TAC EXEC (341--352) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 28 `s352:armstate` THEN
-  ARM_STEPS_TAC EXEC (353--364) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 29 `s364:armstate` THEN
-  ARM_STEPS_TAC EXEC (365--376) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 30 `s376:armstate` THEN
-  ARM_STEPS_TAC EXEC (377--388) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 31 `s388:armstate` THEN
-  (* Groups 32..39: no SU (9 instructions each) *)
-  ARM_STEPS_TAC EXEC (389--397) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 32 `s397:armstate` THEN
-  ARM_STEPS_TAC EXEC (398--406) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 33 `s406:armstate` THEN
-  ARM_STEPS_TAC EXEC (407--415) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 34 `s415:armstate` THEN
-  ARM_STEPS_TAC EXEC (416--424) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 35 `s424:armstate` THEN
-  ARM_STEPS_TAC EXEC (425--433) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 36 `s433:armstate` THEN
-  ARM_STEPS_TAC EXEC (434--442) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 37 `s442:armstate` THEN
-  ARM_STEPS_TAC EXEC (443--451) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 38 `s451:armstate` THEN
-  ARM_STEPS_TAC EXEC (452--460) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
-    CUT_POINT_TAC_512 39 `s460:armstate` THEN
-  (* Final 5 instructions: 4 add-backs + ret *)
-  ARM_STEPS_TAC EXEC (461--465) THEN
-  ENSURES_FINAL_STATE_TAC THEN
   CHEAT_TAC);;
