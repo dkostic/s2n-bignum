@@ -154,6 +154,48 @@ let LIST_16_EL = prove
   FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_16_CONS) THEN STRIP_TAC THEN
   ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
 
+(* LENGTH_8_CONS, LIST_8_EL: same for length-8 (used to decompose the hash   *)
+(* state list [a;b;c;d;e;f;g;h] and sha256_hash_blocks outputs).              *)
+
+let LENGTH_8_CONS = prove
+ (`!L:A list. LENGTH L = 8
+   ==> ?a0 a1 a2 a3 a4 a5 a6 a7.
+       L = [a0;a1;a2;a3;a4;a5;a6;a7]`,
+  let suc8 = NUM_REDUCE_CONV
+    `SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC 0)))))))` in
+  REWRITE_TAC[GSYM suc8; LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN MESON_TAC[]);;
+
+let LIST_8_EL = prove
+ (`!L:A list. LENGTH L = 8 ==>
+    L = [EL 0 L; EL 1 L; EL 2 L; EL 3 L;
+         EL 4 L; EL 5 L; EL 6 L; EL 7 L]`,
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_8_CONS) THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
+
+(* XMM_EXISTSTOP gives the YMMi read as word_join of an existential top128    *)
+(* and the known XMMi value.  Useful for cleaning up YMM assumptions between  *)
+(* SIMD steps so the stepper's next write produces a WORD_BLAST-friendly      *)
+(* shape.  (Copy of the tactic from mlkem_rej_uniform_VARIABLE_TIME.ml.)      *)
+
+let XMM_EXISTSTOP = prove
+ (`!c s:S. read (c :> zerotop_128) s = l
+           ==> ?h. read c s = (word_join:int128->int128->int256) h l`,
+  REPEAT STRIP_TAC THEN FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
+  EXISTS_TAC `word_subword (read c (s:S):int256) (128,128):int128` THEN
+  REWRITE_TAC[READ_ZEROTOP_128] THEN CONV_TAC WORD_BLAST);;
+
+let XMM_EXISTSTOP_RULE =
+  REWRITE_RULE (map GSYM
+   [XMM0; XMM1; XMM2; XMM3; XMM4; XMM5; XMM6; XMM7;
+    XMM8; XMM9; XMM10; XMM11; XMM12; XMM13; XMM14; XMM15]) o
+  C ISPEC XMM_EXISTSTOP;;
+
+let XMM_EXISTSTOP_TAC top y =
+  FIRST_X_ASSUM(MP_TAC o MATCH_MP (XMM_EXISTSTOP_RULE y)) THEN
+  DISCH_THEN(X_CHOOSE_TAC(mk_var(top,`:int128`)));;
+
+
 (* ========================================================================= *)
 (* Prologue (pc+0..pc+51) converts linear state[0..7] in XMM1,XMM2 into the  *)
 (* (ABEF, CDGH) pair expected at pc+64.  The shuffle chain is:               *)
@@ -465,42 +507,284 @@ let SHA256_HW_CORRECT = time prove(
     CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
 
     (* ==================================================================== *)
-    (* Subgoal 2: Body from pc+64 (inv(i)) to pc+64 or pc+794 (inv(i+1))    *)
-    (* via core theorem + JNE.  Covers one full loop iteration (inc JNE).   *)
-    (*                                                                      *)
-    (* Recipe (verified incrementally in this session):                     *)
-    (*   1. X_GEN_TAC + STRIP + MAYCHANGE unfold                            *)
-    (*   2. ENSURES_INIT_TAC "s0" (convert to eventually form)              *)
-    (*   3. MP_TAC (SPECL [data_ptr+64*ii; ...ws...; rdx=word(num_blocks-ii)] *)
-    (*         SHA256_BLOCK_CORE_CORRECT_PLUS)                              *)
-    (*   4. ANTS_TAC + ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES] + CONJ_TAC x *)
-    (*      NONOVERLAPPING_TAC (twice, for data_ptr/pc and data_ptr/kptr)  *)
-    (*   5. REWRITE_TAC[SOME_FLAGS] (expose flag list for X86_BIGSTEP)     *)
-    (*   6. X86_BIGSTEP_TAC HW_EXEC "s1"   (advances s0 → s1 via core)     *)
-    (*   7. ASM_SIMP_TAC[]   (closes the data-memory-matching subgoal)     *)
-    (*   8. X86_STEPS_TAC HW_EXEC [2]   (execute JNE at pc+788)            *)
-    (*   9. ENSURES_FINAL_STATE_TAC + ASM_REWRITE_TAC[]                     *)
-    (*  10. REPEAT CONJ_TAC; close RIP/RSI/RDX via SUC-trick +              *)
-    (*      WORD_SUB_SUC_64; close XMM1/XMM2 via sha256_hash_blocks unfold. *)
+    (* Subgoal 2: Body from pc+64 (inv(ii)) to pc+64 or pc+794 (inv(ii+1))   *)
+    (* via SHA256_BLOCK_CORE_CORRECT_PLUS (one loop iteration) + JNE.        *)
+    (*                                                                       *)
+    (* Shape of the step: the core theorem processes one 512-bit block in    *)
+    (* one "big step" (s0 -> s1) via X86_BIGSTEP_TAC; the subsequent JNE at  *)
+    (* pc+788 is one X86_STEPS_TAC, and its RIP destination matches the      *)
+    (* loop invariant's conditional RIP via num_blocks-ii = SUC(num_blocks-  *)
+    (* (ii+1)) + WORD_SUB_SUC_64 + case analysis.                            *)
+    (*                                                                       *)
+    (* The XMM1/XMM2 sha256_hash_blocks equalities use sha256_hash_blocks's  *)
+    (* recursive case and LIST_16_EL / LIST_8_EL to bridge between the       *)
+    (* core theorem's "ws as explicit args / state as explicit args" form    *)
+    (* and the invariant's "EL k (EL ii blocks) / EL k (hash_ii)" form.      *)
     (* ==================================================================== *)
-    CHEAT_TAC;
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    MP_TAC(SPECL
+     [`pc:num`;
+      `word_add (data_ptr:int64) (word (64 * ii)):int64`;
+      `kptr:int64`;
+      `EL 0 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 1 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 2 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 3 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 4 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 5 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 6 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 7 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]):int32`;
+      `EL 0 (EL ii blocks):int32`;
+      `EL 1 (EL ii blocks):int32`;
+      `EL 2 (EL ii blocks):int32`;
+      `EL 3 (EL ii blocks):int32`;
+      `EL 4 (EL ii blocks):int32`;
+      `EL 5 (EL ii blocks):int32`;
+      `EL 6 (EL ii blocks):int32`;
+      `EL 7 (EL ii blocks):int32`;
+      `EL 8 (EL ii blocks):int32`;
+      `EL 9 (EL ii blocks):int32`;
+      `EL 10 (EL ii blocks):int32`;
+      `EL 11 (EL ii blocks):int32`;
+      `EL 12 (EL ii blocks):int32`;
+      `EL 13 (EL ii blocks):int32`;
+      `EL 14 (EL ii blocks):int32`;
+      `EL 15 (EL ii blocks):int32`;
+      `word(num_blocks - ii):int64`] SHA256_BLOCK_CORE_CORRECT_PLUS) THEN
+    ANTS_TAC THENL
+     [ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN REPEAT CONJ_TAC THEN
+      NONOVERLAPPING_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[SOME_FLAGS] THEN
+    X86_BIGSTEP_TAC HW_EXEC "s1" THENL [
+      (* Subgoal: data-memory matches at (data_ptr + 64*ii + {0,16,32,48}).
+         Rewrite the inner `word_add (data_ptr + 64*ii) k` to
+         `word_add data_ptr (64*ii + k)` so the quantified ASM fires. *)
+      REPEAT CONJ_TAC THEN
+      REWRITE_TAC[WORD_RULE
+        `word_add (word_add data_ptr (word(64 * ii))) (word k) =
+         word_add data_ptr (word(64 * ii + k))`] THEN
+      ASM_SIMP_TAC[];
+      ALL_TAC] THEN
+    (* Step 2: JNE at pc+788; RIP becomes (if ~ZF then pc+64 else pc+794). *)
+    X86_STEPS_TAC HW_EXEC [2] THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    (* Normalize num_blocks - ii = SUC(num_blocks - (ii+1)) so WORD_SUB_SUC_64
+       fires in the `word_sub ... (word 1)` slots. *)
+    SUBGOAL_THEN `num_blocks - ii = SUC(num_blocks - (ii + 1))` SUBST1_TAC THENL
+     [ASM_ARITH_TAC; REWRITE_TAC[WORD_SUB_SUC_64]] THEN
+    REPEAT CONJ_TAC THENL [
+      (* RIP: (if ~(val(word(num_blocks-(ii+1))) = 0) then pc+64 else pc+794)
+             = word (if ii+1 < num_blocks then pc+64 else pc+794) *)
+      SUBGOAL_THEN `num_blocks - (ii + 1) < 2 EXP 64` ASSUME_TAC THENL
+       [ASM_ARITH_TAC; ALL_TAC] THEN
+      VAL_INT64_TAC `num_blocks - (ii + 1)` THEN
+      ASM_REWRITE_TAC[] THEN
+      COND_CASES_TAC THENL
+       [COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC];
+        COND_CASES_TAC THENL [ASM_ARITH_TAC; REFL_TAC]];
+      (* RSI: word_add (data_ptr + 64*ii) 64 = data_ptr + 64*(ii+1) *)
+      CONV_TAC WORD_RULE;
+      (* (The RDX equality `word_sub(word(SUC k))(word 1) = word k` is
+         discharged implicitly by ASM_REWRITE_TAC + WORD_SUB_SUC_64 above.) *)
+      (* XMM1: unfold sha256_hash_blocks (ii+1) and the two list-rebuild
+         steps via LIST_16_EL (for EL ii blocks) and LIST_8_EL (for the hash
+         state list).  Both LIST_16/8_EL applications need the corresponding
+         LENGTH side-conditions. *)
+      REWRITE_TAC[sha256_hash_blocks] THEN
+      SUBGOAL_THEN `LENGTH(EL ii blocks:int32 list) = 16` ASSUME_TAC THENL
+       [UNDISCH_TAC `ALL (\bll:int32 list. LENGTH bll = 16) blocks` THEN
+        REWRITE_TAC[GSYM ALL_EL] THEN DISCH_THEN(MP_TAC o SPEC `ii:num`) THEN
+        ASM_REWRITE_TAC[] THEN SIMP_TAC[];
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]) = 8`
+        ASSUME_TAC THENL
+       [MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
+        REWRITE_TAC[LENGTH] THEN ARITH_TAC;
+        ALL_TAC] THEN
+      RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV let_CONV)) THEN
+      SUBGOAL_THEN
+        `[EL 0 (EL ii blocks):int32; EL 1 (EL ii blocks);
+          EL 2 (EL ii blocks); EL 3 (EL ii blocks);
+          EL 4 (EL ii blocks); EL 5 (EL ii blocks);
+          EL 6 (EL ii blocks); EL 7 (EL ii blocks);
+          EL 8 (EL ii blocks); EL 9 (EL ii blocks);
+          EL 10 (EL ii blocks); EL 11 (EL ii blocks);
+          EL 12 (EL ii blocks); EL 13 (EL ii blocks);
+          EL 14 (EL ii blocks); EL 15 (EL ii blocks)]
+         = EL ii blocks`
+        (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]))
+      THENL
+       [CONV_TAC SYM_CONV THEN MATCH_MP_TAC LIST_16_EL THEN ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `[EL 0 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]);
+          EL 1 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 2 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 3 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 4 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 5 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 6 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 7 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h])]
+         = sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]`
+        (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]))
+      THENL
+       [CONV_TAC SYM_CONV THEN MATCH_MP_TAC LIST_8_EL THEN ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      ASM_REWRITE_TAC[];
+      (* XMM2: same pattern. *)
+      REWRITE_TAC[sha256_hash_blocks] THEN
+      SUBGOAL_THEN `LENGTH(EL ii blocks:int32 list) = 16` ASSUME_TAC THENL
+       [UNDISCH_TAC `ALL (\bll:int32 list. LENGTH bll = 16) blocks` THEN
+        REWRITE_TAC[GSYM ALL_EL] THEN DISCH_THEN(MP_TAC o SPEC `ii:num`) THEN
+        ASM_REWRITE_TAC[] THEN SIMP_TAC[];
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `LENGTH(sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]) = 8`
+        ASSUME_TAC THENL
+       [MATCH_MP_TAC LENGTH_SHA256_HASH_BLOCKS THEN
+        REWRITE_TAC[LENGTH] THEN ARITH_TAC;
+        ALL_TAC] THEN
+      RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV let_CONV)) THEN
+      SUBGOAL_THEN
+        `[EL 0 (EL ii blocks):int32; EL 1 (EL ii blocks);
+          EL 2 (EL ii blocks); EL 3 (EL ii blocks);
+          EL 4 (EL ii blocks); EL 5 (EL ii blocks);
+          EL 6 (EL ii blocks); EL 7 (EL ii blocks);
+          EL 8 (EL ii blocks); EL 9 (EL ii blocks);
+          EL 10 (EL ii blocks); EL 11 (EL ii blocks);
+          EL 12 (EL ii blocks); EL 13 (EL ii blocks);
+          EL 14 (EL ii blocks); EL 15 (EL ii blocks)]
+         = EL ii blocks`
+        (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]))
+      THENL
+       [CONV_TAC SYM_CONV THEN MATCH_MP_TAC LIST_16_EL THEN ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `[EL 0 (sha256_hash_blocks ii blocks [a:int32;b;c;d;e;ff;g;h]);
+          EL 1 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 2 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 3 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 4 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 5 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 6 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]);
+          EL 7 (sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h])]
+         = sha256_hash_blocks ii blocks [a;b;c;d;e;ff;g;h]`
+        (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th]))
+      THENL
+       [CONV_TAC SYM_CONV THEN MATCH_MP_TAC LIST_8_EL THEN ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      ASM_REWRITE_TAC[]
+    ];
 
     (* ==================================================================== *)
     (* Subgoal 3: Exit at pc+794 with invariant(num_blocks) → postcondition. *)
-    (* Runs the 7-instruction epilogue (pc+794..pc+828).                     *)
-    (*   Step 1: pshufd $0xb1 xmm2, xmm2                                     *)
-    (*   Step 2: pshufd $0x1b xmm1, xmm7                                     *)
-    (*   Step 3: pshufd $0xb1 xmm1, xmm1                                     *)
-    (*   Step 4: punpckhqdq xmm1, xmm2                                       *)
-    (*   Step 5: palignr $0x8 xmm2, xmm7                                     *)
-    (*   Step 6: movdqu xmm1, (%rdi)      — store state[0..3]                *)
-    (*   Step 7: movdqu xmm2, 0x10(%rdi)  — store state[4..7]                *)
-    (* Each SIMD step uses the same REWRITE[XMMi; READ_ZEROTOP_128; ABEF/   *)
-    (* CDGH_PACK] + ASM_REWRITE + WORD_BLAST pattern as PROLOGUE_HW_TAC.    *)
-    (* Final state: memory at state_ptr = word_join4 a b c d and similarly  *)
-    (* for state_ptr+16, where result = sha256_hash_blocks num_blocks ...   *)
+    (* Runs the 7-instruction epilogue (pc+794..pc+828) — the inverse of the *)
+    (* prologue's ABEF/CDGH pack plus two MOVDQU stores to state_ptr.        *)
+    (*                                                                       *)
+    (* Each SIMD step establishes a clean XMM form via SUBGOAL_THEN +         *)
+    (* REWRITE[XMMi;READ_ZEROTOP_128;ABEF/CDGH_PACK] + WORD_BLAST and then    *)
+    (* re-ghosts the YMM via XMM_EXISTSTOP_TAC so the next step's write can   *)
+    (* be bit-blasted without exploding.                                     *)
     (* ==================================================================== *)
-    CHEAT_TAC
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ABBREV_TAC `result = sha256_hash_blocks num_blocks blocks
+                          [a:int32;b;c;d;e;ff;g;h]` THEN
+    (* Introduce ghost upper-128 halves for YMM1/YMM2/YMM7 so subsequent
+       writes produce bit-blastable shapes. *)
+    XMM_EXISTSTOP_TAC "top1" `YMM1` THEN
+    XMM_EXISTSTOP_TAC "top2" `YMM2` THEN
+    XMM_EXISTSTOP_TAC "top7" `YMM7` THEN
+    (* Step 1: pshufd xmm2,xmm2,0xb1 — pair-swap lanes of CDGH_PACK. *)
+    X86_STEPS_TAC HW_EXEC [1] THEN
+    SUBGOAL_THEN
+      `read XMM2 s1 = word_join4 (EL 6 (result:int32 list)) (EL 7 result)
+                                 (EL 2 result) (EL 3 result)`
+      ASSUME_TAC THENL
+     [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[CDGH_PACK] THEN
+      REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST;
+      ALL_TAC] THEN
+    FIRST_X_ASSUM(K ALL_TAC o
+      check (fun th -> let s = string_of_term (concl th) in
+                       String.length s > 200 &&
+                       (try String.sub s 0 9 = "read YMM2" with _ -> false))) THEN
+    XMM_EXISTSTOP_TAC "top2a" `YMM2` THEN
+    (* Step 2: pshufd xmm7,xmm1,0x1b — full-lane reverse into XMM7. *)
+    X86_STEPS_TAC HW_EXEC [2] THEN
+    SUBGOAL_THEN
+      `read XMM7 s2 = word_join4 (EL 0 (result:int32 list)) (EL 1 result)
+                                 (EL 4 result) (EL 5 result)`
+      ASSUME_TAC THENL
+     [REWRITE_TAC[XMM7; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[ABEF_PACK] THEN
+      REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST;
+      ALL_TAC] THEN
+    FIRST_X_ASSUM(K ALL_TAC o
+      check (fun th -> let s = string_of_term (concl th) in
+                       String.length s > 200 &&
+                       (try String.sub s 0 9 = "read YMM7" with _ -> false))) THEN
+    XMM_EXISTSTOP_TAC "top7a" `YMM7` THEN
+    (* Step 3: pshufd xmm1,xmm1,0xb1 — pair-swap of XMM1. *)
+    X86_STEPS_TAC HW_EXEC [3] THEN
+    SUBGOAL_THEN
+      `read XMM1 s3 = word_join4 (EL 4 (result:int32 list)) (EL 5 result)
+                                 (EL 0 result) (EL 1 result)`
+      ASSUME_TAC THENL
+     [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[ABEF_PACK] THEN
+      REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST;
+      ALL_TAC] THEN
+    FIRST_X_ASSUM(K ALL_TAC o
+      check (fun th -> let s = string_of_term (concl th) in
+                       String.length s > 200 &&
+                       (try String.sub s 0 9 = "read YMM1" with _ -> false))) THEN
+    XMM_EXISTSTOP_TAC "top1a" `YMM1` THEN
+    (* Step 4: punpckhqdq xmm1,xmm2 — XMM1 ← high64(xmm2)||high64(xmm1). *)
+    X86_STEPS_TAC HW_EXEC [4] THEN
+    SUBGOAL_THEN
+      `read XMM1 s4 = word_join4 (EL 0 (result:int32 list)) (EL 1 result)
+                                 (EL 2 result) (EL 3 result)`
+      ASSUME_TAC THENL
+     [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+      REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST;
+      ALL_TAC] THEN
+    FIRST_X_ASSUM(K ALL_TAC o
+      check (fun th -> let s = string_of_term (concl th) in
+                       String.length s > 200 &&
+                       (try String.sub s 0 9 = "read YMM1" with _ -> false))) THEN
+    XMM_EXISTSTOP_TAC "top1b" `YMM1` THEN
+    (* Step 5: palignr xmm2,xmm7,0x8 — high64(xmm7)||low64(xmm2). *)
+    X86_STEPS_TAC HW_EXEC [5] THEN
+    SUBGOAL_THEN
+      `read XMM2 s5 = word_join4 (EL 4 (result:int32 list)) (EL 5 result)
+                                 (EL 6 result) (EL 7 result)`
+      ASSUME_TAC THENL
+     [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+      REWRITE_TAC[word_join4] THEN CONV_TAC WORD_BLAST;
+      ALL_TAC] THEN
+    FIRST_X_ASSUM(K ALL_TAC o
+      check (fun th -> let s = string_of_term (concl th) in
+                       String.length s > 200 &&
+                       (try String.sub s 0 9 = "read YMM2" with _ -> false))) THEN
+    XMM_EXISTSTOP_TAC "top2b" `YMM2` THEN
+    (* Steps 6-7: the two MOVDQU stores to state_ptr and state_ptr+16. *)
+    X86_STEPS_TAC HW_EXEC [6;7] THEN
+    (* Finalize: split state eqs from MAYCHANGE; close each with WORD_BLAST
+       after abbreviating EL k result to a fresh variable; handle the
+       MAYCHANGE subsumption via subsumed_pth_hw (SOME_FLAGS needs explicit
+       unfolding — MONOTONE_MAYCHANGE_TAC won't do it here). *)
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    (* The MAYCHANGE conjunct is discharged automatically by ASM_REWRITE_TAC
+       (it matches an assumption on s0/s7 accumulated during stepping).
+       Two state-memory conjuncts remain, both closable by WORD_BLAST. *)
+    CONJ_TAC THEN CONV_TAC WORD_BLAST
   ]);;
 
 
