@@ -403,7 +403,10 @@ let SHA256_HW_CORRECT = time prove(
   (* Introduce the loop invariant.  After i iterations, XMM1/XMM2 hold the    *)
   (* ABEF/CDGH pack of sha256_hash_blocks i blocks H, RSI = data_ptr+64*i,    *)
   (* RDX = num_blocks - i, XMM7=XMM8=mask, data/K memory unchanged.           *)
-  ENSURES_WHILE_UP_TAC `num_blocks:num` `pc + 64` `pc + 788`
+  (* Use ENSURES_WHILE_UP2_TAC so body goes pc1 → (pc1 or pc2) depending  *)
+  (* on i+1<k.  This avoids a separate back-edge subgoal: JNE branch is  *)
+  (* handled inside the body via ZF postcondition from the core theorem. *)
+  ENSURES_WHILE_UP2_TAC `num_blocks:num` `pc + 64` `pc + 794`
     `\i s. bytes_loaded s (word pc) sha256_hw_mc /\
            read RDI s = state_ptr /\
            read RSI s = word_add data_ptr (word(64 * i)) /\
@@ -461,34 +464,17 @@ let SHA256_HW_CORRECT = time prove(
     CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
 
     (* ==================================================================== *)
-    (* Subgoal 2: Body (invariant(i) at pc+64 → invariant(i+1) at pc+788).   *)
-    (* Apply SHA256_BLOCK_CORE_CORRECT_PLUS with data_ptr := data_ptr+64i.   *)
+    (* Subgoal 2: Body from pc+64 (inv(i)) to pc+64 or pc+794 (inv(i+1))    *)
+    (* via core theorem + JNE.  Covers one full loop iteration (inc JNE).   *)
     (* ==================================================================== *)
     X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
-    (* stubbed for now *)
+    (* stubbed for now — will apply SHA256_BLOCK_CORE_CORRECT_PLUS + JNE *)
     CHEAT_TAC;
 
     (* ==================================================================== *)
-    (* Subgoal 3: Back-edge (invariant(i) at pc+788 → invariant(i) at pc+64).*)
-    (* JNE at pc+788 takes back to pc+64 when RDX != 0, i.e., when i<k.     *)
+    (* Subgoal 3: Exit at pc+794 with invariant(num_blocks) → postcondition. *)
+    (* Runs the 7-instruction epilogue (pc+794..pc+828).                     *)
     (* ==================================================================== *)
-    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
-    SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
-     [ASM_ARITH_TAC; ALL_TAC] THEN
-    SUBGOAL_THEN `~(num_blocks - ii = 0)` ASSUME_TAC THENL
-     [ASM_ARITH_TAC; ALL_TAC] THEN
-    VAL_INT64_TAC `num_blocks - ii` THEN
-    ENSURES_INIT_TAC "s0" THEN
-    X86_STEPS_TAC HW_EXEC [1] THEN
-    ENSURES_FINAL_STATE_TAC THEN
-    ASM_REWRITE_TAC[];
-
-    (* ==================================================================== *)
-    (* Subgoal 4: Exit (invariant(num_blocks) at pc+788 → postcond at end).  *)
-    (* Execute JNE fall-through (pc+788 → pc+794), then the 7-instruction    *)
-    (* epilogue (pc+794 → pc+828).                                           *)
-    (* ==================================================================== *)
-    REWRITE_TAC[SUB_REFL] THEN
     CHEAT_TAC
   ]);;
 
