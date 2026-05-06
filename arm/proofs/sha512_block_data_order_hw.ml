@@ -393,16 +393,8 @@ let SHA512_HW_CORRECT = prove
     (* 482 ARM steps, 40 cut-points. Prefix = 22 instrs (8 LDR Q +       *)
     (* ADD X1 + SUB X2 + 8 REV64 + 4 MOV Q28-Q31); then 32 x 12-instr    *)
     (* groups + 8 x 9-instr groups (no SU); finally 4 ADD add-back.      *)
-    (*                                                                   *)
-    (* Prefix + 40-group core VERIFIED interactively (sha512H server);   *)
-    (* postcondition reconstruction still needs work (mk_eq failure in   *)
-    (* SHA512_BLOCK_EL spec). Keep CHEAT_TAC on the overall body for now *)
-    (* so the file loads; reuse the commented-out scaffold below.        *)
     (* ================================================================= *)
-    CHEAT_TAC;
-
-    (* Scaffold for the body proof — save for next session. *)
-    (* X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
     REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
     SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
      [ASM_ARITH_TAC; ALL_TAC] THEN
@@ -544,10 +536,6 @@ let SHA512_HW_CORRECT = prove
        `LENGTH(sha512_hash_blocks ii blocks [a:int64;b;c;d;e;f;g;h]) = 8`,
        MATCH_MP_TAC LENGTH_SHA512_HASH_BLOCKS THEN
        REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
-     let len_c = prove(
-       `LENGTH(sha512_compress 80 W
-          (sha512_hash_blocks ii blocks [a:int64;b;c;d;e;f;g;h])) = 8`,
-       MATCH_MP_TAC LENGTH_SHA512_COMPRESS THEN ACCEPT_TAC len_h) in
      let block_el = List.map (fun k ->
        let th = SPEC (mk_small_numeral k)
          (MP (SPECL [`[w0:int64;w1;w2;w3;w4;w5;w6;w7;
@@ -557,13 +545,15 @@ let SHA512_HW_CORRECT = prove
        try CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2
        with _ -> th2) (0--7) in
      let shift2_78 = GEN_SHIFT2_RULE h_tm 78 in
-     ASM_REWRITE_TAC[WORD_ADVANCE_128; sha512_hash_blocks; sha512_block;
-                     WORD_JOIN_64_HI_LO] THEN
-     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-     REWRITE_TAC(block_el @ [shift2_78]) THEN
+     (* Postcondition closure (see feedback_sha512_postcond_closure.md):
+        unfold only sha512_hash_blocks (step form), then let SHA512_BLOCK_EL
+        do the MAP2 rewriting lazily via pre-built block_el. *)
+     ASM_REWRITE_TAC[sha512_hash_blocks] THEN
+     ASM_REWRITE_TAC(WORD_JOIN_64_HI_LO :: block_el) THEN
+     REWRITE_TAC[shift2_78] THEN
+     ASM_REWRITE_TAC[WORD_ADVANCE_128] THEN
      SUBGOAL_THEN `num_blocks - ii = SUC(num_blocks - (ii + 1))`
-       SUBST1_TAC THENL [ASM_ARITH_TAC; REWRITE_TAC[WORD_SUB_SUC]] THEN
-     REFL_TAC)); *)
+       SUBST1_TAC THENL [ASM_ARITH_TAC; REWRITE_TAC[WORD_SUB_SUC]]));
 
 
     (* ================================================================= *)
@@ -655,4 +645,4 @@ let SHA512_HW_SUBROUTINE_CORRECT = prove
              (word_join:int64->int64->int128) (EL 7 result) (EL 6 result)))
      (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
       MAYCHANGE [memory :> bytes(state_ptr, 64)])`,
-  CHEAT_TAC);;
+  ARM_ADD_RETURN_NOSTACK_TAC HW_EXEC SHA512_HW_CORRECT);;
