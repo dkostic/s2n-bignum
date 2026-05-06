@@ -50,15 +50,28 @@ let WORD_ADVANCE_128 = WORD_RULE
    LDR Q from LE memory gives when the logical SHA-512 message words w0, w1
    are stored in BE byte order), the post-REV64 Q16 holds `word_join w1 w0`.
 
-   Pattern exactly analogous to REV32_BITBLAST_TAC in the SHA-256 pilot. *)
+   Pattern analogous to REV32_BITBLAST_TAC in the SHA-256 pilot, but the
+   `is_clean_wj_rhs` check is tighter: after ARM_STEPS_TAC unfolds the
+   usimd2/4/8 definitions, the expanded Q hypothesis still has an outer
+   `word_join`, so the SHA-256 check (outermost constructor = word_join)
+   doesn't distinguish "already cleaned" from "freshly expanded". We
+   therefore require the word_join's first argument to be headed by EL,
+   i.e. the clean `word_join (EL k1 ...) (EL k0 ...)` form. *)
 
 let REV64_BITBLAST_TAC qpat qtm =
-  let is_wj_rhs th =
-    try fst(dest_const(fst(strip_comb(rand(concl th))))) = "word_join"
+  let is_clean_wj_rhs th =
+    try
+      let _,rhs = dest_eq (concl th) in
+      let hd,args = strip_comb rhs in
+      fst(dest_const hd) = "word_join" &&
+      List.length args = 2 &&
+      (try let ell,_ = strip_comb(List.nth args 0) in
+           fst(dest_const ell) = "EL"
+       with _ -> false)
     with _ -> false in
   SUBGOAL_THEN qtm
     (fun th -> RULE_ASSUM_TAC(fun asm ->
-      if can (term_match [] qpat) (concl asm) && not(is_wj_rhs asm)
+      if can (term_match [] qpat) (concl asm) && not(is_clean_wj_rhs asm)
       then th else asm))
   THENL
    [ASM_REWRITE_TAC[] THEN
@@ -117,7 +130,14 @@ let EXPAND_K_TAC_512 =
         (0--39)
     else FAIL_TAC "");;
 
-(* EXPAND_DATA_TAC_512: specialize the quantified data memory at j=ii. *)
+(* EXPAND_DATA_TAC_512: specialize the quantified data memory at j=ii and
+   further at each of l=0..7, normalizing 128*ii + 16*l to its concrete
+   offset form so the simulator can resolve LDR Q16-Q23 addresses. The
+   SHA-256 analogue didn't need per-l specialization because its memory
+   hypothesis was a fixed 4-way conjunction of four LDRs per block; the
+   SHA-512 hypothesis is `!l. l<8 ==> ...` which must be unfolded per-l.
+   REWRITE_CONV[ADD_CLAUSES] reduces `128*ii + 0` to `128*ii` (needed for
+   the l=0 LDR to match X1 = data_ptr + 128*ii). *)
 
 let EXPAND_DATA_TAC_512 =
   FIRST_ASSUM(fun th ->
@@ -125,7 +145,16 @@ let EXPAND_DATA_TAC_512 =
       try fst(dest_const t) = "word_bytereverse" with _ -> false)) (concl th)
     then
       MP_TAC(SPEC `ii:num` th) THEN ANTS_TAC THENL
-       [ASM_ARITH_TAC; ALL_TAC]
+       [ASM_ARITH_TAC;
+        DISCH_THEN (fun dth ->
+          MAP_EVERY (fun l ->
+            let sp = SPEC (mk_small_numeral l) dth in
+            let mp = MP sp (prove(lhand(concl sp), ARITH_TAC)) in
+            ASSUME_TAC (CONV_RULE
+              (DEPTH_CONV NUM_MULT_CONV THENC
+               DEPTH_CONV NUM_ADD_CONV THENC
+               REWRITE_CONV[ADD_CLAUSES]) mp))
+            (0--7))]
     else FAIL_TAC "");;
 
 (* ========================================================================= *)
@@ -182,25 +211,30 @@ let GEN_CUT_POINT_TAC_512 h_tm i sname =
                     List.nth EL_W_ALL_LIST_512 (2*i+1)] in
   let target_n = 2 * (i + 1) in
   let target = mk_small_numeral target_n in
-  let q_res_tm_full = subst [sname, `s:armstate`; target, `t:num`;
-                             h_tm, `H:int64 list`]
-    `read Q s = (word_join:int64->int64->int128)
-       (EL 1 (sha512_compress t W (H:int64 list):int64 list))
-       (EL 0 (sha512_compress t W H))` in
-  let q_res_tm_full =
-    subst [q_res, `Q:(armstate,int128)component`] q_res_tm_full in
-  let q_mid_tm_full = subst [sname, `s:armstate`; target, `t:num`;
-                             h_tm, `H:int64 list`]
-    `read Q s = (word_join:int64->int64->int128)
-       (EL 5 (sha512_compress t W (H:int64 list):int64 list))
-       (EL 4 (sha512_compress t W H))` in
-  let q_mid_tm_full =
-    subst [q_mid, `Q:(armstate,int128)component`] q_mid_tm_full in
+  (* Build the cut goal terms programmatically so that all types are
+     concrete. Starting from a quoted template with abstract `s` leaves a
+     fresh type variable after subst, which then type-mismatches the
+     assumption-list entries. *)
+  let read_const =
+    `read:(armstate,int128)component->armstate->int128` in
+  let word_join_c = `word_join:int64->int64->int128` in
+  let mk_q_cut_tm qcomp hi lo =
+    let compress_tm =
+      list_mk_icomb "sha512_compress" [target; `W:int64 list`; h_tm] in
+    let el_hi = list_mk_icomb "EL" [mk_small_numeral hi; compress_tm] in
+    let el_lo = list_mk_icomb "EL" [mk_small_numeral lo; compress_tm] in
+    let wj = mk_comb(mk_comb(word_join_c, el_hi), el_lo) in
+    mk_eq(mk_comb(mk_comb(read_const, qcomp), sname), wj) in
+  let q_res_tm_full = mk_q_cut_tm q_res 1 0 in
+  let q_mid_tm_full = mk_q_cut_tm q_mid 5 4 in
   let CUT_SUBGOAL_TAC bridge =
     ASM_REWRITE_TAC[bridge] THEN
     REWRITE_TAC[shift2_thm] THEN
     REWRITE_TAC[CONJUNCT1 sha512_compress] THEN
-    CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    (* EL_CONV can reduce EL over concrete lists but fails on opaque
+       sha512_hash_blocks applications; wrap in TRY so the i=0 case
+       (where h_tm is opaque) doesn't blow up. *)
+    TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
     ASM_REWRITE_TAC[] THEN
     REWRITE_TAC el_w_local THEN
     REFL_TAC in
@@ -356,11 +390,181 @@ let SHA512_HW_CORRECT = prove
     (* Subgoal 2: BODY -- invariant(ii) at pc+0x10 ==>                   *)
     (*            invariant(ii+1) at pc+0x798                            *)
     (*                                                                   *)
-    (* BODY proof is large (482 ARM steps, 40 cut-points): CHEAT for     *)
-    (* now, will be closed in a follow-up commit using GEN_CUT_POINT_TAC *)
-    (* _512 and the REV64 / schedule abbreviations scaffolded above.     *)
+    (* 482 ARM steps, 40 cut-points. Prefix = 22 instrs (8 LDR Q +       *)
+    (* ADD X1 + SUB X2 + 8 REV64 + 4 MOV Q28-Q31); then 32 x 12-instr    *)
+    (* groups + 8 x 9-instr groups (no SU); finally 4 ADD add-back.      *)
+    (*                                                                   *)
+    (* Prefix + 40-group core VERIFIED interactively (sha512H server);   *)
+    (* postcondition reconstruction still needs work (mk_eq failure in   *)
+    (* SHA512_BLOCK_EL spec). Keep CHEAT_TAC on the overall body for now *)
+    (* so the file loads; reuse the commented-out scaffold below.        *)
     (* ================================================================= *)
     CHEAT_TAC;
+
+    (* Scaffold for the body proof — save for next session. *)
+    (* X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    EXPAND_K_TAC_512 THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+    EXPAND_DATA_TAC_512 THEN
+    RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_ADD_CONV)) THEN
+    ARM_STEPS_TAC HW_EXEC (1--22) THEN
+    REV64_BITBLAST_TAC `read Q16 s = x:int128`
+      `read Q16 s22 = (word_join:int64->int64->int128)
+        (EL 1 (EL ii blocks):int64) (EL 0 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q17 s = x:int128`
+      `read Q17 s22 = (word_join:int64->int64->int128)
+        (EL 3 (EL ii blocks):int64) (EL 2 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q18 s = x:int128`
+      `read Q18 s22 = (word_join:int64->int64->int128)
+        (EL 5 (EL ii blocks):int64) (EL 4 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q19 s = x:int128`
+      `read Q19 s22 = (word_join:int64->int64->int128)
+        (EL 7 (EL ii blocks):int64) (EL 6 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q20 s = x:int128`
+      `read Q20 s22 = (word_join:int64->int64->int128)
+        (EL 9 (EL ii blocks):int64) (EL 8 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q21 s = x:int128`
+      `read Q21 s22 = (word_join:int64->int64->int128)
+        (EL 11 (EL ii blocks):int64) (EL 10 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q22 s = x:int128`
+      `read Q22 s22 = (word_join:int64->int64->int128)
+        (EL 13 (EL ii blocks):int64) (EL 12 (EL ii blocks))` THEN
+    REV64_BITBLAST_TAC `read Q23 s = x:int128`
+      `read Q23 s22 = (word_join:int64->int64->int128)
+        (EL 15 (EL ii blocks):int64) (EL 14 (EL ii blocks))` THEN
+    ABBREV_TAC `w0 = (EL 0 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w1 = (EL 1 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w2 = (EL 2 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w3 = (EL 3 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w4 = (EL 4 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w5 = (EL 5 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w6 = (EL 6 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w7 = (EL 7 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w8 = (EL 8 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w9 = (EL 9 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w10 = (EL 10 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w11 = (EL 11 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w12 = (EL 12 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w13 = (EL 13 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w14 = (EL 14 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `w15 = (EL 15 (EL ii blocks)):int64` THEN
+    ABBREV_TAC `W = sha512_message_schedule 64
+      [w0:int64;w1;w2;w3;w4;w5;w6;w7;
+       w8;w9;w10;w11;w12;w13;w14;w15]` THEN
+    (let h_tm = `sha512_hash_blocks ii blocks [a:int64;b;c;d;e;f;g;h]` in
+    ARM_STEPS_TAC HW_EXEC (23--34) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 0 `s34:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (35--46) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 1 `s46:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (47--58) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 2 `s58:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (59--70) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 3 `s70:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (71--82) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 4 `s82:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (83--94) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 5 `s94:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (95--106) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 6 `s106:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (107--118) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 7 `s118:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (119--130) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 8 `s130:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (131--142) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 9 `s142:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (143--154) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 10 `s154:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (155--166) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 11 `s166:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (167--178) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 12 `s178:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (179--190) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 13 `s190:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (191--202) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 14 `s202:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (203--214) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 15 `s214:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (215--226) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 16 `s226:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (227--238) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 17 `s238:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (239--250) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 18 `s250:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (251--262) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 19 `s262:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (263--274) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 20 `s274:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (275--286) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 21 `s286:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (287--298) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 22 `s298:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (299--310) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 23 `s310:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (311--322) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 24 `s322:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (323--334) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 25 `s334:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (335--346) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 26 `s346:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (347--358) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 27 `s358:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (359--370) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 28 `s370:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (371--382) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 29 `s382:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (383--394) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 30 `s394:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (395--406) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 31 `s406:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (407--415) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 32 `s415:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (416--424) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 33 `s424:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (425--433) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 34 `s433:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (434--442) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 35 `s442:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (443--451) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 36 `s451:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (452--460) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 37 `s460:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (461--469) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 38 `s469:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (470--478) THEN RULE_ASSUM_TAC ADD_SIMP_RULE_512 THEN
+      GEN_CUT_POINT_TAC_512 h_tm 39 `s478:armstate` THEN
+    ARM_STEPS_TAC HW_EXEC (479--482) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    RECONSTRUCT_BLOCK_TAC_512 THEN
+    (let len_h = prove(
+       `LENGTH(sha512_hash_blocks ii blocks [a:int64;b;c;d;e;f;g;h]) = 8`,
+       MATCH_MP_TAC LENGTH_SHA512_HASH_BLOCKS THEN
+       REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+     let len_c = prove(
+       `LENGTH(sha512_compress 80 W
+          (sha512_hash_blocks ii blocks [a:int64;b;c;d;e;f;g;h])) = 8`,
+       MATCH_MP_TAC LENGTH_SHA512_COMPRESS THEN ACCEPT_TAC len_h) in
+     let block_el = List.map (fun k ->
+       let th = SPEC (mk_small_numeral k)
+         (MP (SPECL [`[w0:int64;w1;w2;w3;w4;w5;w6;w7;
+                       w8;w9;w10;w11;w12;w13;w14;w15]`; h_tm]
+                     SHA512_BLOCK_EL) len_h) in
+       let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
+       try CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2
+       with _ -> th2) (0--7) in
+     let shift2_78 = GEN_SHIFT2_RULE h_tm 78 in
+     ASM_REWRITE_TAC[WORD_ADVANCE_128; sha512_hash_blocks; sha512_block;
+                     WORD_JOIN_64_HI_LO] THEN
+     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+     REWRITE_TAC(block_el @ [shift2_78]) THEN
+     SUBGOAL_THEN `num_blocks - ii = SUC(num_blocks - (ii + 1))`
+       SUBST1_TAC THENL [ASM_ARITH_TAC; REWRITE_TAC[WORD_SUB_SUC]] THEN
+     REFL_TAC)); *)
+
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x798 ==>              *)
