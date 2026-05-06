@@ -158,11 +158,9 @@ let SHA512_HW_CORRECT = prove
     LENGTH blocks = num_blocks /\
     ALL (\bl. LENGTH bl = 16) blocks /\
     ALL (nonoverlapping (state_ptr, 64))
-        [(word pc, LENGTH sha512_hw_mc);
-         (data_ptr, 128 * num_blocks); (kptr, 640)] /\
-    nonoverlapping (data_ptr, 128 * num_blocks)
-                   (word pc, LENGTH sha512_hw_mc) /\
-    nonoverlapping (kptr, 640) (word pc, LENGTH sha512_hw_mc)
+        [(word pc, 1968); (data_ptr, 128 * num_blocks); (kptr, 640)] /\
+    nonoverlapping (data_ptr, 128 * num_blocks) (word pc, 1968) /\
+    nonoverlapping (kptr, 640) (word pc, 1968)
     ==> ensures arm
      (\s. aligned_bytes_loaded s (word pc) sha512_hw_mc /\
           read PC s = word pc /\
@@ -206,7 +204,96 @@ let SHA512_HW_CORRECT = prove
                  Q28; Q29; Q30; Q31] ,,
       MAYCHANGE [memory :> bytes(state_ptr, 64)] ,,
       MAYCHANGE [events])`,
-  CHEAT_TAC);;
+
+  REWRITE_TAC[ALL; MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+              NONOVERLAPPING_CLAUSES] THEN REPEAT STRIP_TAC THEN
+
+  SUBGOAL_THEN `~(num_blocks = 0)` ASSUME_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+
+  ENSURES_WHILE_UP_TAC `num_blocks:num` `pc + 0x10` `pc + 0x798`
+    `\i s. aligned_bytes_loaded s (word pc) sha512_hw_mc /\
+           read X0 s = state_ptr /\
+           read X1 s = word_add data_ptr (word(128 * i)) /\
+           read X2 s = word(num_blocks - i) /\
+           read X3 s = kptr /\
+           read Q0 s = (word_join:int64->int64->int128)
+             (EL 1 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h]:int64 list))
+             (EL 0 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h])) /\
+           read Q1 s = (word_join:int64->int64->int128)
+             (EL 3 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h]:int64 list))
+             (EL 2 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h])) /\
+           read Q2 s = (word_join:int64->int64->int128)
+             (EL 5 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h]:int64 list))
+             (EL 4 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h])) /\
+           read Q3 s = (word_join:int64->int64->int128)
+             (EL 7 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h]:int64 list))
+             (EL 6 (sha512_hash_blocks i blocks [a;b;c;d;e;f;g;h])) /\
+           (!j. j < num_blocks ==>
+             (!l. l < 8 ==>
+               read (memory :> bytes128
+                      (word_add data_ptr (word(128 * j + 16 * l)))) s =
+               (word_join:int64->int64->int128)
+                 (word_bytereverse (EL (2*l+1) (EL j blocks)))
+                 (word_bytereverse (EL (2*l) (EL j blocks))))) /\
+           (!k. k < 40 ==>
+             read (memory :> bytes128 (word_add kptr (word(16 * k)))) s =
+             (word_join:int64->int64->int128)
+               (EL (2*k+1) sha512_K) (EL (2*k) sha512_K)) /\
+           read (memory :> bytes128 state_ptr) s =
+             (word_join:int64->int64->int128) b a /\
+           read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+             (word_join:int64->int64->int128) d c /\
+           read (memory :> bytes128 (word_add state_ptr (word 32))) s =
+             (word_join:int64->int64->int128) f e /\
+           read (memory :> bytes128 (word_add state_ptr (word 48))) s =
+             (word_join:int64->int64->int128) h g` THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL [
+
+    (* ================================================================= *)
+    (* Subgoal 1: INIT -- precondition ==> invariant(0) at pc+0x10       *)
+    (* Execute instructions 1-4 (LDR Q0-Q3).                             *)
+    (* ================================================================= *)
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC HW_EXEC (1--4) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[sha512_hash_blocks; WORD_ADD_0; MULT_CLAUSES; SUB_0] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
+
+    (* ================================================================= *)
+    (* Subgoal 2: BODY -- CHEAT for now.                                 *)
+    (* ================================================================= *)
+    CHEAT_TAC;
+
+    (* ================================================================= *)
+    (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x798 ==>              *)
+    (*            invariant(i) at pc+0x10                                *)
+    (* CBNZ branches back since num_blocks - i != 0.                     *)
+    (* ================================================================= *)
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC HW_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+
+    (* ================================================================= *)
+    (* Subgoal 4: EXIT -- invariant(num_blocks) at pc+0x798 ==>          *)
+    (*            postcondition at pc+0x7ac                              *)
+    (* CBNZ falls through (X2 = 0) + 4 STR Q (5 instructions).          *)
+    (* RET not executed here; handled by SUBROUTINE_CORRECT wrapper.     *)
+    (* ================================================================= *)
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+                NONOVERLAPPING_CLAUSES; SUB_REFL] THEN
+    VAL_INT64_TAC `num_blocks - num_blocks` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC HW_EXEC (1--5) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    REWRITE_TAC[]
+  ]);;
 
 (* ========================================================================= *)
 (* Subroutine wrapper.                                                        *)
@@ -224,11 +311,9 @@ let SHA512_HW_SUBROUTINE_CORRECT = prove
     LENGTH blocks = num_blocks /\
     ALL (\bl. LENGTH bl = 16) blocks /\
     ALL (nonoverlapping (state_ptr, 64))
-        [(word pc, LENGTH sha512_hw_mc);
-         (data_ptr, 128 * num_blocks); (kptr, 640)] /\
-    nonoverlapping (data_ptr, 128 * num_blocks)
-                   (word pc, LENGTH sha512_hw_mc) /\
-    nonoverlapping (kptr, 640) (word pc, LENGTH sha512_hw_mc)
+        [(word pc, 1968); (data_ptr, 128 * num_blocks); (kptr, 640)] /\
+    nonoverlapping (data_ptr, 128 * num_blocks) (word pc, 1968) /\
+    nonoverlapping (kptr, 640) (word pc, 1968)
     ==> ensures arm
      (\s. aligned_bytes_loaded s (word pc) sha512_hw_mc /\
           read PC s = word pc /\
