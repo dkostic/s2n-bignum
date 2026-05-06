@@ -88,6 +88,7 @@ let SHA256_BLOCK_CORE_CORRECT_PLUS = time prove
      (\s. read RIP s = word(pc + 788) /\
           read RSI s = word_add data_ptr (word 64) /\
           read RDX s = word_sub rdx_in (word 1) /\
+          (read ZF s <=> val (word_sub rdx_in (word 1):int64) = 0) /\
           read XMM7 s = pshufb_mask_val /\
           read XMM8 s = pshufb_mask_val /\
           (let blk = sha256_block [w0;w1;w2;w3;w4;w5;w6;w7;
@@ -392,8 +393,104 @@ let SHA256_HW_CORRECT = time prove(
    [(* Prologue: pc+0 → pc+64 *)
     PROLOGUE_HW_TAC THEN
     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
-    (* Remaining: loop + epilogue *)
-    CHEAT_TAC]);;
+    ALL_TAC] THEN
+
+  (* ======================================================================= *)
+  (* Split 2: pc+64 → pc+794.  Loop body (pc+64..pc+788) + JNE-fall-through  *)
+  (* (pc+788..pc+794).  Epilogue is the subsequent pc+794..pc+828 segment.   *)
+  (* ======================================================================= *)
+
+  (* Introduce the loop invariant.  After i iterations, XMM1/XMM2 hold the    *)
+  (* ABEF/CDGH pack of sha256_hash_blocks i blocks H, RSI = data_ptr+64*i,    *)
+  (* RDX = num_blocks - i, XMM7=XMM8=mask, data/K memory unchanged.           *)
+  ENSURES_WHILE_UP_TAC `num_blocks:num` `pc + 64` `pc + 788`
+    `\i s. bytes_loaded s (word pc) sha256_hw_mc /\
+           read RDI s = state_ptr /\
+           read RSI s = word_add data_ptr (word(64 * i)) /\
+           read RDX s = word(num_blocks - i) /\
+           read RCX s = kptr /\
+           read XMM1 s = ABEF_PACK
+             (EL 0 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h]:int32 list))
+             (EL 1 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h]))
+             (EL 4 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h]))
+             (EL 5 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h])) /\
+           read XMM2 s = CDGH_PACK
+             (EL 2 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h]:int32 list))
+             (EL 3 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h]))
+             (EL 6 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h]))
+             (EL 7 (sha256_hash_blocks i blocks [a;b;c;d;e;ff;g;h])) /\
+           read XMM7 s = pshufb_mask_val /\
+           read XMM8 s = pshufb_mask_val /\
+           (!j. j < num_blocks ==>
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j)))) s =
+               word_join4 (word_bytereverse (EL 0 (EL j blocks)))
+                          (word_bytereverse (EL 1 (EL j blocks)))
+                          (word_bytereverse (EL 2 (EL j blocks)))
+                          (word_bytereverse (EL 3 (EL j blocks))) /\
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j + 16)))) s =
+               word_join4 (word_bytereverse (EL 4 (EL j blocks)))
+                          (word_bytereverse (EL 5 (EL j blocks)))
+                          (word_bytereverse (EL 6 (EL j blocks)))
+                          (word_bytereverse (EL 7 (EL j blocks))) /\
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j + 32)))) s =
+               word_join4 (word_bytereverse (EL 8 (EL j blocks)))
+                          (word_bytereverse (EL 9 (EL j blocks)))
+                          (word_bytereverse (EL 10 (EL j blocks)))
+                          (word_bytereverse (EL 11 (EL j blocks))) /\
+             read (memory :> bytes128 (word_add data_ptr (word(64 * j + 48)))) s =
+               word_join4 (word_bytereverse (EL 12 (EL j blocks)))
+                          (word_bytereverse (EL 13 (EL j blocks)))
+                          (word_bytereverse (EL 14 (EL j blocks)))
+                          (word_bytereverse (EL 15 (EL j blocks)))) /\
+           (!k. k < 16 ==>
+             read (memory :> bytes128 (word_add kptr (word(16 * k)))) s =
+               word_join4 (EL (4*k) sha256_K) (EL (4*k+1) sha256_K)
+                          (EL (4*k+2) sha256_K) (EL (4*k+3) sha256_K)) /\
+           read (memory :> bytes128 (word_add kptr (word 256))) s =
+             pshufb_mask_val /\
+           read (memory :> bytes128 state_ptr) s = word_join4 a b c d /\
+           read (memory :> bytes128 (word_add state_ptr (word 16))) s =
+             word_join4 e ff g h` THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL [
+    (* ==================================================================== *)
+    (* Subgoal 1: Invariant at i=0 follows from post-prologue state.         *)
+    (* ==================================================================== *)
+    ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[sha256_hash_blocks; WORD_ADD_0; MULT_CLAUSES; SUB_0] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
+
+    (* ==================================================================== *)
+    (* Subgoal 2: Body (invariant(i) at pc+64 → invariant(i+1) at pc+788).   *)
+    (* Apply SHA256_BLOCK_CORE_CORRECT_PLUS with data_ptr := data_ptr+64i.   *)
+    (* ==================================================================== *)
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    (* stubbed for now *)
+    CHEAT_TAC;
+
+    (* ==================================================================== *)
+    (* Subgoal 3: Back-edge (invariant(i) at pc+788 → invariant(i) at pc+64).*)
+    (* JNE at pc+788 takes back to pc+64 when RDX != 0, i.e., when i<k.     *)
+    (* ==================================================================== *)
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `~(num_blocks - ii = 0)` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    X86_STEPS_TAC HW_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[];
+
+    (* ==================================================================== *)
+    (* Subgoal 4: Exit (invariant(num_blocks) at pc+788 → postcond at end).  *)
+    (* Execute JNE fall-through (pc+788 → pc+794), then the 7-instruction    *)
+    (* epilogue (pc+794 → pc+828).                                           *)
+    (* ==================================================================== *)
+    REWRITE_TAC[SUB_REFL] THEN
+    CHEAT_TAC
+  ]);;
 
 
 
