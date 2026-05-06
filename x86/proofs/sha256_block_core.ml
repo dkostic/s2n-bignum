@@ -808,8 +808,21 @@ let PROLOGUE_PLUS_GROUP0_TAC : tactic =
   FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
     String.length (string_of_term (concl th)) > 1000)) THEN
   DISCARD_OLDSTATE_TAC "s8" THEN
-  (* Step 9: movdqa xmm10, xmm2 (save initial CDGH) *)
-  X86_STEPS_TAC HW_EXEC [9] THEN
+  (* Step 9: movdqa xmm10, xmm2 — save initial CDGH for the epilogue.
+     Assert a clean XMM10 form explicitly (parallel to XMM9 save at step
+     13) so the epilogue's PADDD xmm2, xmm10 at step 168 can use it.
+     Need REFOLD_INIT_GHOSTS_TAC first: the stepper's YMM10 write
+     references ymm2_init (the ghosted read YMM2 s0), and without
+     refolding it back to `read XMM2 s0` the precondition
+     `read XMM2 s0 = CDGH_PACK c d g h` can't close the subgoal. *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s9" THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBGOAL_THEN
+   `read XMM10 s9 = CDGH_PACK c d g h`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM10; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s9" THEN
   (* Step 10: sha256rnds2 xmm2, xmm1 — first 2 rounds of group 0 *)
   X86_VERBOSE_STEP_TAC HW_EXEC "s10" THEN
   FOLD_SHA_NI_RNDS2_TAC THEN
@@ -844,8 +857,23 @@ let PROLOGUE_PLUS_GROUP0_TAC : tactic =
    [REWRITE_TAC[XMM0; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
     CONV_TAC WORD_BLAST; ALL_TAC] THEN
   DISCARD_OLDSTATE_TAC "s11" THEN
-  (* Steps 12-13: nop-like intermediates *)
-  X86_STEPS_TAC HW_EXEC [12;13] THEN
+  (* Step 12: nop *)
+  X86_STEPS_TAC HW_EXEC [12] THEN
+  (* Step 13: movdqa xmm9, xmm1 — save initial ABEF for the epilogue.  We
+     must assert the clean XMM9 form EXPLICITLY so it survives subsequent
+     DISCARD_OLDSTATE_TAC calls — otherwise the raw stepper output
+     `read YMM9 s13 = word_join top (word_subword ymm1_init (0,128))`
+     is the only record, and the ghost `ymm1_init` gets dropped.  We
+     refold init ghosts first (ymm1_init → read YMM1 s0) and then the
+     YMM_TO_XMM reduction exposes `read XMM1 s0 = ABEF_PACK a b e ff`. *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s13" THEN
+  REFOLD_INIT_GHOSTS_TAC THEN
+  SUBGOAL_THEN
+   `read XMM9 s13 = ABEF_PACK a b e ff`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM9; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s13" THEN
   (* Step 14: sha256rnds2 xmm1, xmm2 — second 2 rounds of group 0 *)
   X86_VERBOSE_STEP_TAC HW_EXEC "s14" THEN
   FOLD_SHA_NI_RNDS2_TAC THEN
@@ -5789,23 +5817,101 @@ let GROUP15_TAC : tactic =
 (*   - XMM1 / XMM2 hold ABEF/CDGH of sha256_block M H                        *)
 (*   - PC = pc + 788, RDX decremented, RSI advanced 64.                      *)
 (*                                                                           *)
-(* The proof body is currently CHEAT_TAC.  The per-group structure is        *)
-(* (from memory: /home/ubuntu/.claude/.../memory/sha256_x86_phase4.md):      *)
-(*                                                                           *)
-(*   Round-group step boundaries (X86_STEPS_TAC 1-based indices):            *)
-(*     prologue (MOVDQU xmm3..xmm6, pshufb):  steps  1- 4 of loop body       *)
-(*     group  0: ends at step 26 (pc+121)                                    *)
-(*     group  1: ends at step 34 (pc+156)                                    *)
-(*     ...                                                                    *)
-(*     group 15: ends at step 179 (pc+774)                                   *)
-(*     add-back + jnz:                       steps 180-182                   *)
-(*                                                                           *)
-(* Per-group pattern:                                                         *)
-(*   X86_STEPS_TAC HW_EXEC [n..n+k] THEN                                     *)
-(*   RULE_ASSUM_TAC(CONV_RULE(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN *)
-(*   (* specialise K memory at the group's index *) THEN                    *)
-(*   CUT_POINT_TAC_HW i sN                                                  *)
+(* Per-group pattern (for reference — implemented in PROLOGUE_PLUS_GROUP0_TAC *)
+(* and GROUP{1..15}_TAC above):                                              *)
+(*   prologue (MOVDQU xmm3..xmm6, pshufb, MOVDQA K, save XMM9/10): steps 1-13*)
+(*   group  0: steps  6-14                                                   *)
+(*   group  1: steps 15-22                                                   *)
+(*   ...                                                                     *)
+(*   group 14: steps 153-159                                                 *)
+(*   group 15: steps 160-167                                                 *)
+(*   add-back PADDDs (epilogue): steps 168-169                               *)
 (* ========================================================================= *)
+
+(* POSTCOND_TAC_HW_NEW: steps 168-169 + sha256_block fold + MAYCHANGE close. *)
+let POSTCOND_TAC_HW_NEW : tactic =
+  let len_h_thm = prove
+   (`LENGTH [a:int32;b;c;d;e;ff;g;h] = 8`,
+    REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+  let compress_el_shift_62 =
+    CONV_RULE(DEPTH_CONV NUM_ADD_CONV)
+     (MATCH_MP
+        (SPECL [`62`; `W:int32 list`; `[a:int32;b;c;d;e;ff;g;h]`]
+               COMPRESS_EL_SHIFT_2)
+        len_h_thm) in
+  let subsumed_pth = prove
+   (`R s s' ==> R subsumed R' ==> R' s s'`,
+    REWRITE_TAC[subsumed] THEN MESON_TAC[]) in
+  (* Shift XMM2 s167 from ABEF(compress 62) to CDGH(compress 64). *)
+  SUBGOAL_THEN
+   `read XMM2 s167 = CDGH_PACK
+     (EL 2 (sha256_compress 64 W [a; b; c; d; e; ff; g; h]))
+     (EL 3 (sha256_compress 64 W [a; b; c; d; e; ff; g; h]))
+     (EL 6 (sha256_compress 64 W [a; b; c; d; e; ff; g; h]))
+     (EL 7 (sha256_compress 64 W [a; b; c; d; e; ff; g; h]))`
+   ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[CDGH_EQ_ABEF] THEN
+    REWRITE_TAC[compress_el_shift_62]; ALL_TAC] THEN
+  UNDISCH_TAC
+   `read XMM2 s167 = ABEF_PACK
+     (EL 0 (sha256_compress 62 W [a; b; c; d; e; ff; g; h]))
+     (EL 1 (sha256_compress 62 W [a; b; c; d; e; ff; g; h]))
+     (EL 4 (sha256_compress 62 W [a; b; c; d; e; ff; g; h]))
+     (EL 5 (sha256_compress 62 W [a; b; c; d; e; ff; g; h]))` THEN
+  DISCH_THEN(K ALL_TAC) THEN
+  (* Step 168: paddd xmm2, xmm10.  XMM10 s167 = CDGH_PACK c d g h. *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s168" THEN
+  PADDD_REFOLD_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[ABEF_PACK; CDGH_PACK]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM2 s168 =
+      word_join4
+        (word_add (EL 7 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) h)
+        (word_add (EL 6 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) g)
+        (word_add (EL 3 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) d)
+        (word_add (EL 2 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) c)
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM2; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s168" THEN
+  (* Step 169: paddd xmm1, xmm9.  XMM9 s168 = ABEF_PACK a b e ff. *)
+  X86_VERBOSE_STEP_TAC HW_EXEC "s169" THEN
+  PADDD_REFOLD_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[ABEF_PACK; CDGH_PACK]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[GSYM WORD_JOIN4_BALANCED]) THEN
+  SUBGOAL_THEN
+   `read XMM1 s169 =
+      word_join4
+        (word_add (EL 5 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) ff)
+        (word_add (EL 4 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) e)
+        (word_add (EL 1 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) b)
+        (word_add (EL 0 (sha256_compress 64 W [a; b; c; d; e; ff; g; h])) a)
+      :int128`
+   ASSUME_TAC THENL
+   [REWRITE_TAC[XMM1; READ_ZEROTOP_128] THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  DISCARD_OLDSTATE_TAC "s169" THEN
+  (* Finalize state; split main postcondition from MAYCHANGE. *)
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [(* Main: unfold packs to word_join4, then POSTCOND_TAC_HW rewrites
+       `EL k blk` to `word_add (EL k (compress 64)) (EL k H)` and closes. *)
+    REWRITE_TAC[ABEF_PACK; CDGH_PACK; WORD_JOIN4_SUBWORD] THEN
+    POSTCOND_TAC_HW;
+    (* MAYCHANGE subsumption: pull the accumulated MAYCHANGE assumption via
+       R subsumed R' ==> R' s s', then canonicalize both sides and let
+       SUBSUMED_MAYCHANGE_TAC finish.  The usual MONOTONE_MAYCHANGE_TAC
+       fails here because SOME_FLAGS needs explicit unfolding. *)
+    FIRST_ASSUM(MATCH_MP_TAC o MATCH_MP subsumed_pth o
+                check (maychange_term o concl)) THEN
+    REWRITE_TAC[ETA_AX; SOME_FLAGS] THEN
+    CONV_TAC(BINOP_CONV MAYCHANGE_CANON_CONV) THEN
+    SUBSUMED_MAYCHANGE_TAC];;
 
 let SHA256_BLOCK_CORE_CORRECT = prove
  (`!pc data_ptr kptr
@@ -5856,8 +5962,14 @@ let SHA256_BLOCK_CORE_CORRECT = prove
            read XMM2 s =
              CDGH_PACK (EL 2 blk) (EL 3 blk) (EL 6 blk) (EL 7 blk)))
      (MAYCHANGE [RIP; RSI; RDX] ,,
-      MAYCHANGE [XMM0; XMM1; XMM2; XMM3; XMM4; XMM5; XMM6; XMM7;
-                 XMM9; XMM10] ,,
+      MAYCHANGE [YMM0_SSE; YMM1_SSE; YMM2_SSE; YMM3_SSE; YMM4_SSE;
+                 YMM5_SSE; YMM6_SSE; YMM7_SSE; YMM9_SSE; YMM10_SSE] ,,
       MAYCHANGE SOME_FLAGS ,,
       MAYCHANGE [events])`,
-  CHEAT_TAC);;
+  REPEAT STRIP_TAC THEN
+  PROLOGUE_PLUS_GROUP0_TAC THEN
+  GROUP1_TAC THEN GROUP2_TAC THEN GROUP3_TAC THEN GROUP4_TAC THEN
+  GROUP5_TAC THEN GROUP6_TAC THEN GROUP7_TAC THEN GROUP8_TAC THEN
+  GROUP9_TAC THEN GROUP10_TAC THEN GROUP11_TAC THEN GROUP12_TAC THEN
+  GROUP13_TAC THEN GROUP14_TAC THEN GROUP15_TAC THEN
+  POSTCOND_TAC_HW_NEW);;
