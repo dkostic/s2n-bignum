@@ -285,7 +285,8 @@ let SHA256_HW_CORRECT = time prove(
     ALL (nonoverlapping (state_ptr, 32))
         [(word pc, 829); (data_ptr, 64 * num_blocks); (kptr, 272)] /\
     nonoverlapping (data_ptr, 64 * num_blocks) (word pc, 829) /\
-    nonoverlapping (kptr, 272) (word pc, 829)
+    nonoverlapping (kptr, 272) (word pc, 829) /\
+    nonoverlapping (data_ptr, 64 * num_blocks) (kptr, 272)
     ==> ensures x86
      (\s. bytes_loaded s (word pc) sha256_hw_mc /\
           read RIP s = word pc /\
