@@ -300,6 +300,7 @@ onlyInArm = [
   "sha256_block_data_order_hw",
   "sha512_block_data_order_hw",
   "sha512_block_data_order_nohw",
+  "sha512_block_data_order_nohw2",
   "sha3_",
   "mldsa_pointwise",
   "mldsa_ntt_arm",
