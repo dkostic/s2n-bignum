@@ -129,15 +129,107 @@ let EXPAND_DATA_TAC_512 =
     else FAIL_TAC "");;
 
 (* ========================================================================= *)
-(* Generalised CUT_POINT_TAC_512 taking a parameter h_tm for the initial     *)
-(* hash state. Used both for the single-block core (h_tm = `[a;b;c;d;e;f;g;h]`)
-   and for the multi-block body proof (h_tm = `sha512_hash_blocks ii blocks   *)
-(* [a;b;c;d;e;f;g;h]`).                                                      *)
+(* Generalised CUT_POINT_TAC_512 taking the initial hash state h_tm as a     *)
+(* parameter. For the multi-block body proof, h_tm is                        *)
+(*   sha512_hash_blocks ii blocks [a;b;c;d;e;f;g;h]                          *)
+(* (an opaque int64 list of length 8).                                       *)
 (*                                                                           *)
-(* NOTE: For Phase F the body proof is done with CHEAT_TAC for now; the      *)
-(* full implementation will lift CUT_POINT_TAC_512 to take h_tm (and the     *)
-(* opaque-letter abbreviations will use letters derived from ii).            *)
+(* Structurally identical to CUT_POINT_TAC_512 in sha512_block_core.ml but   *)
+(* substitutes h_tm wherever the core proof used `[a;b;c;d;e;f;g;h]`.         *)
+(* The opaque-letter abbreviations (a_{i+1}, b_{i+1}, e_{i+1}, f_{i+1}) are  *)
+(* still used to keep per-instruction ARM_STEPS_TAC cost linear.             *)
 (* ========================================================================= *)
+
+let GEN_SHIFT2_RULE h_tm =
+  let l_name = "_hlist_" in
+  let l_var = mk_var(l_name, `:int64 list`) in
+  fun n ->
+    let th = SPEC_ALL SHA512_COMPRESS_SHIFT2 in
+    let th1 = INST [mk_small_numeral n, `n:num`;
+                    h_tm, `state:int64 list`] th in
+    let len_hyp = lhand(concl th1) in
+    let len_th = prove(len_hyp,
+      REWRITE_TAC[LENGTH_SHA512_HASH_BLOCKS; LENGTH] THEN
+      TRY (MATCH_MP_TAC LENGTH_SHA512_HASH_BLOCKS) THEN
+      REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+    ignore l_var;
+    CONV_RULE(ONCE_DEPTH_CONV NUM_ADD_CONV) (MP th1 len_th);;
+
+let GEN_abbrev_compress_el_tac h_tm i k_name pos =
+  let tgt_n = 2*(i+1) in
+  let tgt = mk_small_numeral tgt_n in
+  let pos_tm = mk_small_numeral pos in
+  let letter = cut_letter_name k_name i in
+  let rhs_template =
+    `EL p (sha512_compress t W (H:int64 list))` in
+  let rhs = subst [tgt,`t:num`; pos_tm,`p:num`; h_tm,`H:int64 list`]
+    rhs_template in
+  let eq_tm = mk_eq(mk_var(letter,`:int64`), rhs) in
+  ABBREV_TAC eq_tm;;
+
+let GEN_CUT_POINT_TAC_512 h_tm i sname =
+  let p = i mod 5 in
+  let q_res = mk_const("Q" ^ string_of_int phase_res_arr_512.(p),[]) in
+  let q_mid = mk_const("Q" ^ string_of_int phase_mid_arr_512.(p),[]) in
+  let bridge_h = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int64 list`; h_tm] GROUP_BRIDGE_H512.(i)) in
+  let bridge_mid = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int64 list`; h_tm] GROUP_BRIDGE_MID.(i)) in
+  let shift2_thm =
+    if i = 0 then TRUTH
+    else GEN_SHIFT2_RULE h_tm (2*(i-1)) in
+  let el_w_local = [List.nth EL_W_ALL_LIST_512 (2*i);
+                    List.nth EL_W_ALL_LIST_512 (2*i+1)] in
+  let target_n = 2 * (i + 1) in
+  let target = mk_small_numeral target_n in
+  let q_res_tm_full = subst [sname, `s:armstate`; target, `t:num`;
+                             h_tm, `H:int64 list`]
+    `read Q s = (word_join:int64->int64->int128)
+       (EL 1 (sha512_compress t W (H:int64 list):int64 list))
+       (EL 0 (sha512_compress t W H))` in
+  let q_res_tm_full =
+    subst [q_res, `Q:(armstate,int128)component`] q_res_tm_full in
+  let q_mid_tm_full = subst [sname, `s:armstate`; target, `t:num`;
+                             h_tm, `H:int64 list`]
+    `read Q s = (word_join:int64->int64->int128)
+       (EL 5 (sha512_compress t W (H:int64 list):int64 list))
+       (EL 4 (sha512_compress t W H))` in
+  let q_mid_tm_full =
+    subst [q_mid, `Q:(armstate,int128)component`] q_mid_tm_full in
+  let CUT_SUBGOAL_TAC bridge =
+    ASM_REWRITE_TAC[bridge] THEN
+    REWRITE_TAC[shift2_thm] THEN
+    REWRITE_TAC[CONJUNCT1 sha512_compress] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC el_w_local THEN
+    REFL_TAC in
+  SUBGOAL_THEN q_res_tm_full ASSUME_TAC THENL
+   [CUT_SUBGOAL_TAC bridge_h; ALL_TAC] THEN
+  SUBGOAL_THEN q_mid_tm_full ASSUME_TAC THENL
+   [CUT_SUBGOAL_TAC bridge_mid; ALL_TAC] THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    can (find_term (fun t ->
+      try let n = fst(dest_const t) in n = "sha512h" || n = "sha512h2"
+      with _ -> false)) (concl th)))) THEN
+  GEN_abbrev_compress_el_tac h_tm i "a" 0 THEN
+  GEN_abbrev_compress_el_tac h_tm i "b" 1 THEN
+  GEN_abbrev_compress_el_tac h_tm i "e" 4 THEN
+  GEN_abbrev_compress_el_tac h_tm i "f" 5 THEN
+  (if i < 32 then
+    (let prefix_gsyms =
+       List.init 16 (fun k -> GSYM (List.nth EL_W_ALL_LIST_512 k)) in
+     let step_folds =
+       [GSYM (List.nth EL_W_STEP_LIST_512 (2*i));
+        GSYM (List.nth EL_W_STEP_LIST_512 (2*i+1))] in
+     RULE_ASSUM_TAC(fun th ->
+       if can (find_term (fun t ->
+           try fst(dest_const t) = "sha512su1" with _ -> false)) (concl th)
+       then REWRITE_RULE step_folds
+              (REWRITE_RULE prefix_gsyms
+                (REWRITE_RULE [SHA512SU_BRIDGE_FLAT] th))
+       else th))
+   else ALL_TAC);;
 
 (* ========================================================================= *)
 (* Main correctness theorem.                                                 *)
@@ -261,7 +353,12 @@ let SHA512_HW_CORRECT = prove
     CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[];
 
     (* ================================================================= *)
-    (* Subgoal 2: BODY -- CHEAT for now.                                 *)
+    (* Subgoal 2: BODY -- invariant(ii) at pc+0x10 ==>                   *)
+    (*            invariant(ii+1) at pc+0x798                            *)
+    (*                                                                   *)
+    (* BODY proof is large (482 ARM steps, 40 cut-points): CHEAT for     *)
+    (* now, will be closed in a follow-up commit using GEN_CUT_POINT_TAC *)
+    (* _512 and the REV64 / schedule abbreviations scaffolded above.     *)
     (* ================================================================= *)
     CHEAT_TAC;
 
