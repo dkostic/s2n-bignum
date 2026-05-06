@@ -517,7 +517,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
       REWRITE_TAC[sha512_compress] THEN
       ENSURES_INIT_TAC "s0" THEN
       SUBGOAL_THEN
-        `read (memory :> bytes64 (word_add kptr (word 0))) s0 = EL 0 sha512_K`
+        `read (memory :> bytes64 kptr) s0 = EL 0 sha512_K`
       ASSUME_TAC THENL
        [FIRST_X_ASSUM(MP_TAC o SPEC `0`) THEN
         REWRITE_TAC[ARITH; MULT_CLAUSES] THEN
@@ -2404,15 +2404,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                         ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 1 = (16 * (i + 1)) + 1`] THEN
                                         REWRITE_TAC[sha512_compress] THEN
                                         SUBGOAL_THEN `word_add kptr (word(128 * (i+1))):int64 =
-                                                      word_add kptr (word (4 * (16 * (i + 1))))` SUBST_ALL_TAC THENL
+                                                      word_add kptr (word (8 * (16 * (i + 1))))` SUBST_ALL_TAC THENL
                                          [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                         ENSURES_INIT_TAC "s0" THEN
                                         SUBGOAL_THEN
-                                           `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1)))))) s0 =
+                                           `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1)))))) s0 =
                                             EL (16 * (i + 1)) sha512_K`
                                         ASSUME_TAC THENL
                                          [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1):num`) THEN
-                                          ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                          ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                           DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                         ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                         ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -2441,7 +2441,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                           CONV_TAC WORD_RULE;
                                           MP_TAC(SPECL [`16 * (i + 1):num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                           ANTS_TAC THENL
-                                           [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                           [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                           CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
                                           SUBGOAL_THEN
                                            `!j. j < 16 + 16 * (i + 1) ==>
@@ -2450,13 +2450,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                           MP_TAC THENL
                                            [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                             MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                            UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1)` THEN ARITH_TAC;
+                                            UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1)` THEN ARITH_TAC;
                                             ALL_TAC] THEN
                                           DISCH_THEN(fun th ->
                                             MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                               [`16 * (i + 1):num`; `16 * (i + 1) + 1`;
                                                `16 * (i + 1) + 9`; `16 * (i + 1) + 14`]) THEN
-                                          REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                          REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                           ASM_REWRITE_TAC[] THEN
                                           REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                           SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -2509,15 +2509,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                           ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 2 = (16 * (i + 1) + 1) + 1`] THEN
                                           REWRITE_TAC[sha512_compress] THEN
                                           SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 8)):int64 =
-                                                        word_add kptr (word (4 * (16 * (i + 1) + 1)))` SUBST_ALL_TAC THENL
+                                                        word_add kptr (word (8 * (16 * (i + 1) + 1)))` SUBST_ALL_TAC THENL
                                            [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                           ENSURES_INIT_TAC "s0" THEN
                                           SUBGOAL_THEN
-                                             `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 1))))) s0 =
+                                             `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 1))))) s0 =
                                               EL (16 * (i + 1) + 1) sha512_K`
                                           ASSUME_TAC THENL
                                            [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 1:num`) THEN
-                                            ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                            ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                             DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                           ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                           ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -2546,7 +2546,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                             CONV_TAC WORD_RULE;
                                             MP_TAC(SPECL [`16 * (i + 1) + 1:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                             ANTS_TAC THENL
-                                             [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                             [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                               REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 1) + 16 = 16 * (i + 1) + 17`;
                                                           ARITH_RULE `(16 * (i + 1) + 1) + 14 = 16 * (i + 1) + 15`;
                                                           ARITH_RULE `(16 * (i + 1) + 1) + 9 = 16 * (i + 1) + 10`;
@@ -2559,13 +2559,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                             MP_TAC THENL
                                              [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                               MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                              UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 1` THEN ARITH_TAC;
+                                              UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 1` THEN ARITH_TAC;
                                               ALL_TAC] THEN
                                             DISCH_THEN(fun th ->
                                               MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                 [`16 * (i + 1) + 1:num`; `16 * (i + 1) + 2`;
                                                  `16 * (i + 1) + 10`; `16 * (i + 1) + 15`]) THEN
-                                            REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                            REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                             ASM_REWRITE_TAC[] THEN
                                             REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                             SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -2619,15 +2619,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                           ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 3 = (16 * (i + 1) + 2) + 1`] THEN
                                           REWRITE_TAC[sha512_compress] THEN
                                           SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 16)):int64 =
-                                                        word_add kptr (word (4 * (16 * (i + 1) + 2)))` SUBST_ALL_TAC THENL
+                                                        word_add kptr (word (8 * (16 * (i + 1) + 2)))` SUBST_ALL_TAC THENL
                                            [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                           ENSURES_INIT_TAC "s0" THEN
                                           SUBGOAL_THEN
-                                             `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 2))))) s0 =
+                                             `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 2))))) s0 =
                                               EL (16 * (i + 1) + 2) sha512_K`
                                           ASSUME_TAC THENL
                                            [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 2:num`) THEN
-                                            ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                            ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                             DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                           ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                           ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -2656,7 +2656,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                             CONV_TAC WORD_RULE;
                                             MP_TAC(SPECL [`16 * (i + 1) + 2:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                             ANTS_TAC THENL
-                                             [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                             [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                               REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 2) + 16 = 16 * (i + 1) + 18`;
                                                           ARITH_RULE `(16 * (i + 1) + 2) + 14 = 16 * (i + 1) + 16`;
                                                           ARITH_RULE `(16 * (i + 1) + 2) + 9 = 16 * (i + 1) + 11`;
@@ -2669,13 +2669,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                             MP_TAC THENL
                                              [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                               MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                              UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 2` THEN ARITH_TAC;
+                                              UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 2` THEN ARITH_TAC;
                                               ALL_TAC] THEN
                                             DISCH_THEN(fun th ->
                                               MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                 [`16 * (i + 1) + 2:num`; `16 * (i + 1) + 3`;
                                                  `16 * (i + 1) + 11`; `16 * (i + 1) + 16`]) THEN
-                                            REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                            REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                             ASM_REWRITE_TAC[] THEN
                                             REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                             SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -2729,15 +2729,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                             ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 4 = (16 * (i + 1) + 3) + 1`] THEN
                                             REWRITE_TAC[sha512_compress] THEN
                                             SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 24)):int64 =
-                                                          word_add kptr (word (4 * (16 * (i + 1) + 3)))` SUBST_ALL_TAC THENL
+                                                          word_add kptr (word (8 * (16 * (i + 1) + 3)))` SUBST_ALL_TAC THENL
                                              [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                             ENSURES_INIT_TAC "s0" THEN
                                             SUBGOAL_THEN
-                                               `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 3))))) s0 =
+                                               `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 3))))) s0 =
                                                 EL (16 * (i + 1) + 3) sha512_K`
                                             ASSUME_TAC THENL
                                              [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 3:num`) THEN
-                                              ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                              ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                               DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                             ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                             ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -2766,7 +2766,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                               CONV_TAC WORD_RULE;
                                               MP_TAC(SPECL [`16 * (i + 1) + 3:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                               ANTS_TAC THENL
-                                               [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                               [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                 REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 3) + 16 = 16 * (i + 1) + 19`;
                                                             ARITH_RULE `(16 * (i + 1) + 3) + 14 = 16 * (i + 1) + 17`;
                                                             ARITH_RULE `(16 * (i + 1) + 3) + 9 = 16 * (i + 1) + 12`;
@@ -2779,13 +2779,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                               MP_TAC THENL
                                                [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                 MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 3` THEN ARITH_TAC;
+                                                UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 3` THEN ARITH_TAC;
                                                 ALL_TAC] THEN
                                               DISCH_THEN(fun th ->
                                                 MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                   [`16 * (i + 1) + 3:num`; `16 * (i + 1) + 4`;
                                                    `16 * (i + 1) + 12`; `16 * (i + 1) + 17`]) THEN
-                                              REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                              REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                               ASM_REWRITE_TAC[] THEN
                                               REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                               SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -2839,15 +2839,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                               ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 5 = (16 * (i + 1) + 4) + 1`] THEN
                                               REWRITE_TAC[sha512_compress] THEN
                                               SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 32)):int64 =
-                                                            word_add kptr (word (4 * (16 * (i + 1) + 4)))` SUBST_ALL_TAC THENL
+                                                            word_add kptr (word (8 * (16 * (i + 1) + 4)))` SUBST_ALL_TAC THENL
                                                [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                               ENSURES_INIT_TAC "s0" THEN
                                               SUBGOAL_THEN
-                                                 `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 4))))) s0 =
+                                                 `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 4))))) s0 =
                                                   EL (16 * (i + 1) + 4) sha512_K`
                                               ASSUME_TAC THENL
                                                [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 4:num`) THEN
-                                                ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                 DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                               ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                               ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -2876,7 +2876,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                 CONV_TAC WORD_RULE;
                                                 MP_TAC(SPECL [`16 * (i + 1) + 4:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                 ANTS_TAC THENL
-                                                 [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                 [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                   REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 4) + 16 = 16 * (i + 1) + 20`;
                                                               ARITH_RULE `(16 * (i + 1) + 4) + 14 = 16 * (i + 1) + 18`;
                                                               ARITH_RULE `(16 * (i + 1) + 4) + 9 = 16 * (i + 1) + 13`;
@@ -2889,13 +2889,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                 MP_TAC THENL
                                                  [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                   MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                  UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 4` THEN ARITH_TAC;
+                                                  UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 4` THEN ARITH_TAC;
                                                   ALL_TAC] THEN
                                                 DISCH_THEN(fun th ->
                                                   MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                     [`16 * (i + 1) + 4:num`; `16 * (i + 1) + 5`;
                                                      `16 * (i + 1) + 13`; `16 * (i + 1) + 18`]) THEN
-                                                REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                 ASM_REWRITE_TAC[] THEN
                                                 REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                 SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -2949,15 +2949,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                 ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 6 = (16 * (i + 1) + 5) + 1`] THEN
                                                 REWRITE_TAC[sha512_compress] THEN
                                                 SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 40)):int64 =
-                                                              word_add kptr (word (4 * (16 * (i + 1) + 5)))` SUBST_ALL_TAC THENL
+                                                              word_add kptr (word (8 * (16 * (i + 1) + 5)))` SUBST_ALL_TAC THENL
                                                  [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                 ENSURES_INIT_TAC "s0" THEN
                                                 SUBGOAL_THEN
-                                                   `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 5))))) s0 =
+                                                   `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 5))))) s0 =
                                                     EL (16 * (i + 1) + 5) sha512_K`
                                                 ASSUME_TAC THENL
                                                  [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 5:num`) THEN
-                                                  ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                  ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                   DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                 ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                 ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -2986,7 +2986,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                   CONV_TAC WORD_RULE;
                                                   MP_TAC(SPECL [`16 * (i + 1) + 5:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                   ANTS_TAC THENL
-                                                   [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                   [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                     REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 5) + 16 = 16 * (i + 1) + 21`;
                                                                 ARITH_RULE `(16 * (i + 1) + 5) + 14 = 16 * (i + 1) + 19`;
                                                                 ARITH_RULE `(16 * (i + 1) + 5) + 9 = 16 * (i + 1) + 14`;
@@ -2999,13 +2999,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                   MP_TAC THENL
                                                    [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                     MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                    UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 5` THEN ARITH_TAC;
+                                                    UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 5` THEN ARITH_TAC;
                                                     ALL_TAC] THEN
                                                   DISCH_THEN(fun th ->
                                                     MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                       [`16 * (i + 1) + 5:num`; `16 * (i + 1) + 6`;
                                                        `16 * (i + 1) + 14`; `16 * (i + 1) + 19`]) THEN
-                                                  REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                  REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                   ASM_REWRITE_TAC[] THEN
                                                   REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                   SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3059,15 +3059,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                   ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 7 = (16 * (i + 1) + 6) + 1`] THEN
                                                   REWRITE_TAC[sha512_compress] THEN
                                                   SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 48)):int64 =
-                                                                word_add kptr (word (4 * (16 * (i + 1) + 6)))` SUBST_ALL_TAC THENL
+                                                                word_add kptr (word (8 * (16 * (i + 1) + 6)))` SUBST_ALL_TAC THENL
                                                    [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                   ENSURES_INIT_TAC "s0" THEN
                                                   SUBGOAL_THEN
-                                                     `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 6))))) s0 =
+                                                     `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 6))))) s0 =
                                                       EL (16 * (i + 1) + 6) sha512_K`
                                                   ASSUME_TAC THENL
                                                    [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 6:num`) THEN
-                                                    ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                    ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                     DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                   ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3096,7 +3096,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                     CONV_TAC WORD_RULE;
                                                     MP_TAC(SPECL [`16 * (i + 1) + 6:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                     ANTS_TAC THENL
-                                                     [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                     [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                       REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 6) + 16 = 16 * (i + 1) + 22`;
                                                                   ARITH_RULE `(16 * (i + 1) + 6) + 14 = 16 * (i + 1) + 20`;
                                                                   ARITH_RULE `(16 * (i + 1) + 6) + 9 = 16 * (i + 1) + 15`;
@@ -3109,13 +3109,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                     MP_TAC THENL
                                                      [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                       MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                      UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 6` THEN ARITH_TAC;
+                                                      UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 6` THEN ARITH_TAC;
                                                       ALL_TAC] THEN
                                                     DISCH_THEN(fun th ->
                                                       MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                         [`16 * (i + 1) + 6:num`; `16 * (i + 1) + 7`;
                                                          `16 * (i + 1) + 15`; `16 * (i + 1) + 20`]) THEN
-                                                    REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                    REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                     ASM_REWRITE_TAC[] THEN
                                                     REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                     SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3169,15 +3169,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                     ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 8 = (16 * (i + 1) + 7) + 1`] THEN
                                                     REWRITE_TAC[sha512_compress] THEN
                                                     SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 56)):int64 =
-                                                                  word_add kptr (word (4 * (16 * (i + 1) + 7)))` SUBST_ALL_TAC THENL
+                                                                  word_add kptr (word (8 * (16 * (i + 1) + 7)))` SUBST_ALL_TAC THENL
                                                      [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                     ENSURES_INIT_TAC "s0" THEN
                                                     SUBGOAL_THEN
-                                                       `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 7))))) s0 =
+                                                       `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 7))))) s0 =
                                                         EL (16 * (i + 1) + 7) sha512_K`
                                                     ASSUME_TAC THENL
                                                      [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 7:num`) THEN
-                                                      ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                      ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                       DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                     ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3206,7 +3206,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                       CONV_TAC WORD_RULE;
                                                       MP_TAC(SPECL [`16 * (i + 1) + 7:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                       ANTS_TAC THENL
-                                                       [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                       [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                         REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 7) + 16 = 16 * (i + 1) + 23`;
                                                                     ARITH_RULE `(16 * (i + 1) + 7) + 14 = 16 * (i + 1) + 21`;
                                                                     ARITH_RULE `(16 * (i + 1) + 7) + 9 = 16 * (i + 1) + 16`;
@@ -3219,13 +3219,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                       MP_TAC THENL
                                                        [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                         MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                        UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 7` THEN ARITH_TAC;
+                                                        UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 7` THEN ARITH_TAC;
                                                         ALL_TAC] THEN
                                                       DISCH_THEN(fun th ->
                                                         MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                           [`16 * (i + 1) + 7:num`; `16 * (i + 1) + 8`;
                                                            `16 * (i + 1) + 16`; `16 * (i + 1) + 21`]) THEN
-                                                      REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                      REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                       ASM_REWRITE_TAC[] THEN
                                                       REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                       SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3279,15 +3279,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                       ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 9 = (16 * (i + 1) + 8) + 1`] THEN
                                                       REWRITE_TAC[sha512_compress] THEN
                                                       SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 64)):int64 =
-                                                                    word_add kptr (word (4 * (16 * (i + 1) + 8)))` SUBST_ALL_TAC THENL
+                                                                    word_add kptr (word (8 * (16 * (i + 1) + 8)))` SUBST_ALL_TAC THENL
                                                        [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                       ENSURES_INIT_TAC "s0" THEN
                                                       SUBGOAL_THEN
-                                                         `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 8))))) s0 =
+                                                         `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 8))))) s0 =
                                                           EL (16 * (i + 1) + 8) sha512_K`
                                                       ASSUME_TAC THENL
                                                        [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 8:num`) THEN
-                                                        ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                        ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                         DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                       ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                       ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3316,7 +3316,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                         CONV_TAC WORD_RULE;
                                                         MP_TAC(SPECL [`16 * (i + 1) + 8:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                         ANTS_TAC THENL
-                                                         [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                         [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                           REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 8) + 16 = 16 * (i + 1) + 24`;
                                                                       ARITH_RULE `(16 * (i + 1) + 8) + 14 = 16 * (i + 1) + 22`;
                                                                       ARITH_RULE `(16 * (i + 1) + 8) + 9 = 16 * (i + 1) + 17`;
@@ -3329,13 +3329,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                         MP_TAC THENL
                                                          [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                           MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                          UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 8` THEN ARITH_TAC;
+                                                          UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 8` THEN ARITH_TAC;
                                                           ALL_TAC] THEN
                                                         DISCH_THEN(fun th ->
                                                           MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                             [`16 * (i + 1) + 8:num`; `16 * (i + 1) + 9`;
                                                              `16 * (i + 1) + 17`; `16 * (i + 1) + 22`]) THEN
-                                                        REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                        REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                         ASM_REWRITE_TAC[] THEN
                                                         REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                         SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3389,15 +3389,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                         ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 10 = (16 * (i + 1) + 9) + 1`] THEN
                                                         REWRITE_TAC[sha512_compress] THEN
                                                         SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 72)):int64 =
-                                                                      word_add kptr (word (4 * (16 * (i + 1) + 9)))` SUBST_ALL_TAC THENL
+                                                                      word_add kptr (word (8 * (16 * (i + 1) + 9)))` SUBST_ALL_TAC THENL
                                                          [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                         ENSURES_INIT_TAC "s0" THEN
                                                         SUBGOAL_THEN
-                                                           `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 9))))) s0 =
+                                                           `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 9))))) s0 =
                                                             EL (16 * (i + 1) + 9) sha512_K`
                                                         ASSUME_TAC THENL
                                                          [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 9:num`) THEN
-                                                          ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                          ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                           DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                         ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                         ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3426,7 +3426,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                           CONV_TAC WORD_RULE;
                                                           MP_TAC(SPECL [`16 * (i + 1) + 9:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                           ANTS_TAC THENL
-                                                           [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                           [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                             REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 9) + 16 = 16 * (i + 1) + 25`;
                                                                         ARITH_RULE `(16 * (i + 1) + 9) + 14 = 16 * (i + 1) + 23`;
                                                                         ARITH_RULE `(16 * (i + 1) + 9) + 9 = 16 * (i + 1) + 18`;
@@ -3439,13 +3439,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                           MP_TAC THENL
                                                            [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                             MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                            UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 9` THEN ARITH_TAC;
+                                                            UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 9` THEN ARITH_TAC;
                                                             ALL_TAC] THEN
                                                           DISCH_THEN(fun th ->
                                                             MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                               [`16 * (i + 1) + 9:num`; `16 * (i + 1) + 10`;
                                                                `16 * (i + 1) + 18`; `16 * (i + 1) + 23`]) THEN
-                                                          REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                          REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                           ASM_REWRITE_TAC[] THEN
                                                           REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                           SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3499,15 +3499,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                           ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 11 = (16 * (i + 1) + 10) + 1`] THEN
                                                           REWRITE_TAC[sha512_compress] THEN
                                                           SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 80)):int64 =
-                                                                        word_add kptr (word (4 * (16 * (i + 1) + 10)))` SUBST_ALL_TAC THENL
+                                                                        word_add kptr (word (8 * (16 * (i + 1) + 10)))` SUBST_ALL_TAC THENL
                                                            [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                           ENSURES_INIT_TAC "s0" THEN
                                                           SUBGOAL_THEN
-                                                             `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 10))))) s0 =
+                                                             `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 10))))) s0 =
                                                               EL (16 * (i + 1) + 10) sha512_K`
                                                           ASSUME_TAC THENL
                                                            [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 10:num`) THEN
-                                                            ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                            ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                             DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                           ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                           ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3536,7 +3536,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                             CONV_TAC WORD_RULE;
                                                             MP_TAC(SPECL [`16 * (i + 1) + 10:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                             ANTS_TAC THENL
-                                                             [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                             [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                               REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 10) + 16 = 16 * (i + 1) + 26`;
                                                                           ARITH_RULE `(16 * (i + 1) + 10) + 14 = 16 * (i + 1) + 24`;
                                                                           ARITH_RULE `(16 * (i + 1) + 10) + 9 = 16 * (i + 1) + 19`;
@@ -3549,13 +3549,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                             MP_TAC THENL
                                                              [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                               MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                              UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 10` THEN ARITH_TAC;
+                                                              UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 10` THEN ARITH_TAC;
                                                               ALL_TAC] THEN
                                                             DISCH_THEN(fun th ->
                                                               MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                                 [`16 * (i + 1) + 10:num`; `16 * (i + 1) + 11`;
                                                                  `16 * (i + 1) + 19`; `16 * (i + 1) + 24`]) THEN
-                                                            REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                            REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                             ASM_REWRITE_TAC[] THEN
                                                             REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                             SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3609,15 +3609,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                             ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 12 = (16 * (i + 1) + 11) + 1`] THEN
                                                             REWRITE_TAC[sha512_compress] THEN
                                                             SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 88)):int64 =
-                                                                          word_add kptr (word (4 * (16 * (i + 1) + 11)))` SUBST_ALL_TAC THENL
+                                                                          word_add kptr (word (8 * (16 * (i + 1) + 11)))` SUBST_ALL_TAC THENL
                                                              [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                             ENSURES_INIT_TAC "s0" THEN
                                                             SUBGOAL_THEN
-                                                               `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 11))))) s0 =
+                                                               `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 11))))) s0 =
                                                                 EL (16 * (i + 1) + 11) sha512_K`
                                                             ASSUME_TAC THENL
                                                              [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 11:num`) THEN
-                                                              ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                              ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                               DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                             ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                             ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3646,7 +3646,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                               CONV_TAC WORD_RULE;
                                                               MP_TAC(SPECL [`16 * (i + 1) + 11:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                               ANTS_TAC THENL
-                                                               [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                               [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                 REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 11) + 16 = 16 * (i + 1) + 27`;
                                                                             ARITH_RULE `(16 * (i + 1) + 11) + 14 = 16 * (i + 1) + 25`;
                                                                             ARITH_RULE `(16 * (i + 1) + 11) + 9 = 16 * (i + 1) + 20`;
@@ -3659,13 +3659,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                               MP_TAC THENL
                                                                [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                                 MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                                UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 11` THEN ARITH_TAC;
+                                                                UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 11` THEN ARITH_TAC;
                                                                 ALL_TAC] THEN
                                                               DISCH_THEN(fun th ->
                                                                 MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                                   [`16 * (i + 1) + 11:num`; `16 * (i + 1) + 12`;
                                                                    `16 * (i + 1) + 20`; `16 * (i + 1) + 25`]) THEN
-                                                              REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                              REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                               ASM_REWRITE_TAC[] THEN
                                                               REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                               SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3719,15 +3719,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                               ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 13 = (16 * (i + 1) + 12) + 1`] THEN
                                                               REWRITE_TAC[sha512_compress] THEN
                                                               SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 96)):int64 =
-                                                                            word_add kptr (word (4 * (16 * (i + 1) + 12)))` SUBST_ALL_TAC THENL
+                                                                            word_add kptr (word (8 * (16 * (i + 1) + 12)))` SUBST_ALL_TAC THENL
                                                                [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                               ENSURES_INIT_TAC "s0" THEN
                                                               SUBGOAL_THEN
-                                                                 `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 12))))) s0 =
+                                                                 `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 12))))) s0 =
                                                                   EL (16 * (i + 1) + 12) sha512_K`
                                                               ASSUME_TAC THENL
                                                                [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 12:num`) THEN
-                                                                ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                 DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                               ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                               ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3756,7 +3756,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                 CONV_TAC WORD_RULE;
                                                                 MP_TAC(SPECL [`16 * (i + 1) + 12:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                                 ANTS_TAC THENL
-                                                                 [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                 [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                   REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 12) + 16 = 16 * (i + 1) + 28`;
                                                                               ARITH_RULE `(16 * (i + 1) + 12) + 14 = 16 * (i + 1) + 26`;
                                                                               ARITH_RULE `(16 * (i + 1) + 12) + 9 = 16 * (i + 1) + 21`;
@@ -3769,13 +3769,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                 MP_TAC THENL
                                                                  [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                                   MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                                  UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 12` THEN ARITH_TAC;
+                                                                  UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 12` THEN ARITH_TAC;
                                                                   ALL_TAC] THEN
                                                                 DISCH_THEN(fun th ->
                                                                   MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                                     [`16 * (i + 1) + 12:num`; `16 * (i + 1) + 13`;
                                                                      `16 * (i + 1) + 21`; `16 * (i + 1) + 26`]) THEN
-                                                                REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                                REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                                 ASM_REWRITE_TAC[] THEN
                                                                 REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                                 SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3829,15 +3829,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                 ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 14 = (16 * (i + 1) + 13) + 1`] THEN
                                                                 REWRITE_TAC[sha512_compress] THEN
                                                                 SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 104)):int64 =
-                                                                              word_add kptr (word (4 * (16 * (i + 1) + 13)))` SUBST_ALL_TAC THENL
+                                                                              word_add kptr (word (8 * (16 * (i + 1) + 13)))` SUBST_ALL_TAC THENL
                                                                  [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                                 ENSURES_INIT_TAC "s0" THEN
                                                                 SUBGOAL_THEN
-                                                                   `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 13))))) s0 =
+                                                                   `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 13))))) s0 =
                                                                     EL (16 * (i + 1) + 13) sha512_K`
                                                                 ASSUME_TAC THENL
                                                                  [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 13:num`) THEN
-                                                                  ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                  ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                   DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                                 ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                                 ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3866,7 +3866,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                   CONV_TAC WORD_RULE;
                                                                   MP_TAC(SPECL [`16 * (i + 1) + 13:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                                   ANTS_TAC THENL
-                                                                   [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                   [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                     REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 13) + 16 = 16 * (i + 1) + 29`;
                                                                                 ARITH_RULE `(16 * (i + 1) + 13) + 14 = 16 * (i + 1) + 27`;
                                                                                 ARITH_RULE `(16 * (i + 1) + 13) + 9 = 16 * (i + 1) + 22`;
@@ -3879,13 +3879,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                   MP_TAC THENL
                                                                    [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                                     MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                                    UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 13` THEN ARITH_TAC;
+                                                                    UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 13` THEN ARITH_TAC;
                                                                     ALL_TAC] THEN
                                                                   DISCH_THEN(fun th ->
                                                                     MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                                       [`16 * (i + 1) + 13:num`; `16 * (i + 1) + 14`;
                                                                        `16 * (i + 1) + 22`; `16 * (i + 1) + 27`]) THEN
-                                                                  REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                                  REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                                   ASM_REWRITE_TAC[] THEN
                                                                   REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                                   SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -3939,15 +3939,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                   ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 15 = (16 * (i + 1) + 14) + 1`] THEN
                                                                   REWRITE_TAC[sha512_compress] THEN
                                                                   SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 112)):int64 =
-                                                                                word_add kptr (word (4 * (16 * (i + 1) + 14)))` SUBST_ALL_TAC THENL
+                                                                                word_add kptr (word (8 * (16 * (i + 1) + 14)))` SUBST_ALL_TAC THENL
                                                                    [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                                   ENSURES_INIT_TAC "s0" THEN
                                                                   SUBGOAL_THEN
-                                                                     `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 14))))) s0 =
+                                                                     `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 14))))) s0 =
                                                                       EL (16 * (i + 1) + 14) sha512_K`
                                                                   ASSUME_TAC THENL
                                                                    [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 14:num`) THEN
-                                                                    ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                    ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                     DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                                   ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                                   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -3976,7 +3976,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                     CONV_TAC WORD_RULE;
                                                                     MP_TAC(SPECL [`16 * (i + 1) + 14:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                                     ANTS_TAC THENL
-                                                                     [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                     [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                       REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 14) + 16 = 16 * (i + 1) + 30`;
                                                                                   ARITH_RULE `(16 * (i + 1) + 14) + 14 = 16 * (i + 1) + 28`;
                                                                                   ARITH_RULE `(16 * (i + 1) + 14) + 9 = 16 * (i + 1) + 23`;
@@ -3989,13 +3989,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                     MP_TAC THENL
                                                                      [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                                       MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                                      UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 14` THEN ARITH_TAC;
+                                                                      UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 14` THEN ARITH_TAC;
                                                                       ALL_TAC] THEN
                                                                     DISCH_THEN(fun th ->
                                                                       MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                                         [`16 * (i + 1) + 14:num`; `16 * (i + 1) + 15`;
                                                                          `16 * (i + 1) + 23`; `16 * (i + 1) + 28`]) THEN
-                                                                    REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                                    REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                                     ASM_REWRITE_TAC[] THEN
                                                                     REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                                     SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -4049,15 +4049,15 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                     ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 16 = (16 * (i + 1) + 15) + 1`] THEN
                                                                     REWRITE_TAC[sha512_compress] THEN
                                                                     SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 120)):int64 =
-                                                                                  word_add kptr (word (4 * (16 * (i + 1) + 15)))` SUBST_ALL_TAC THENL
+                                                                                  word_add kptr (word (8 * (16 * (i + 1) + 15)))` SUBST_ALL_TAC THENL
                                                                      [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                                     ENSURES_INIT_TAC "s0" THEN
                                                                     SUBGOAL_THEN
-                                                                       `read (memory :> bytes64 (word_add kptr (word (4 * (16 * (i + 1) + 15))))) s0 =
+                                                                       `read (memory :> bytes64 (word_add kptr (word (8 * (16 * (i + 1) + 15))))) s0 =
                                                                         EL (16 * (i + 1) + 15) sha512_K`
                                                                     ASSUME_TAC THENL
                                                                      [FIRST_X_ASSUM(MP_TAC o SPEC `16 * (i + 1) + 15:num`) THEN
-                                                                      ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                      ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                       DISCH_THEN MATCH_ACCEPT_TAC; ALL_TAC] THEN
                                                                     ARM_STEPS_TAC NOHW3_EXEC (1--30) THEN
                                                                     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
@@ -4086,7 +4086,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                       CONV_TAC WORD_RULE;
                                                                       MP_TAC(SPECL [`16 * (i + 1) + 15:num`; `M_i:int64 list`] SHA512_W_EXTEND) THEN
                                                                       ANTS_TAC THENL
-                                                                       [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                       [ASM_REWRITE_TAC[] THEN UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                         REWRITE_TAC[ARITH_RULE `(16 * (i + 1) + 15) + 16 = 16 * (i + 1) + 31`;
                                                                                     ARITH_RULE `(16 * (i + 1) + 15) + 14 = 16 * (i + 1) + 29`;
                                                                                     ARITH_RULE `(16 * (i + 1) + 15) + 9 = 16 * (i + 1) + 24`;
@@ -4099,13 +4099,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                       MP_TAC THENL
                                                                        [REPEAT STRIP_TAC THEN CONV_TAC SYM_CONV THEN
                                                                         MATCH_MP_TAC SHA512_SCHEDULE_MONO THEN ASM_REWRITE_TAC[] THEN
-                                                                        UNDISCH_TAC `i < 2` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 15` THEN ARITH_TAC;
+                                                                        UNDISCH_TAC `i < 3` THEN UNDISCH_TAC `j < 16 + 16 * (i + 1) + 15` THEN ARITH_TAC;
                                                                         ALL_TAC] THEN
                                                                       DISCH_THEN(fun th ->
                                                                         MAP_EVERY (fun e -> MP_TAC(SPEC e th))
                                                                           [`16 * (i + 1) + 15:num`; `16 * (i + 1) + 16`;
                                                                            `16 * (i + 1) + 24`; `16 * (i + 1) + 29`]) THEN
-                                                                      REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 2` THEN ARITH_TAC; DISCH_TAC]) THEN
+                                                                      REPEAT(ANTS_TAC THENL [UNDISCH_TAC `i < 3` THEN ARITH_TAC; DISCH_TAC]) THEN
                                                                       ASM_REWRITE_TAC[] THEN
                                                                       REWRITE_TAC[sha512_sigma0; sha512_sigma1] THEN
                                                                       SIMP_TAC[GSYM WORD_SUBWORD_JOIN_SELF; DIMINDEX_64; ARITH] THEN
@@ -4136,7 +4136,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                                 ARITH_RULE `16 * (i + 1) + 31 = 16 * ((i + 1) + 1) + 15`] THEN
                                                                     REWRITE_TAC[ADD_CLAUSES] THEN
                                                                     SUBGOAL_THEN `3 - i = (3 - (i+1)) + 1` SUBST1_TAC THENL
-                                                                     [UNDISCH_TAC `i < 2` THEN ARITH_TAC; ALL_TAC] THEN
+                                                                     [UNDISCH_TAC `i < 3` THEN ARITH_TAC; ALL_TAC] THEN
                                                                     REPEAT CONJ_TAC THEN CONV_TAC WORD_RULE]
                                                                 ]
                                                               ]
