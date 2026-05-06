@@ -84,9 +84,9 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
     ALLPAIRS nonoverlapping
              [(state_ptr:int64,64); (stackpointer:int64,112)]
              [(word pc, 0xe28);
-              (data_ptr:int64, 64 * num_blocks);
+              (data_ptr:int64, 128 * num_blocks);
               (kptr:int64, 640)] /\
-    nonoverlapping (state_ptr,32) (word_add stackpointer (word 96),16)
+    nonoverlapping (state_ptr,64) (word_add stackpointer (word 96),16)
     ==> ensures arm
       (\s. aligned_bytes_loaded s (word pc)
               sha512_block_data_order_nohw3_mc /\
@@ -261,10 +261,9 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
         MP_TAC memth)) (0--15) THEN
       DISCH_TAC) THEN
     RULE_ASSUM_TAC(CONV_RULE(ONCE_DEPTH_CONV NUM_MULT_CONV)) THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
     ARM_STEPS_TAC NOHW3_EXEC (1--32) THEN
     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-    SIMP_TAC[WORD_ZX_ZX; WORD_ZX_TRIVIAL; DIMINDEX_64; DIMINDEX_64;
-             LE_REFL; ARITH] THEN
     REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE];
 
     ALL_TAC] THEN
@@ -340,7 +339,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
     DISCH_THEN(MP_TAC o SPEC `ii:num`) THEN
     ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC; ALL_TAC] THEN
   ABBREV_TAC `W = sha512_message_schedule 64 M_i` THEN
-  SUBGOAL_THEN `LENGTH (W:int64 list) = 64` ASSUME_TAC THENL
+  SUBGOAL_THEN `LENGTH (W:int64 list) = 80` ASSUME_TAC THENL
    [EXPAND_TAC "W" THEN REWRITE_TAC[LENGTH_SHA512_MESSAGE_SCHEDULE] THEN
     ASM_ARITH_TAC; ALL_TAC] THEN
   SUBGOAL_THEN
@@ -409,39 +408,39 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
          read SP s = stackpointer /\
          read X29 s = state_ptr /\
          read X30 s = word 0 /\
-         read X3 s = word_add kptr (word 384) /\
-         read X4 s = (EL 0 (sha512_compress 48 W
+         read X3 s = word_add kptr (word 512) /\
+         read X4 s = (EL 0 (sha512_compress 64 W
                     [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X5 s = (EL 1 (sha512_compress 48 W
+         read X5 s = (EL 1 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X6 s = (EL 2 (sha512_compress 48 W
+         read X6 s = (EL 2 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X7 s = (EL 3 (sha512_compress 48 W
+         read X7 s = (EL 3 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X8 s = (EL 4 (sha512_compress 48 W
+         read X8 s = (EL 4 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X9 s = (EL 5 (sha512_compress 48 W
+         read X9 s = (EL 5 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X10 s = (EL 6 (sha512_compress 48 W
+         read X10 s = (EL 6 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X11 s = (EL 7 (sha512_compress 48 W
+         read X11 s = (EL 7 (sha512_compress 64 W
                     [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
-         read X19 s = (EL 48 (W:int64 list)) /\
-         read X20 s = (EL 49 (W:int64 list)) /\
-         read X21 s = (EL 50 (W:int64 list)) /\
-         read X22 s = (EL 51 (W:int64 list)) /\
-         read X23 s = (EL 52 (W:int64 list)) /\
-         read X24 s = (EL 53 (W:int64 list)) /\
-         read X25 s = (EL 54 (W:int64 list)) /\
-         read X26 s = (EL 55 (W:int64 list)) /\
-         read X27 s = (EL 56 (W:int64 list)) /\
-         read X28 s = (EL 57 (W:int64 list)) /\
-         read X12 s = (EL 58 (W:int64 list)) /\
-         read X13 s = (EL 59 (W:int64 list)) /\
-         read X14 s = (EL 60 (W:int64 list)) /\
-         read X15 s = (EL 61 (W:int64 list)) /\
-         read X16 s = (EL 62 (W:int64 list)) /\
-         read X17 s = (EL 63 (W:int64 list)) /\
+         read X19 s = (EL 64 (W:int64 list)) /\
+         read X20 s = (EL 65 (W:int64 list)) /\
+         read X21 s = (EL 66 (W:int64 list)) /\
+         read X22 s = (EL 67 (W:int64 list)) /\
+         read X23 s = (EL 68 (W:int64 list)) /\
+         read X24 s = (EL 69 (W:int64 list)) /\
+         read X25 s = (EL 70 (W:int64 list)) /\
+         read X26 s = (EL 71 (W:int64 list)) /\
+         read X27 s = (EL 72 (W:int64 list)) /\
+         read X28 s = (EL 73 (W:int64 list)) /\
+         read X12 s = (EL 74 (W:int64 list)) /\
+         read X13 s = (EL 75 (W:int64 list)) /\
+         read X14 s = (EL 76 (W:int64 list)) /\
+         read X15 s = (EL 77 (W:int64 list)) /\
+         read X16 s = (EL 78 (W:int64 list)) /\
+         read X17 s = (EL 79 (W:int64 list)) /\
          read (memory :> bytes64 (word_add stackpointer (word 96))) s =
            dptr_i /\
          read (memory :> bytes64 (word_add stackpointer (word 104))) s =
@@ -2350,7 +2349,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                   ARITH_RULE `16 * (0 + 1) + 13 = 29`;
                                                   ARITH_RULE `16 * (0 + 1) + 14 = 30`;
                                                   ARITH_RULE `16 * (0 + 1) + 15 = 31`;
-                                                  ARITH_RULE `64 * (0 + 1) = 64`] THEN
+                                                  ARITH_RULE `128 * (0 + 1) = 128`] THEN
                                       REWRITE_TAC[ADD_CLAUSES] THEN
                                       REPEAT CONJ_TAC THEN CONV_TAC WORD_RULE;
 
@@ -2363,7 +2362,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                              read SP s = stackpointer /\
                                              read X29 s = state_ptr /\
                                              read X30 s = word (3 - i) /\
-                                             read X3 s = word_add kptr (word (64 * (i + 1) + 4)) /\
+                                             read X3 s = word_add kptr (word (128 * (i + 1) + 8)) /\
                                              read X11 s = (EL 0 (sha512_compress (16 * (i + 1) + 1) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                              read X4 s = (EL 1 (sha512_compress (16 * (i + 1) + 1) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                              read X5 s = (EL 2 (sha512_compress (16 * (i + 1) + 1) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -2468,7 +2467,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                read SP s = stackpointer /\
                                                read X29 s = state_ptr /\
                                                read X30 s = word (3 - i) /\
-                                               read X3 s = word_add kptr (word (64 * (i + 1) + 8)) /\
+                                               read X3 s = word_add kptr (word (128 * (i + 1) + 16)) /\
                                                read X10 s = (EL 0 (sha512_compress (16 * (i + 1) + 2) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                read X11 s = (EL 1 (sha512_compress (16 * (i + 1) + 2) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                read X4 s = (EL 2 (sha512_compress (16 * (i + 1) + 2) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -2509,7 +2508,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                          [(* BODY round 1: rotation k=1, WT=X20 WT1=X21 WT9=X12 WT14=X17 *)
                                           ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 2 = (16 * (i + 1) + 1) + 1`] THEN
                                           REWRITE_TAC[sha512_compress] THEN
-                                          SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 4)):int64 =
+                                          SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 8)):int64 =
                                                         word_add kptr (word (4 * (16 * (i + 1) + 1)))` SUBST_ALL_TAC THENL
                                            [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                           ENSURES_INIT_TAC "s0" THEN
@@ -2577,7 +2576,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                read SP s = stackpointer /\
                                                read X29 s = state_ptr /\
                                                read X30 s = word (3 - i) /\
-                                               read X3 s = word_add kptr (word (64 * (i + 1) + 12)) /\
+                                               read X3 s = word_add kptr (word (128 * (i + 1) + 24)) /\
                                                read X9 s = (EL 0 (sha512_compress (16 * (i + 1) + 3) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                read X10 s = (EL 1 (sha512_compress (16 * (i + 1) + 3) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                read X11 s = (EL 2 (sha512_compress (16 * (i + 1) + 3) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -2619,7 +2618,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                           (* BODY round 2: rotation k=2, WT=X21 WT1=X22 WT9=X13 WT14=X19 *)
                                           ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 3 = (16 * (i + 1) + 2) + 1`] THEN
                                           REWRITE_TAC[sha512_compress] THEN
-                                          SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 8)):int64 =
+                                          SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 16)):int64 =
                                                         word_add kptr (word (4 * (16 * (i + 1) + 2)))` SUBST_ALL_TAC THENL
                                            [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                           ENSURES_INIT_TAC "s0" THEN
@@ -2687,7 +2686,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                  read SP s = stackpointer /\
                                                  read X29 s = state_ptr /\
                                                  read X30 s = word (3 - i) /\
-                                                 read X3 s = word_add kptr (word (64 * (i + 1) + 16)) /\
+                                                 read X3 s = word_add kptr (word (128 * (i + 1) + 32)) /\
                                                  read X8 s = (EL 0 (sha512_compress (16 * (i + 1) + 4) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                  read X9 s = (EL 1 (sha512_compress (16 * (i + 1) + 4) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                  read X10 s = (EL 2 (sha512_compress (16 * (i + 1) + 4) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -2729,7 +2728,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                             (* BODY round 3: rotation k=3, WT=X22 WT1=X23 WT9=X14 WT14=X20 *)
                                             ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 4 = (16 * (i + 1) + 3) + 1`] THEN
                                             REWRITE_TAC[sha512_compress] THEN
-                                            SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 12)):int64 =
+                                            SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 24)):int64 =
                                                           word_add kptr (word (4 * (16 * (i + 1) + 3)))` SUBST_ALL_TAC THENL
                                              [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                             ENSURES_INIT_TAC "s0" THEN
@@ -2797,7 +2796,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                    read SP s = stackpointer /\
                                                    read X29 s = state_ptr /\
                                                    read X30 s = word (3 - i) /\
-                                                   read X3 s = word_add kptr (word (64 * (i + 1) + 20)) /\
+                                                   read X3 s = word_add kptr (word (128 * (i + 1) + 40)) /\
                                                    read X7 s = (EL 0 (sha512_compress (16 * (i + 1) + 5) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                    read X8 s = (EL 1 (sha512_compress (16 * (i + 1) + 5) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                    read X9 s = (EL 2 (sha512_compress (16 * (i + 1) + 5) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -2839,7 +2838,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                               (* BODY round 4: rotation k=4, WT=X23 WT1=X24 WT9=X15 WT14=X21 *)
                                               ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 5 = (16 * (i + 1) + 4) + 1`] THEN
                                               REWRITE_TAC[sha512_compress] THEN
-                                              SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 16)):int64 =
+                                              SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 32)):int64 =
                                                             word_add kptr (word (4 * (16 * (i + 1) + 4)))` SUBST_ALL_TAC THENL
                                                [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                               ENSURES_INIT_TAC "s0" THEN
@@ -2907,7 +2906,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                      read SP s = stackpointer /\
                                                      read X29 s = state_ptr /\
                                                      read X30 s = word (3 - i) /\
-                                                     read X3 s = word_add kptr (word (64 * (i + 1) + 24)) /\
+                                                     read X3 s = word_add kptr (word (128 * (i + 1) + 48)) /\
                                                      read X6 s = (EL 0 (sha512_compress (16 * (i + 1) + 6) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                      read X7 s = (EL 1 (sha512_compress (16 * (i + 1) + 6) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                      read X8 s = (EL 2 (sha512_compress (16 * (i + 1) + 6) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -2949,7 +2948,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                 (* BODY round 5: rotation k=5, WT=X24 WT1=X25 WT9=X16 WT14=X22 *)
                                                 ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 6 = (16 * (i + 1) + 5) + 1`] THEN
                                                 REWRITE_TAC[sha512_compress] THEN
-                                                SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 20)):int64 =
+                                                SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 40)):int64 =
                                                               word_add kptr (word (4 * (16 * (i + 1) + 5)))` SUBST_ALL_TAC THENL
                                                  [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                 ENSURES_INIT_TAC "s0" THEN
@@ -3017,7 +3016,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                        read SP s = stackpointer /\
                                                        read X29 s = state_ptr /\
                                                        read X30 s = word (3 - i) /\
-                                                       read X3 s = word_add kptr (word (64 * (i + 1) + 28)) /\
+                                                       read X3 s = word_add kptr (word (128 * (i + 1) + 56)) /\
                                                        read X5 s = (EL 0 (sha512_compress (16 * (i + 1) + 7) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                        read X6 s = (EL 1 (sha512_compress (16 * (i + 1) + 7) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                        read X7 s = (EL 2 (sha512_compress (16 * (i + 1) + 7) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3059,7 +3058,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                   (* BODY round 6: rotation k=6, WT=X25 WT1=X26 WT9=X17 WT14=X23 *)
                                                   ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 7 = (16 * (i + 1) + 6) + 1`] THEN
                                                   REWRITE_TAC[sha512_compress] THEN
-                                                  SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 24)):int64 =
+                                                  SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 48)):int64 =
                                                                 word_add kptr (word (4 * (16 * (i + 1) + 6)))` SUBST_ALL_TAC THENL
                                                    [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                   ENSURES_INIT_TAC "s0" THEN
@@ -3127,7 +3126,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                          read SP s = stackpointer /\
                                                          read X29 s = state_ptr /\
                                                          read X30 s = word (3 - i) /\
-                                                         read X3 s = word_add kptr (word (64 * (i + 1) + 32)) /\
+                                                         read X3 s = word_add kptr (word (128 * (i + 1) + 64)) /\
                                                          read X4 s = (EL 0 (sha512_compress (16 * (i + 1) + 8) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                          read X5 s = (EL 1 (sha512_compress (16 * (i + 1) + 8) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                          read X6 s = (EL 2 (sha512_compress (16 * (i + 1) + 8) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3169,7 +3168,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                     (* BODY round 7: rotation k=7, WT=X26 WT1=X27 WT9=X19 WT14=X24 *)
                                                     ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 8 = (16 * (i + 1) + 7) + 1`] THEN
                                                     REWRITE_TAC[sha512_compress] THEN
-                                                    SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 28)):int64 =
+                                                    SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 56)):int64 =
                                                                   word_add kptr (word (4 * (16 * (i + 1) + 7)))` SUBST_ALL_TAC THENL
                                                      [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                     ENSURES_INIT_TAC "s0" THEN
@@ -3237,7 +3236,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                            read SP s = stackpointer /\
                                                            read X29 s = state_ptr /\
                                                            read X30 s = word (3 - i) /\
-                                                           read X3 s = word_add kptr (word (64 * (i + 1) + 36)) /\
+                                                           read X3 s = word_add kptr (word (128 * (i + 1) + 72)) /\
                                                            read X11 s = (EL 0 (sha512_compress (16 * (i + 1) + 9) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                            read X4 s = (EL 1 (sha512_compress (16 * (i + 1) + 9) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                            read X5 s = (EL 2 (sha512_compress (16 * (i + 1) + 9) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3279,7 +3278,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                       (* BODY round 8: rotation k=0, WT=X27 WT1=X28 WT9=X20 WT14=X25 *)
                                                       ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 9 = (16 * (i + 1) + 8) + 1`] THEN
                                                       REWRITE_TAC[sha512_compress] THEN
-                                                      SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 32)):int64 =
+                                                      SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 64)):int64 =
                                                                     word_add kptr (word (4 * (16 * (i + 1) + 8)))` SUBST_ALL_TAC THENL
                                                        [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                       ENSURES_INIT_TAC "s0" THEN
@@ -3347,7 +3346,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                              read SP s = stackpointer /\
                                                              read X29 s = state_ptr /\
                                                              read X30 s = word (3 - i) /\
-                                                             read X3 s = word_add kptr (word (64 * (i + 1) + 40)) /\
+                                                             read X3 s = word_add kptr (word (128 * (i + 1) + 80)) /\
                                                              read X10 s = (EL 0 (sha512_compress (16 * (i + 1) + 10) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                              read X11 s = (EL 1 (sha512_compress (16 * (i + 1) + 10) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                              read X4 s = (EL 2 (sha512_compress (16 * (i + 1) + 10) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3389,7 +3388,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                         (* BODY round 9: rotation k=1, WT=X28 WT1=X12 WT9=X21 WT14=X26 *)
                                                         ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 10 = (16 * (i + 1) + 9) + 1`] THEN
                                                         REWRITE_TAC[sha512_compress] THEN
-                                                        SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 36)):int64 =
+                                                        SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 72)):int64 =
                                                                       word_add kptr (word (4 * (16 * (i + 1) + 9)))` SUBST_ALL_TAC THENL
                                                          [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                         ENSURES_INIT_TAC "s0" THEN
@@ -3457,7 +3456,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                read SP s = stackpointer /\
                                                                read X29 s = state_ptr /\
                                                                read X30 s = word (3 - i) /\
-                                                               read X3 s = word_add kptr (word (64 * (i + 1) + 44)) /\
+                                                               read X3 s = word_add kptr (word (128 * (i + 1) + 88)) /\
                                                                read X9 s = (EL 0 (sha512_compress (16 * (i + 1) + 11) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                read X10 s = (EL 1 (sha512_compress (16 * (i + 1) + 11) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                read X11 s = (EL 2 (sha512_compress (16 * (i + 1) + 11) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3499,7 +3498,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                           (* BODY round 10: rotation k=2, WT=X12 WT1=X13 WT9=X22 WT14=X27 *)
                                                           ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 11 = (16 * (i + 1) + 10) + 1`] THEN
                                                           REWRITE_TAC[sha512_compress] THEN
-                                                          SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 40)):int64 =
+                                                          SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 80)):int64 =
                                                                         word_add kptr (word (4 * (16 * (i + 1) + 10)))` SUBST_ALL_TAC THENL
                                                            [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                           ENSURES_INIT_TAC "s0" THEN
@@ -3567,7 +3566,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                  read SP s = stackpointer /\
                                                                  read X29 s = state_ptr /\
                                                                  read X30 s = word (3 - i) /\
-                                                                 read X3 s = word_add kptr (word (64 * (i + 1) + 48)) /\
+                                                                 read X3 s = word_add kptr (word (128 * (i + 1) + 96)) /\
                                                                  read X8 s = (EL 0 (sha512_compress (16 * (i + 1) + 12) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                  read X9 s = (EL 1 (sha512_compress (16 * (i + 1) + 12) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                  read X10 s = (EL 2 (sha512_compress (16 * (i + 1) + 12) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3609,7 +3608,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                             (* BODY round 11: rotation k=3, WT=X13 WT1=X14 WT9=X23 WT14=X28 *)
                                                             ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 12 = (16 * (i + 1) + 11) + 1`] THEN
                                                             REWRITE_TAC[sha512_compress] THEN
-                                                            SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 44)):int64 =
+                                                            SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 88)):int64 =
                                                                           word_add kptr (word (4 * (16 * (i + 1) + 11)))` SUBST_ALL_TAC THENL
                                                              [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                             ENSURES_INIT_TAC "s0" THEN
@@ -3677,7 +3676,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                    read SP s = stackpointer /\
                                                                    read X29 s = state_ptr /\
                                                                    read X30 s = word (3 - i) /\
-                                                                   read X3 s = word_add kptr (word (64 * (i + 1) + 52)) /\
+                                                                   read X3 s = word_add kptr (word (128 * (i + 1) + 104)) /\
                                                                    read X7 s = (EL 0 (sha512_compress (16 * (i + 1) + 13) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                    read X8 s = (EL 1 (sha512_compress (16 * (i + 1) + 13) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                    read X9 s = (EL 2 (sha512_compress (16 * (i + 1) + 13) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3719,7 +3718,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                               (* BODY round 12: rotation k=4, WT=X14 WT1=X15 WT9=X24 WT14=X12 *)
                                                               ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 13 = (16 * (i + 1) + 12) + 1`] THEN
                                                               REWRITE_TAC[sha512_compress] THEN
-                                                              SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 48)):int64 =
+                                                              SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 96)):int64 =
                                                                             word_add kptr (word (4 * (16 * (i + 1) + 12)))` SUBST_ALL_TAC THENL
                                                                [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                               ENSURES_INIT_TAC "s0" THEN
@@ -3787,7 +3786,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                      read SP s = stackpointer /\
                                                                      read X29 s = state_ptr /\
                                                                      read X30 s = word (3 - i) /\
-                                                                     read X3 s = word_add kptr (word (64 * (i + 1) + 56)) /\
+                                                                     read X3 s = word_add kptr (word (128 * (i + 1) + 112)) /\
                                                                      read X6 s = (EL 0 (sha512_compress (16 * (i + 1) + 14) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                      read X7 s = (EL 1 (sha512_compress (16 * (i + 1) + 14) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                      read X8 s = (EL 2 (sha512_compress (16 * (i + 1) + 14) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3829,7 +3828,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                 (* BODY round 13: rotation k=5, WT=X15 WT1=X16 WT9=X25 WT14=X13 *)
                                                                 ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 14 = (16 * (i + 1) + 13) + 1`] THEN
                                                                 REWRITE_TAC[sha512_compress] THEN
-                                                                SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 52)):int64 =
+                                                                SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 104)):int64 =
                                                                               word_add kptr (word (4 * (16 * (i + 1) + 13)))` SUBST_ALL_TAC THENL
                                                                  [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                                 ENSURES_INIT_TAC "s0" THEN
@@ -3897,7 +3896,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                        read SP s = stackpointer /\
                                                                        read X29 s = state_ptr /\
                                                                        read X30 s = word (3 - i) /\
-                                                                       read X3 s = word_add kptr (word (64 * (i + 1) + 60)) /\
+                                                                       read X3 s = word_add kptr (word (128 * (i + 1) + 120)) /\
                                                                        read X5 s = (EL 0 (sha512_compress (16 * (i + 1) + 15) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                        read X6 s = (EL 1 (sha512_compress (16 * (i + 1) + 15) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                        read X7 s = (EL 2 (sha512_compress (16 * (i + 1) + 15) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -3939,7 +3938,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                   (* BODY round 14: rotation k=6, WT=X16 WT1=X17 WT9=X26 WT14=X14 *)
                                                                   ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 15 = (16 * (i + 1) + 14) + 1`] THEN
                                                                   REWRITE_TAC[sha512_compress] THEN
-                                                                  SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 56)):int64 =
+                                                                  SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 112)):int64 =
                                                                                 word_add kptr (word (4 * (16 * (i + 1) + 14)))` SUBST_ALL_TAC THENL
                                                                    [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                                   ENSURES_INIT_TAC "s0" THEN
@@ -4007,7 +4006,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                          read SP s = stackpointer /\
                                                                          read X29 s = state_ptr /\
                                                                          read X30 s = word (3 - i) /\
-                                                                         read X3 s = word_add kptr (word (64 * (i + 1) + 64)) /\
+                                                                         read X3 s = word_add kptr (word (128 * (i + 1) + 128)) /\
                                                                          read X4 s = (EL 0 (sha512_compress (16 * (i + 1) + 16) W [a_i:int64;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                          read X5 s = (EL 1 (sha512_compress (16 * (i + 1) + 16) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
                                                                          read X6 s = (EL 2 (sha512_compress (16 * (i + 1) + 16) W [a_i;b_i;c_i;d_i;e_i;f_i;g_i;h_i])) /\
@@ -4049,7 +4048,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                     (* BODY round 15: rotation k=7, WT=X17 WT1=X19 WT9=X27 WT14=X15 *)
                                                                     ONCE_REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 16 = (16 * (i + 1) + 15) + 1`] THEN
                                                                     REWRITE_TAC[sha512_compress] THEN
-                                                                    SUBGOAL_THEN `word_add kptr (word (64 * (i + 1) + 60)):int64 =
+                                                                    SUBGOAL_THEN `word_add kptr (word (128 * (i + 1) + 120)):int64 =
                                                                                   word_add kptr (word (4 * (16 * (i + 1) + 15)))` SUBST_ALL_TAC THENL
                                                                      [AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC; ALL_TAC] THEN
                                                                     ENSURES_INIT_TAC "s0" THEN
@@ -4119,7 +4118,7 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT = prove
                                                                     ARM_STEPS_TAC NOHW3_EXEC (1--1) THEN
                                                                     ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
                                                                     REWRITE_TAC[ARITH_RULE `16 * (i + 1) + 16 = 16 * ((i + 1) + 1)`;
-                                                                                ARITH_RULE `64 * (i + 1) + 64 = 64 * ((i + 1) + 1)`;
+                                                                                ARITH_RULE `128 * (i + 1) + 128 = 128 * ((i + 1) + 1)`;
                                                                                 ARITH_RULE `16 * (i + 1) + 17 = 16 * ((i + 1) + 1) + 1`;
                                                                                 ARITH_RULE `16 * (i + 1) + 18 = 16 * ((i + 1) + 1) + 2`;
                                                                                 ARITH_RULE `16 * (i + 1) + 19 = 16 * ((i + 1) + 1) + 3`;
@@ -5769,13 +5768,13 @@ let SHA512_BLOCK_DATA_ORDER_NOHW3_SUBROUTINE_CORRECT = prove
     LENGTH blocks = num_blocks /\
     ALL (\bl. LENGTH bl = 16) blocks /\
     aligned 16 stackpointer /\
-    nonoverlapping (state_ptr,32)
+    nonoverlapping (state_ptr,64)
                    (word_sub stackpointer (word 112), 112) /\
     ALLPAIRS nonoverlapping
              [(state_ptr:int64,64);
               (word_sub stackpointer (word 112):int64, 112)]
              [(word pc, 0xe28);
-              (data_ptr:int64, 64 * num_blocks);
+              (data_ptr:int64, 128 * num_blocks);
               (kptr:int64, 640)]
     ==> ensures arm
       (\s. aligned_bytes_loaded s (word pc)
