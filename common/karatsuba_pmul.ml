@@ -75,17 +75,23 @@ let SCHOOLBOOK_RING = GEN_ALL(RING_RULE
 (* Schoolbook expansion of 128x128 carry-less multiplication.                *)
 (* ------------------------------------------------------------------------- *)
 
+(* NOTE: the upstream source used `al`, `ah`, `bl`, `bh` as HOL Light variable
+   names.  Under the s2n-x86 checkpoint `al` is a defined GPR component
+   constant (`|- al = Gpr (word 0) Lower_8`), so the parser rejects this file
+   as a typechecking error.  We rename to `a_lo`, `a_hi`, `b_lo`, `b_hi` here
+   to avoid the clash; the proof is unchanged.  *)
+
 let PMUL_SCHOOLBOOK = prove(
   `!(a:128 word) (b:128 word).
-    let al = word_subword a (0,64) : 64 word in
-    let ah = word_subword a (64,64) : 64 word in
-    let bl = word_subword b (0,64) : 64 word in
-    let bh = word_subword b (64,64) : 64 word in
+    let a_lo = word_subword a (0,64) : 64 word in
+    let a_hi = word_subword a (64,64) : 64 word in
+    let b_lo = word_subword b (0,64) : 64 word in
+    let b_hi = word_subword b (64,64) : 64 word in
     (word_pmul a b : 256 word) =
-    word_xor (word_xor (word_zx (word_pmul al bl : 128 word) : 256 word)
-                        (word_shl (word_zx (word_xor (word_pmul al bh : 128 word)
-                                                     (word_pmul ah bl)) : 256 word) 64))
-             (word_shl (word_zx (word_pmul ah bh : 128 word) : 256 word) 128)`,
+    word_xor (word_xor (word_zx (word_pmul a_lo b_lo : 128 word) : 256 word)
+                        (word_shl (word_zx (word_xor (word_pmul a_lo b_hi : 128 word)
+                                                     (word_pmul a_hi b_lo)) : 256 word) 64))
+             (word_shl (word_zx (word_pmul a_hi b_hi : 128 word) : 256 word) 128)`,
   REPEAT GEN_TAC THEN REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
   MATCH_MP_TAC POLY_OF_WORD_INJ THEN
   REWRITE_TAC[POLY_OF_WORD_XOR; zx_128_256;
@@ -96,20 +102,20 @@ let PMUL_SCHOOLBOOK = prove(
   GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [WORD_DECOMPOSE_128] THEN
   GEN_REWRITE_TAC (LAND_CONV o RAND_CONV o RAND_CONV) [WORD_DECOMPOSE_128] THEN
   REWRITE_TAC[POLY_OF_WORD_XOR; zx_64_128; shl_zx_64_to_poly] THEN
-  ABBREV_TAC `al = poly_of_word(word_subword (a:128 word) (0,64) : 64 word)` THEN
-  ABBREV_TAC `ah = poly_of_word(word_subword (a:128 word) (64,64) : 64 word)` THEN
-  ABBREV_TAC `bl = poly_of_word(word_subword (b:128 word) (0,64) : 64 word)` THEN
-  ABBREV_TAC `bh = poly_of_word(word_subword (b:128 word) (64,64) : 64 word)` THEN
+  ABBREV_TAC `a_lo = poly_of_word(word_subword (a:128 word) (0,64) : 64 word)` THEN
+  ABBREV_TAC `a_hi = poly_of_word(word_subword (a:128 word) (64,64) : 64 word)` THEN
+  ABBREV_TAC `b_lo = poly_of_word(word_subword (b:128 word) (0,64) : 64 word)` THEN
+  ABBREV_TAC `b_hi = poly_of_word(word_subword (b:128 word) (64,64) : 64 word)` THEN
   ABBREV_TAC `x64 = ring_pow bool_poly (poly_var bool_ring one) 64` THEN
   SUBGOAL_THEN
-    `al IN ring_carrier bool_poly /\ ah IN ring_carrier bool_poly /\
-     bl IN ring_carrier bool_poly /\ bh IN ring_carrier bool_poly /\
+    `a_lo IN ring_carrier bool_poly /\ a_hi IN ring_carrier bool_poly /\
+     b_lo IN ring_carrier bool_poly /\ b_hi IN ring_carrier bool_poly /\
      x64 IN ring_carrier bool_poly`
     STRIP_ASSUME_TAC THENL
-  [MAP_EVERY EXPAND_TAC ["al";"ah";"bl";"bh";"x64"] THEN
+  [MAP_EVERY EXPAND_TAC ["a_lo";"a_hi";"b_lo";"b_hi";"x64"] THEN
    SIMP_TAC[BOOL_POLY_OF_WORD; RING_POW; POLY_VAR_BOOL_POLY]; ALL_TAC] THEN
-  MP_TAC(ISPECL [`al:((1->num)->bool)`; `bl:((1->num)->bool)`;
-                 `ah:((1->num)->bool)`; `bh:((1->num)->bool)`;
+  MP_TAC(ISPECL [`a_lo:((1->num)->bool)`; `b_lo:((1->num)->bool)`;
+                 `a_hi:((1->num)->bool)`; `b_hi:((1->num)->bool)`;
                  `bool_poly`; `x64:((1->num)->bool)`] SCHOOLBOOK_RING) THEN
   ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
   SUBGOAL_THEN `ring_mul bool_poly x64 x64 =
@@ -118,11 +124,11 @@ let PMUL_SCHOOLBOOK = prove(
   [EXPAND_TAC "x64" THEN SIMP_TAC[GSYM RING_POW_ADD; POLY_VAR_BOOL_POLY] THEN
    CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
   SUBGOAL_THEN
-    `ring_mul bool_poly al bl IN ring_carrier bool_poly /\
-     ring_mul bool_poly (ring_add bool_poly (ring_mul bool_poly al bh)
-                                            (ring_mul bool_poly ah bl)) x64
+    `ring_mul bool_poly a_lo b_lo IN ring_carrier bool_poly /\
+     ring_mul bool_poly (ring_add bool_poly (ring_mul bool_poly a_lo b_hi)
+                                            (ring_mul bool_poly a_hi b_lo)) x64
        IN ring_carrier bool_poly /\
-     ring_mul bool_poly (ring_mul bool_poly ah bh)
+     ring_mul bool_poly (ring_mul bool_poly a_hi b_hi)
                         (ring_pow bool_poly (poly_var bool_ring one) 128)
        IN ring_carrier bool_poly`
     STRIP_ASSUME_TAC THENL
