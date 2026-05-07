@@ -11,6 +11,64 @@ for the project plan.
 
 [aws-lc]: https://github.com/aws/aws-lc
 
+## HOL Light checkpoint (`s2n-x86-aes`)
+
+The proof work in this directory runs against a dedicated DMTCP
+checkpoint `s2n-x86-aes`.  It extends the default `s2n-x86` checkpoint
+with the AES-GCM prerequisite stack pre-loaded:
+
+- `x86/proofs/base.ml` (the s2n-x86 baseline — identical to `s2n-x86`)
+- `common/fips197.ml` (NIST FIPS 197 AES cipher; via `needs` on gcm.ml)
+- `common/ghash.ml` (updated ghash theorems; already in s2n-x86)
+- `common/gcm.ml` (NIST SP 800-38D GCM — KATs gated off, see below)
+- `common/polyval.ml`, `common/polyval_ghash.ml` (POLYVAL + batched Horner)
+- `common/ghash_nist_bridge.ml` (Gueron Prop 1 — NIST GHASH ↔ POLYVAL)
+
+`common/karatsuba_pmul.ml` is NOT in the checkpoint (its needs chain
+didn't reach from `gcm.ml` or `ghash_nist_bridge.ml`).  Load it on
+demand in your session — it's cheap (~0.5 s when polyval is already in
+memory):
+
+```
+needs "common/karatsuba_pmul.ml";;
+```
+
+The `s2n-x86-aes` checkpoint also picks up the `vex-aes` decoder
+additions (VAESENC, VAESENCLAST, VPADDB, VPALIGNR, VPSLLDQ) because
+it was built from our current tree, whereas the stock `s2n-x86`
+predates those commits.  This is the primary reason for the separate
+checkpoint — any VAESENC/etc. step under `s2n-x86` fails with
+`inst_bitpat_numeral: number does not match pattern`.
+
+### Build recipe
+
+```bash
+HOL_LIGHT_DIR=/home/ubuntu/workspace/whole-proofs/hol-light \
+S2N_BIGNUM_DIR=/path/to/s2n-bignum \
+bash tools/make-s2n-x86-aes-checkpoint.sh
+```
+
+The build takes ~22 minutes and produces a 333 MiB checkpoint at
+`$HOL_LIGHT_DIR/hol-s2n-x86-aes.ckpt`.  `holctl checkpoint-list` will
+pick it up automatically (it's keyed off the `.ckpt` filename).
+
+### Stepper-speed probe results
+
+Single `X86_STEPS_TAC` times on the two SIMD crypto primitives we
+care about most:
+
+| Instruction | time/step | post-step goal size |
+|-------------|-----------|---------------------|
+| `vpclmulqdq $0x00, %xmm1, %xmm2, %xmm3` | 0.061 s | 177 chars, 5 asms |
+| `vaesenc %xmm0, %xmm1, %xmm2`           | 0.036 s | 177 chars, 5 asms |
+
+Both well under the "few seconds" threshold.  The concrete output
+stays captured in `MAYCHANGE [YMMi]` rather than being materialised
+as a large term — no per-step opaque-SIMD refold machinery needed for
+AES-GCM (contrast SHA-NI's `SHA256RNDS2`, where each step produces
+~24 000 chars and requires the refold workflow in
+agent-guide.md §"Per-Step Refold for Opaque SIMD Instructions").
+
 ## Pinned aws-lc commit
 
 The assembly here was generated from aws-lc at commit
