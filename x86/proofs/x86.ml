@@ -879,6 +879,21 @@ let x86_AESKEYGENASSIST = new_definition
      let res = aeskeygenassist x imm8 in
      (dest := res) s`;;
 
+(* VAESENC: VEX-encoded AESENC; upper 128 bits of the YMM are zeroed by the
+   VEX semantics embedded in the OPERAND128 component alias. *)
+let x86_VAESENC = new_definition
+  `x86_VAESENC dest src1 src2 (s:x86state) =
+     let state:(128)word = read src1 s
+     and roundkey:(128)word = read src2 s in
+     (dest := (aesenc state roundkey)) s`;;
+
+(* VAESENCLAST: VEX-encoded AESENCLAST; upper 128 bits zeroed by OPERAND128. *)
+let x86_VAESENCLAST = new_definition
+  `x86_VAESENCLAST dest src1 src2 (s:x86state) =
+     let state:(128)word = read src1 s
+     and roundkey:(128)word = read src2 s in
+     (dest := (aesenclast state roundkey)) s`;;
+
 let x86_AND = new_definition
  `x86_AND dest src s =
         let x = read dest s and y = read src s in
@@ -1718,6 +1733,17 @@ let x86_VMOVSHDUP = new_definition
           (word_zx x) in
         (dest := (word_zx res):N word) s`;;
 
+let x86_VPADDB = new_definition
+  `x86_VPADDB dest src1 src2 (s:x86state) =
+      let (x:N word) = read src1 s
+      and (y:N word) = read src2 s in
+      if dimindex(:N) = 256 then
+        let res:(256)word = simd32 word_add (word_zx x) (word_zx y) in
+        (dest := (word_zx res):N word) s
+      else
+        let res:(128)word = simd16 word_add (word_zx x) (word_zx y) in
+        (dest := (word_zx res):N word) s`;;
+
 let x86_VPADDD = new_definition
   `x86_VPADDD dest src1 src2 (s:x86state) =
       let (x:N word) = read src1 s
@@ -1835,6 +1861,33 @@ let x86_VPBLENDVB = new_definition
             val(if bit (8*i+7) m128
                 then (word_subword y128 (8*i,8):byte)
                 else (word_subword x128 (8*i,8):byte)) * 2 EXP (8*i))) in
+        (dest := (word_zx res):N word) s`;;
+
+(* VPALIGNR: per 128-bit lane, concatenate src1_lane:src2_lane (src1 is
+   high), shift right by (8*imm8) bits, and take the low 128 bits. When
+   imm8 >= 32 the result of the shift is zero, matching the Intel spec. *)
+let x86_VPALIGNR = new_definition
+  `x86_VPALIGNR dest src1 src2 imm8 (s:x86state) =
+      let (x:N word) = read src1 s
+      and (y:N word) = read src2 s in
+      let count = 8 * val (read imm8 s) in
+      let lane = \(a:128 word) (b:128 word).
+        (word_subword
+           (word_ushr ((word_join:128 word->128 word->256 word) a b) count)
+           (0,128):128 word) in
+      if dimindex(:N) = 256 then
+        let x256:(256)word = word_zx x
+        and y256:(256)word = word_zx y in
+        let xl:128 word = word_subword x256 (0,128)
+        and xh:128 word = word_subword x256 (128,128)
+        and yl:128 word = word_subword y256 (0,128)
+        and yh:128 word = word_subword y256 (128,128) in
+        let res:(256)word =
+          (word_join:128 word->128 word->256 word)
+            (lane xh yh) (lane xl yl) in
+        (dest := (word_zx res):N word) s
+      else
+        let res:(128)word = lane (word_zx x) (word_zx y) in
         (dest := (word_zx res):N word) s`;;
 
 let x86_VPACKUSWB = new_definition
@@ -1985,6 +2038,19 @@ let x86_VPSLLD = new_definition
         (dest := (word_zx res):N word) s
       else
         let res:(128)word = usimd4 (\z. word_shl z count) (word_zx x) in
+        (dest := (word_zx res):N word) s`;;
+
+(* VPSLLDQ: per 128-bit lane, shift left by (8*imm8) bits (byte-wise shift). *)
+let x86_VPSLLDQ = new_definition
+  `x86_VPSLLDQ dest src imm8 (s:x86state) =
+      let (x:N word) = read src s in
+      let count = 8 * val (read imm8 s) in
+      if dimindex(:N) = 256 then
+        let res:(256)word = usimd2 (\z. word_shl z count) (word_zx x) in
+        (dest := (word_zx res):N word) s
+      else
+        let x128:(128)word = word_zx x in
+        let res:(128)word = word_shl x128 count in
         (dest := (word_zx res):N word) s`;;
 
 let x86_VPSLLQ = new_definition
@@ -3206,6 +3272,16 @@ let x86_execute = define
            64 -> x86_TZCNT (OPERAND64 dest s) (OPERAND64 src s)
          | 32 -> x86_TZCNT (OPERAND32 dest s) (OPERAND32 src s)
          | 16 -> x86_TZCNT (OPERAND16 dest s) (OPERAND16 src s)) s)) s
+    | VAESENC dest src1 src2 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. x86_VAESENC (OPERAND128 dest s) (OPERAND128 src1 s)
+                         (OPERAND128 src2 s) s)) s
+    | VAESENCLAST dest src1 src2 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. x86_VAESENCLAST (OPERAND128 dest s) (OPERAND128 src1 s)
+                             (OPERAND128 src2 s) s)) s
     | VMOVDQA dest src ->
         (add_load_event src s ,,
          add_store_event dest s ,,
@@ -3231,6 +3307,14 @@ let x86_execute = define
         (\s. (match operand_size dest with
           256 -> x86_VMOVSLDUP (OPERAND256 dest s) (OPERAND256 src s)
         | 128 -> x86_VMOVSLDUP (OPERAND128 dest s) (OPERAND128 src s)) s)) s
+    | VPADDB dest src1 src2 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPADDB (OPERAND256 dest s) (OPERAND256 src1 s)
+                            (OPERAND256 src2 s)
+        | 128 -> x86_VPADDB (OPERAND128 dest s) (OPERAND128 src1 s)
+                            (OPERAND128 src2 s)) s)) s
     | VPADDD dest src1 src2 ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_store_event dest s ,,
@@ -3367,6 +3451,14 @@ let x86_execute = define
                                (OPERAND256 src2 s)
         | 128 -> x86_VPACKUSWB (OPERAND128 dest s) (OPERAND128 src1 s)
                                (OPERAND128 src2 s)) s)) s
+    | VPALIGNR dest src1 src2 imm8 ->
+        (add_load_event src1 s ,, add_load_event src2 s ,,
+         add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPALIGNR (OPERAND256 dest s) (OPERAND256 src1 s)
+                              (OPERAND256 src2 s) (OPERAND8 imm8 s)
+        | 128 -> x86_VPALIGNR (OPERAND128 dest s) (OPERAND128 src1 s)
+                              (OPERAND128 src2 s) (OPERAND8 imm8 s)) s)) s
     | VPBLENDVB dest src1 src2 mask ->
         (add_load_event src1 s ,, add_load_event src2 s ,,
          add_load_event mask s ,,
@@ -3455,6 +3547,13 @@ let x86_execute = define
                             (OPERAND8 imm8 s)
         | 128 -> x86_VPSLLD (OPERAND128 dest s) (OPERAND128 src s)
                             (OPERAND8 imm8 s)) s)) s
+    | VPSLLDQ dest src imm8 ->
+        (add_load_event src s ,, add_store_event dest s ,,
+        (\s. (match operand_size dest with
+          256 -> x86_VPSLLDQ (OPERAND256 dest s) (OPERAND256 src s)
+                             (OPERAND8 imm8 s)
+        | 128 -> x86_VPSLLDQ (OPERAND128 dest s) (OPERAND128 src s)
+                             (OPERAND8 imm8 s)) s)) s
     | VPSLLQ dest src imm8 ->
         (add_load_event src s ,, add_store_event dest s ,,
         (\s. (match operand_size dest with
@@ -4369,7 +4468,7 @@ let x86_MOVSB_ALT = prove
 (*** Simplify word operations in SIMD instructions ***)
 
 let all_simd_rules =
-   [usimd16;usimd8;usimd4;usimd2;simd16;simd8;simd4;simd2;msimd16;msimd8;msimd4;msimd2];;
+   [usimd16;usimd8;usimd4;usimd2;simd32;simd16;simd8;simd4;simd2;msimd16;msimd8;msimd4;msimd2];;
 
 let EXPAND_SIMD_RULE =
   CONV_RULE (TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) o
@@ -4398,6 +4497,7 @@ let x86_VMOVDQA_ALT = EXPAND_SIMD_RULE x86_VMOVDQA;;
 let x86_VMOVDQU_ALT = EXPAND_SIMD_RULE x86_VMOVDQU;;
 let x86_VMOVSHDUP_ALT = EXPAND_SIMD_RULE x86_VMOVSHDUP;;
 let x86_VMOVSLDUP_ALT = EXPAND_SIMD_RULE x86_VMOVSLDUP;;
+let x86_VPADDB_ALT = EXPAND_SIMD_RULE x86_VPADDB;;
 let x86_VPADDD_ALT = EXPAND_SIMD_RULE x86_VPADDD;;
 let x86_VPADDQ_ALT = EXPAND_SIMD_RULE x86_VPADDQ;;
 let x86_VPADDW_ALT = EXPAND_SIMD_RULE x86_VPADDW;;
@@ -4409,6 +4509,7 @@ let x86_VPBROADCASTQ_ALT = EXPAND_SIMD_RULE x86_VPBROADCASTQ;;
 let x86_VPERMD_ALT = EXPAND_SIMD_RULE x86_VPERMD;;
 let x86_VPERMQ_ALT = EXPAND_SIMD_RULE x86_VPERMQ;;
 let x86_VPERM2I128_ALT = EXPAND_SIMD_RULE x86_VPERM2I128;;
+let x86_VPALIGNR_ALT = EXPAND_SIMD_RULE x86_VPALIGNR;;
 let x86_VPACKUSWB_ALT =
   (CONV_RULE (TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) o
    CONV_RULE NUM_REDUCE_CONV o
@@ -4428,6 +4529,7 @@ let x86_VPMULLD_ALT = EXPAND_SIMD_RULE x86_VPMULLD;;
 let x86_VPMULLW_ALT = EXPAND_SIMD_RULE x86_VPMULLW;;
 let x86_VPSHUFB_ALT = EXPAND_SIMD_RULE x86_VPSHUFB;;
 let x86_VPSLLD_ALT = EXPAND_SIMD_RULE x86_VPSLLD;;
+let x86_VPSLLDQ_ALT = EXPAND_SIMD_RULE x86_VPSLLDQ;;
 let x86_VPSLLVD_ALT = EXPAND_SIMD_RULE x86_VPSLLVD;;
 let x86_VPSLLQ_ALT = EXPAND_SIMD_RULE x86_VPSLLQ;;
 let x86_VPSLLW_ALT = EXPAND_SIMD_RULE x86_VPSLLW;;
@@ -4451,7 +4553,7 @@ let X86_OPERATION_CLAUSES =
        CONV_RULE(TOP_DEPTH_CONV let_CONV) o SPEC_ALL)
    [x86_ADC_ALT; x86_ADCX_ALT; x86_ADOX_ALT; x86_ADD_ALT;
     x86_AESDEC; x86_AESDECLAST; x86_AESENC; x86_AESENCLAST;
-    x86_AESKEYGENASSIST; x86_AND;
+    x86_AESKEYGENASSIST; x86_VAESENC; x86_VAESENCLAST; x86_AND;
     x86_BSF; x86_BSR; x86_BSWAP; x86_BT; x86_BTC_ALT; x86_BTR_ALT; x86_BTS_ALT;
     x86_CALL_ALT; x86_CLC; x86_CLD; x86_CMC; x86_CMOV; x86_CMP_ALT; x86_DEC;
     x86_ENDBR64; x86_IMUL; x86_IMUL2; x86_IMUL3; x86_INC; x86_LEA; x86_LZCNT;
@@ -4465,12 +4567,12 @@ let X86_OPERATION_CLAUSES =
     x86_SAR; x86_SBB_ALT; x86_SET; x86_SHL; x86_SHLD; x86_SHR; x86_SHRD;
     x86_STC; x86_STD; x86_SUB_ALT; x86_TEST; x86_TZCNT; x86_XCHG; x86_XOR;
     (*** AVX2 instructions ***)
-    x86_VPADDD_ALT; x86_VPADDQ_ALT; x86_VPADDW_ALT; x86_VPMULHRSW_ALT; x86_VPMULHW_ALT; x86_VPINSRD; x86_VPINSRQ; x86_VPINSRW; x86_VINSERTI128; x86_VEXTRACTI128;
+    x86_VPADDB_ALT; x86_VPADDD_ALT; x86_VPADDQ_ALT; x86_VPADDW_ALT; x86_VPMULHRSW_ALT; x86_VPMULHW_ALT; x86_VPINSRD; x86_VPINSRQ; x86_VPINSRW; x86_VINSERTI128; x86_VEXTRACTI128;
     x86_VPEXTRD; x86_VPEXTRQ; x86_VPEXTRW; x86_VPMULLD_ALT; x86_VPMULLW_ALT; x86_VPSUBD_ALT; x86_VPSUBQ_ALT; x86_VPSUBW_ALT; x86_VPXOR;
     x86_VPAND; x86_VPANDN; x86_VPOR; x86_VPSRAD_ALT; x86_VPSRAW_ALT; x86_VPSRLD_ALT; x86_VPSRLDQ_ALT; x86_VPSRLVD_ALT; x86_VPSRLVQ_ALT; x86_VPSRLQ_ALT;
-    x86_VPSRLW_ALT; x86_VPBROADCASTD_ALT; x86_VPSLLD_ALT; x86_VPSLLVD_ALT; x86_VPSLLQ_ALT; x86_VPSLLW_ALT;
+    x86_VPSRLW_ALT; x86_VPBROADCASTD_ALT; x86_VPSLLD_ALT; x86_VPSLLDQ_ALT; x86_VPSLLVD_ALT; x86_VPSLLQ_ALT; x86_VPSLLW_ALT;
     x86_VMOVDQA_ALT; x86_VMOVDQU_ALT; x86_VPMADDUBSW_ALT; x86_VPMADDWD_ALT; x86_VPMULDQ_ALT; x86_VMOVSHDUP_ALT; x86_VMOVSLDUP_ALT;
-    x86_VPACKUSWB_ALT; x86_VPBLENDVB_ALT;
+    x86_VPACKUSWB_ALT; x86_VPALIGNR_ALT; x86_VPBLENDVB_ALT;
     x86_VPBLENDD_ALT; x86_VPBLENDW_ALT; x86_VPCLMULQDQ_ALT; x86_VPERMD_ALT; x86_VPERMQ_ALT; x86_VPSHUFB_ALT;
     x86_VPUNPCKLQDQ_ALT; x86_VPUNPCKHQDQ_ALT; x86_VPBROADCASTQ_ALT; x86_VPERM2I128_ALT;
     (*** 32-bit backups since the ALT forms are 64-bit only ***)

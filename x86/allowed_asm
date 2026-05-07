@@ -126,6 +126,8 @@
 : subq$
 : test$
 : testq$
+: vaesenc$
+: vaesenclast$
 : vmovd$
 : vmovq$
 : vmovdqa$
@@ -133,9 +135,11 @@
 : vmovhpd$
 : vmovshdup$
 : vmovsldup$
+: vpaddb$
 : vpaddd$
 : vpaddq$
 : vpaddw$
+: vpalignr$
 : vpand$
 : vpandn$
 : vpblendd$
@@ -165,6 +169,7 @@
 : vpor$
 : vpshufb$
 : vpslld$
+: vpslldq$
 : vpsllvd$
 : vpsllq$
 : vpsllw$
