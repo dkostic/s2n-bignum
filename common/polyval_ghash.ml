@@ -435,6 +435,22 @@ let byteswap128 = new_definition
    word_join (word_subword x (0,64) : 64 word)
              (word_subword x (64,64) : 64 word)`;;
 
+(* NOTE: the upstream `htable_mem` definition (PR #394) is tied to
+   `armstate` and uses the armstate-typed `memory` component.  It loads
+   fine from the s2n-arm checkpoint where only armstate is in scope, but
+   from the s2n-x86 checkpoint the `memory` constant has been (re)defined
+   as an x86state-typed component, so the definition below fails to
+   typecheck:
+     "memory has type (x86state,...)component, it cannot be used with
+      type (armstate,...)component".
+
+   We comment out the armstate-typed block here.  The x86 AES-GCM proof
+   will define its own `htable_mem_x86` with the correct x86 layout
+   (see aes-gcm-x86-plan.md §2.3).  The ARM AES-GCM proofs referencing
+   `htable_mem` will need to load this file against the s2n-arm
+   checkpoint and restore the definition locally -- no ARM-side caller
+   of `htable_mem` exists in main yet, so nothing is broken.
+
 let htable_mem = new_definition
   `htable_mem (h:int128) (ptr:int64) (s:armstate) <=>
    read (memory :> bytes128 ptr) s = byteswap128(h_power h 0) /\
@@ -457,6 +473,7 @@ let htable_mem = new_definition
      word_join (karatsuba_mid(h_power h 6) : 64 word)
                (karatsuba_mid(h_power h 7) : 64 word) /\
    read (memory :> bytes128 (word_add ptr (word 176))) s = byteswap128(h_power h 7)`;;
+*)
 
 (* ========================================================================= *)
 (* The x-shift / twist: multiplication by x mod Q(x)                        *)
