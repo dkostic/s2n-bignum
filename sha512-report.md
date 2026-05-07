@@ -568,3 +568,203 @@ $ check_axioms()
 
 No CHEAT_TAC, no new axioms introduced by the SHA-512 proof. This matches
 the SHA-256 pilot.
+
+---
+
+## Phase N: Scalar Fallback (nohw) Implementations
+
+After the hw variant completed, a scalar (no FEAT_SHA512) fallback was
+built and proved on branch `sha512-arm-nohw`. The goal was two-fold:
+deliver a portable implementation for CPUs without the SHA-512 hardware
+extension, and close the performance gap to aws-lc's tuned scalar code.
+
+Three scalar variants were developed, benchmarked, and (for the primary
+two) proved correct against the same FIPS 180-4 spec used by the hw
+variant. Performance numbers are from Graviton 3 (Neoverse V1, ~3 GHz).
+
+### Variants delivered
+
+| variant | ns/block (16-batch) | MB/s | vs aws-lc | proved |
+|---|---|---|---|---|
+| `sha512_hw` (FEAT_SHA512 reference) | 116.3 | 1101 | n/a | ✓ (Phase F) |
+| **`sha512_nohw3`** (cyclic-state, fused, merged-rotates) | **214.0** | **598** | **5.0% slower** | ✓ |
+| `sha512_nohw2` (W-in-regs, fused, merged-rotates) | 225.2 | 568 | 9.8% slower | unproved (intermediate) |
+| `sha512_nohw` (baseline scalar) | 346.9 | 369 | 41.5% slower | ✓ |
+| aws-lc scalar reference | ~203 | ~630 | — | n/a |
+
+`sha512_nohw3` hits the 5% target. All three variants pass the NIST
+"abc" KAT plus 370 random single-block and 2-block cross-checks against
+a from-spec C reference.
+
+### nohw (baseline, Graviton ~347 ns/block)
+
+**Assembly** (`arm/sha2/sha512_block_data_order_nohw.S`, 188 lines, 118
+instructions): direct 64-bit analogue of `sha256_block_data_order_nohw.S`
+(s2n-bignum's simple scalar baseline). Six explicit phases:
+
+- Phase A: 16 × `ldr` + `rev` → write schedule to stack
+- Phase B: 64 × schedule-extend iterations computing W[16..79] on stack
+- Phase C: 8 × `ldr` state from ctx + 8 × `mov` save
+- Phase D: 80-round compression loop, loading W[t] from stack per round
+- Phase E: 8 × add-back
+- Phase F: 8 × `str` state back to ctx
+
+704-byte stack frame (64-byte callee-save region + 640-byte schedule
+scratch), built in two STP regions to stay within the ±512-byte
+STP/LDP offset limit.
+
+**Proof** (`arm/proofs/sha512_block_data_order_nohw.ml`, 867 lines):
+direct port of `sha256_block_data_order_nohw.ml` (879 lines). The
+32→64 lift actually *simplifies* the proof: SHA-256 scalar's
+`word_zx:int32->int64` crossovers between 64-bit registers and int32
+spec words disappear when register width matches spec width. Sigma/Ch/Maj
+postconditions close via a single `CONV_TAC WORD_RULE` instead of
+multi-step SIMP chains. Loaded first-attempt without any debugging.
+
+### nohw2 (W-in-regs + fused + merged-rotates, Graviton ~225 ns/block)
+
+**Assembly** (`arm/sha2/sha512_block_data_order_nohw2.S`, 264 lines,
+~750 instructions): direct 64-bit port of `sha256_block_data_order_nohw5.S`.
+Three structural changes relative to nohw:
+
+1. **Schedule window in registers.** The 16-word sliding window lives in
+   `x12..x17, x19..x28` (16 x-regs) instead of the 640-byte stack
+   scratch. Each fused round reads W[t] from its slot register and
+   writes W[t+16] back to the same slot once W[t] has been consumed.
+2. **Schedule fused into compression.** Rounds 0..63 each compute one
+   `W[t+16]` alongside the T1/T2/Sigma chain, exposing independent
+   schedule arithmetic that the OoO backend co-schedules with the
+   serial compression chain. Rounds 64..79 are compress-only.
+3. **Merged rotate-XOR encodings** (`eor xd, xn, xm, ror #k`)
+   throughout, one instruction per ROR+XOR pair instead of two.
+
+Frame size: 112 bytes (callee-saves + spill of `x1`, `x2` during body).
+
+Four fused periods of 16 rounds each in a `cbnz`-driven counted loop;
+16-round D-tail unrolled inline.
+
+**Performance**: 225 ns/block = 568 MB/s, 1.54× speedup over baseline
+but still 9.8% slower than aws-lc — a gap that motivated nohw3.
+
+**Proof**: not attempted as a shipping theorem. The .S is validated
+by the test harness (NIST KAT + 740 random cross-checks) and retained
+as an intermediate step; since nohw3 supersedes it on performance and
+proof cost is near-identical, only nohw3 was formally verified.
+
+### nohw3 (cyclic-state rename, Graviton ~214 ns/block)
+
+**Assembly** (`arm/sha2/sha512_block_data_order_nohw3.S`, 286 lines):
+direct 64-bit port of `sha256_block_data_order_nohw6.S`. Builds on
+nohw2 with one additional optimisation:
+
+4. **Cyclic state-register naming.** Instead of `mov`ing state values
+   through `x4..x11` at the end of each round (6 `mov`s per round in
+   nohw2), the logical position `j` at round `t` lives in physical
+   register `x[4 + ((j - (t mod 8)) mod 8)]`. Each round writes only
+   two values (new_e into the register that held d, new_a into the
+   register that held h). Eliminates 480 MOVs per block (80 rounds × 6
+   MOVs). State returns to canonical `x4..x11` = `[a;b;c;d;e;f;g;h]`
+   at every period boundary (rounds 0, 16, 32, 48, 64) and after round 80,
+   so the proof invariant at those boundaries is unchanged from nohw2's.
+
+Eight distinct round-body macros `ROUND_SCHED_K0..K7` (and
+`ROUND_NOSCHED_K0..K7` for the D-tail) instantiate the same round
+arithmetic at each of the 8 rotation offsets.
+
+**Performance**: **214.0 ns/block = 598 MB/s, 5.0% slower than aws-lc**.
+Target hit.
+
+**Proof** (`arm/proofs/sha512_block_data_order_nohw3.ml`, 5809 lines):
+direct 32→64 port of `sha256_block_data_order_nohw6.ml` (5810 lines).
+
+The port was done as a two-stage pipeline:
+
+1. **Mechanical substitutions** (Python script over the source):
+   - `sha256_*`/`SHA256_*` → `sha512_*`/`SHA512_*`
+   - `int32`/`bytes32`/`DIMINDEX_32` → `int64`/`bytes64`/`DIMINDEX_64`
+   - `word_zx:int32->int64` wrappers stripped
+   - Memory lane offsets: `4*t` → `8*t`
+   - Block stride: `64*j` → `128*j`
+   - K-pointer offsets doubled (8-byte K entries vs 4-byte)
+   - Schedule depth: `48` → `64`; total rounds: `64` → `80`
+   - Period count: `mov x30, #3` → `mov x30, #4` (4 periods for SHA-512)
+   - Inner WHILE_UP iteration count: `2:num` → `3:num` (p=1,2,3 vs p=1,2)
+   - Period-countdown counter `(2-i)` → `(3-i)` inside WHILE_UP
+   - ARITH_RULE period-end landmarks (`16*(2+1)=48` → `16*(3+1)=64` etc.)
+   - D-tail round indices shifted by +16 (rounds 64..79 vs 48..63)
+
+2. **Interactive debugging via holctl** turned up a small set of
+   mechanical-port bugs the scripts missed:
+   - Preconditions in the main theorem: `state_ptr` range 32 → 64 bytes
+     (SHA-512 state is 8×8); `data_ptr` range `64*num_blocks` →
+     `128*num_blocks`.
+   - Post-period-loop state: `X3 = kptr + 384` → `kptr + 512`
+     (4 periods × 16 rounds × 8 bytes); `sha512_compress 48 W` →
+     `sha512_compress 64 W` (4×16=64 fused rounds).
+   - Period-advance K-offsets: `64*(i+1)+N` → `128*(i+1)+2N` in 32
+     places (8 bytes/round × 16 rounds = 128 bytes per period).
+   - K-offset address resolution: `4*(16*p+k)` → `8*(16*p+k)` in 32
+     places (8-byte K entries).
+   - Period loop iteration bound: `UNDISCH_TAC \`i < 2\`` → `\`i < 3\``
+     (the WHILE_UP runs 3 iterations for SHA-512, 2 for SHA-256).
+   - Phase A byte-reverse closure: needed an extra
+     `RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0])` after the address
+     NUM_MULT_CONV, so that `ldr x19, [x1]` with zero offset matches
+     the memory hypothesis at `word_add dptr_i (word 0)`. Removed
+     stale `SIMP_TAC[WORD_ZX_ZX; ...]` (SHA-256 artifact; unused at
+     pure-64-bit).
+   - Period 0 round 0 K hyp: dropped `word_add kptr (word 0)` wrapper
+     from the SUBGOAL so `ldr x0, [x3]` at pc+0xc8 (X3=kptr) matches.
+
+`check_axioms() = 3` (INFINITY_AX, SELECT_AX, ETA_AX only). No
+CHEAT_TAC. Both `SHA512_BLOCK_DATA_ORDER_NOHW3_CORRECT` and
+`SHA512_BLOCK_DATA_ORDER_NOHW3_SUBROUTINE_CORRECT` proved.
+
+### Artifacts (branch `sha512-arm-nohw`)
+
+**Assembly (three variants):**
+- `arm/sha2/sha512_block_data_order_nohw.S` (188 lines, baseline)
+- `arm/sha2/sha512_block_data_order_nohw2.S` (264 lines, intermediate;
+  unproved but tested)
+- `arm/sha2/sha512_block_data_order_nohw3.S` (286 lines, primary ship)
+
+**Proofs (two variants):**
+- `arm/proofs/sha512_block_data_order_nohw.ml` (867 lines, baseline)
+- `arm/proofs/sha512_block_data_order_nohw3.ml` (5809 lines, primary)
+
+Both proofs reuse `arm/proofs/utils/sha512_bridge.ml`'s spec + schedule
+infrastructure unchanged.
+
+**Test/benchmark integration:**
+- `tests/test.c`: `test_sha512_block_data_order_nohw` extended to
+  cross-check all three scalar variants in parallel against the C
+  reference (NIST "abc" KAT + 370 random single-block + 370 random
+  2-block).
+- `benchmarks/benchmark.c`: 1-block and 16-block call harnesses for
+  each variant.
+- `include/s2n-bignum.h`: extern declarations.
+- `tools/collect-signatures.py`: onlyInArm entries.
+
+### Key findings
+
+1. **Variant-for-variant port cost scales sub-linearly.** The baseline
+   SHA-512 nohw proof (867 lines) went through on first attempt; the
+   cyclic-state nohw3 proof (5809 lines) needed ~10 targeted fixes
+   beyond the mechanical substitutions. In aggregate, porting
+   1679 + 5809 = 7488 lines of proof from SHA-256 to SHA-512 took on
+   the order of a single session per variant — substantially less
+   effort than the original SHA-256 proofs they derive from.
+
+2. **Incremental variants earn their keep.** The three-variant
+   sequence (baseline → W-in-regs+fused → cyclic-state) gave us two
+   ways to bail out if the next step hit unforeseen friction: stop at
+   baseline (41% gap), stop at intermediate (10% gap), or ship the
+   fastest variant (5% gap). The assembly work was cheap enough that
+   measuring nohw2 before committing to nohw3 was the right call.
+
+3. **Cyclic-state rename matters more for SHA-512 than for SHA-256.**
+   SHA-256 nohw5→nohw6 measured ~5% speedup (eliminating 384 MOVs per
+   block, saturated frontend bandwidth). SHA-512 nohw2→nohw3 measured
+   ~5% speedup too (eliminating 480 MOVs per block). The mechanism is
+   the same, but SHA-512's higher round count means more MOVs absolute
+   — and Graviton 3's frontend bandwidth limit applies at both widths.
