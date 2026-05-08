@@ -48,15 +48,15 @@
 needs "x86/proofs/base.ml";;
 needs "x86/proofs/utils/aes_fips197_bridge.ml";;
 
-(* 475 bytes (0x1db) of machine code; 91 instructions.                       *)
+(* 475 bytes (0x1db) of machine code; 96 instructions (95 steppable + ret).  *)
 (* Structure:                                                                *)
-(*   - 12 loads + 6 vpxor  :  counter-lane initial AddRoundKey  (18)         *)
-(*   - 9 x (1 load + 6 vaesenc) :  middle rounds k1..k9         (63)         *)
-(*   - 1 load + 6 vpxor   :  final-round key XOR'd with input   (7)          *)
-(*   - 6 vaesenclast      :  closing AES round                  (6)          *)
-(*   - 6 vmovdqu stores   :  ciphertext writes                  (6)          *)
-(*   - 1 ret                                                    (1)          *)
-(* = 18 + 63 + 7 + 6 + 6 + 1 = 91 instructions, 475 bytes total.             *)
+(*   - 7 loads (1 k0 + 6 counter) + 6 vpxor :  counter lane AddRoundKey (13) *)
+(*   - 9 x (1 key load + 6 vaesenc)         :  middle rounds k1..k9     (63) *)
+(*   - 1 load (k10) + 6 vpxor               :  final round XOR input    (7)  *)
+(*   - 6 vaesenclast                        :  closing AES round        (6)  *)
+(*   - 6 vmovdqu stores                     :  ciphertext writes        (6)  *)
+(*   - 1 ret                                                            (1)  *)
+(* = 13 + 63 + 7 + 6 + 6 + 1 = 96 instructions, 475 bytes total.             *)
 
 let aesni_ctr32_6x_core_mc = define_assert_word_list "aesni_ctr32_6x_core_mc"
   `[word 0xc5; word 0xfa; word 0x6f; word 0x22; word 0xc5; word 0x7a;
@@ -303,4 +303,34 @@ let AESNI_CTR32_6X_CORE_CORRECT = prove
                        memory :> bytes128 (word_add output (word 48));
                        memory :> bytes128 (word_add output (word 64));
                        memory :> bytes128 (word_add output (word 80))])`,
-  CHEAT_TAC);;
+  MAP_EVERY X_GEN_TAC
+   [`output:int64`; `input:int64`; `key:int64`; `counter:int64`;
+    `i0:int128`; `i1:int128`; `i2:int128`;
+    `i3:int128`; `i4:int128`; `i5:int128`;
+    `c0:int128`; `c1:int128`; `c2:int128`;
+    `c3:int128`; `c4:int128`; `c5:int128`;
+    `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+    `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+    `k8:int128`; `k9:int128`; `k10:int128`;
+    `pc:num`] THEN
+  REWRITE_TAC[C_ARGUMENTS; NONOVERLAPPING_CLAUSES] THEN
+  REWRITE_TAC[(REWRITE_CONV[aesni_ctr32_6x_core_mc] THENC LENGTH_CONV)
+                `LENGTH aesni_ctr32_6x_core_mc`] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC AESNI_CTR32_6X_CORE_EXEC (1--95) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[aes128_ctr_lane] THEN
+  ASM_REWRITE_TAC[AESENC_FIPS197_BRIDGE_ALT;
+                  AESENCLAST_FIPS197_BRIDGE_ALT] THEN
+  REWRITE_TAC[aes128_cipher; MAP] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV EL_CONV) THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256;
+           ARITH_LE; ARITH_LT; ARITH;
+           WORD_REVERSEFIELDS_REVERSEFIELDS; WORD_XOR_0;
+           WORD_REVERSEFIELDS_XOR_128] THEN
+  REWRITE_TAC[fips197_final_round; WORD_REVERSEFIELDS_XOR_128;
+              WORD_REVERSEFIELDS_REVERSEFIELDS] THEN
+  CONV_TAC WORD_BLAST);;
