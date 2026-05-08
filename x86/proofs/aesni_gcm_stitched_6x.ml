@@ -444,5 +444,44 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                        memory :> bytes128 (word_add optr (word 80));
                        memory :> bytes128 cbptr;
                        memory :> bytes128 (word_add sptr (word 16))])`,
-  (* Stage-A skeleton: defer stepping + closure to Stages B and C. *)
+  MAP_EVERY X_GEN_TAC
+   [`optr:int64`; `iptr:int64`; `kptr:int64`; `hptr:int64`; `cbptr:int64`;
+    `cptr:int64`; `sptr:int64`;
+    `p0:int128`; `p1:int128`; `p2:int128`;
+    `p3:int128`; `p4:int128`; `p5:int128`;
+    `cb0:int128`; `cb1:int128`; `cb2:int128`;
+    `cb3:int128`; `cb4:int128`; `cb5:int128`;
+    `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+    `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+    `k8:int128`; `k9:int128`; `k10:int128`;
+    `h0:int128`; `h1:int128`; `h3:int128`;
+    `h4:int128`; `h6:int128`; `h7:int128`;
+    `xi4:int128`; `xi7:int128`; `xi8:int128`;
+    `sp16:int128`; `sp32:int128`; `sp48:int128`; `sp64:int128`;
+    `sp80:int128`; `sp96:int128`; `sp112:int128`;
+    `red:int128`; `plus:int128`;
+    `pc:num`] THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+  REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
+                `LENGTH aesni_gcm_stitched_6x_mc`] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+  ENSURES_INIT_TAC "s0" THEN
+  (* Drive all 166 steps with the per-step refold pass from Milestone 6.    *)
+  (* Wall time on s2n-x86-aes: ~13 s; the per-step machinery preserves YMM *)
+  (* register state as genvar-abbreviated expressions so the step closure  *)
+  (* never runs into the exponential-blowup failure mode.                   *)
+  MAP_EVERY (fun n ->
+    X86_STEPS_TAC AESNI_GCM_STITCHED_6X_EXEC [n] THEN
+    SIMD_SIMPLIFY_TAC[] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    GHASH_ABBREV_STEP_TAC)
+   (1--166) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  (* 7 residual equalities survive: RIP and 6 ciphertext block stores.       *)
+  (* The RIP lane closes on ASM_REWRITE_TAC; the 6 ciphertext-block lanes   *)
+  (* require the AESENC/AESENCLAST bridges and aes128_cipher unfolding,     *)
+  (* deferred to a future closure commit (mirrors Milestone 6's structure). *)
   CHEAT_TAC);;
