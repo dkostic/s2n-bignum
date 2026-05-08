@@ -344,7 +344,6 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
       xi4 xi7 xi8
       sp16 sp32 sp48 sp64 sp80 sp96 sp112
       red plus
-      new_cb new_xi4 new_xi7 new_xi8 new_sp16
       pc.
       nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (optr,96) /\
       nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (cbptr,16) /\
@@ -366,19 +365,29 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read (memory :> bytes128 (word_add iptr (word 48))) s = p3 /\
                 read (memory :> bytes128 (word_add iptr (word 64))) s = p4 /\
                 read (memory :> bytes128 (word_add iptr (word 80))) s = p5 /\
-                read (memory :> bytes128 (word_sub kptr (word 128))) s = k0 /\
-                read (memory :> bytes128 (word_sub kptr (word 112))) s = k1 /\
-                read (memory :> bytes128 (word_sub kptr (word 96))) s = k2 /\
-                read (memory :> bytes128 (word_sub kptr (word 80))) s = k3 /\
-                read (memory :> bytes128 (word_sub kptr (word 64))) s = k4 /\
-                read (memory :> bytes128 (word_sub kptr (word 48))) s = k5 /\
-                read (memory :> bytes128 (word_sub kptr (word 32))) s = k6 /\
-                read (memory :> bytes128 (word_sub kptr (word 16))) s = k7 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551488))) s = k0 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551504))) s = k1 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551520))) s = k2 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551536))) s = k3 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551552))) s = k4 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551568))) s = k5 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551584))) s = k6 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551600))) s = k7 /\
                 read (memory :> bytes128 kptr) s = k8 /\
                 read (memory :> bytes128 (word_add kptr (word 16))) s = k9 /\
                 read (memory :> bytes128 (word_add kptr (word 32))) s = k10 /\
-                read (memory :> bytes128 (word_sub hptr (word 32))) s = h0 /\
-                read (memory :> bytes128 (word_sub hptr (word 16))) s = h1 /\
+                read (memory :> bytes128
+                  (word_add hptr (word 18446744073709551584))) s = h0 /\
+                read (memory :> bytes128
+                  (word_add hptr (word 18446744073709551600))) s = h1 /\
                 read (memory :> bytes128 (word_add hptr (word 16))) s = h3 /\
                 read (memory :> bytes128 (word_add hptr (word 32))) s = h4 /\
                 read (memory :> bytes128 (word_add hptr (word 64))) s = h6 /\
@@ -393,17 +402,17 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read (memory :> bytes128 (word_add sptr (word 80))) s = sp80 /\
                 read (memory :> bytes128 (word_add sptr (word 96))) s = sp96 /\
                 read (memory :> bytes128 (word_add sptr (word 112))) s = sp112 /\
-                read XMM2  s = plus /\
-                read XMM4  s = xi4 /\
-                read XMM7  s = xi7 /\
-                read XMM8  s = xi8 /\
-                read XMM9  s = word_xor k0 cb0 /\
-                read XMM10 s = cb1 /\
-                read XMM11 s = cb2 /\
-                read XMM12 s = cb3 /\
-                read XMM13 s = cb4 /\
-                read XMM14 s = cb5 /\
-                read XMM15 s = k0)
+                read YMM2  s = word_zx (plus:int128) /\
+                read YMM4  s = word_zx (xi4:int128) /\
+                read YMM7  s = word_zx (xi7:int128) /\
+                read YMM8  s = word_zx (xi8:int128) /\
+                read YMM9  s = word_zx (word_xor k0 cb0 : int128) /\
+                read YMM10 s = word_zx (cb1:int128) /\
+                read YMM11 s = word_zx (cb2:int128) /\
+                read YMM12 s = word_zx (cb3:int128) /\
+                read YMM13 s = word_zx (cb4:int128) /\
+                read YMM14 s = word_zx (cb5:int128) /\
+                read YMM15 s = word_zx (k0:int128))
            (\s. read RIP s = word (pc + 0x349) /\
                 read (memory :> bytes128 optr) s =
                   stitched_6x_ct_block
@@ -422,13 +431,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb4 p4 /\
                 read (memory :> bytes128 (word_add optr (word 80))) s =
                   stitched_6x_ct_block
-                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5 /\
-                read (memory :> bytes128 cbptr) s = new_cb /\
-                read (memory :> bytes128 (word_add sptr (word 16))) s =
-                  new_sp16 /\
-                read XMM4 s = new_xi4 /\
-                read XMM7 s = new_xi7 /\
-                read XMM8 s = new_xi8)
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5)
            (MAYCHANGE [RIP] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
