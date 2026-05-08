@@ -48,6 +48,7 @@
 
 needs "x86/proofs/base.ml";;
 needs "common/polyval_ghash.ml";;  (* polyval_dot *)
+needs "common/karatsuba_pmul.ml";; (* PMUL_KARATSUBA *)
 
 (* ------------------------------------------------------------------------- *)
 (* Machine code: 41 VEX instructions + ret, 187 bytes.                       *)
@@ -260,6 +261,108 @@ let GHASH_ABBREV_STEP_TAC : tactic =
         ABBREV_TAC (mk_eq (gv, rhs)) (asl, w);;
 
 (* ------------------------------------------------------------------------- *)
+(* Helpers for the final GF(2) identity closing Milestone 6.                  *)
+(*                                                                            *)
+(* The stepper-produced expression is the hand-written Karatsuba + Prop 3    *)
+(* reduction in terms of six per-step abbreviations over the three 64x64     *)
+(* polynomial products `pLo = (xi_lo)*(h_lo)`, `pHi = (xi_hi)*(h_hi)`,        *)
+(* `pMid = (xi_lo ^ xi_hi)*(h_lo ^ h_hi)`.  The RHS is                        *)
+(* `polyval_dot = polyval_reduce_prop3 (word_pmul xi h : int256)`.  Both      *)
+(* sides become expressions in `pLo`, `pHi`, `pMid` after:                    *)
+(*                                                                            *)
+(*   1. Unfolding the RHS `word_pmul xi h` via `PMUL_KARATSUBA`.              *)
+(*   2. Extracting the four 64-bit limbs of the 256-bit Karatsuba product    *)
+(*      via `KARATSUBA_LIMB_{0_63,64_127,128_191,192_255}` (see aws-lc's      *)
+(*      `arm/proofs/gcm_gmult_v8_nist.ml` PR for the arm analogue).           *)
+(*   3. Expanding `word_pmul _ W` into XOR of shifts via `PMUL_W_64_128`.    *)
+(*   4. Abbreviating `pLo`, `pHi`, `pMid` so the bit-level identity is in    *)
+(*      only three 128-bit free variables.                                    *)
+(*   5. Decomposing the 128-bit equation into two 64-bit lanes via            *)
+(*      `WORD_EQ_LANES_128_LOCAL` and closing each lane with `BITBLAST_TAC`. *)
+(*                                                                            *)
+(* Empirically the two 64-bit BITBLAST_TAC calls build BDDs of 6k and 9k     *)
+(* nodes over 385 Boolean variables and close in ~8 s user CPU on            *)
+(* s2n-x86-aes.  The key to making BITBLAST tractable is step (4): with the  *)
+(* three Karatsuba products opaque, the 64-bit BDD depends on only 3 x 128 + *)
+(* 128 + 1 = 513 literal slots before CSE, which BITBLAST compiles in        *)
+(* seconds; without the abbreviations the stepper's fully-unfolded form has  *)
+(* >2000 leaf variables and blows up.                                         *)
+(* ------------------------------------------------------------------------- *)
+
+(* Flattened `word_pmul` Karatsuba identity (let-binders stripped). *)
+let PMUL_KARATSUBA_FLAT = CONV_RULE(DEPTH_CONV let_CONV) PMUL_KARATSUBA;;
+
+(* Fold `subword(xor(join(lo,hi), x), 0, 64) = xor(subword(x,0,64),           *)
+(* subword(x,64,64))` — the canonical form `vpalignr $8 ; vpxor` emits for    *)
+(* computing the Karatsuba middle operand.                                    *)
+let MID_SUBWORD_FOLD = prove
+ (`!a:int128.
+    word_subword
+      (word_xor ((word_join:int64->int64->int128)
+         (word_subword a (0,64)) (word_subword a (64,64))) a)
+      (0,64):int64
+    = word_xor (word_subword a (0,64)) (word_subword a (64,64))`,
+  CONV_TAC WORD_BLAST);;
+
+(* 128-bit equality decomposes into two independent 64-bit lane equalities.   *)
+let WORD_EQ_LANES_128_LOCAL = prove
+ (`!(x:int128) (y:int128).
+    x = y <=>
+    (word_subword x (0,64):int64) = word_subword y (0,64) /\
+    (word_subword x (64,64):int64) = word_subword y (64,64)`,
+  BITBLAST_TAC);;
+
+(* The four 64-bit limbs of the Karatsuba 256-bit product in terms of the    *)
+(* 128-bit partials xl = lo*lo, xh = hi*hi, mid = lo*hi ^ hi*lo (or the      *)
+(* Karatsuba xor-variant).  Pattern-for-pattern copy of                       *)
+(* `KARATSUBA_LIMB_{0_63,...,192_255}` in the arm PR #390 (see                *)
+(* arm/proofs/gcm_gmult_v8_nist.ml).                                          *)
+
+let KARATSUBA_LIMB_0_63 = prove
+ (`!(xl:int128) (xh:int128) (mid:int128).
+    word_subword
+      (word_xor (word_xor (word_zx xl : int256)
+                          (word_shl (word_zx mid : int256) 64))
+                (word_shl (word_zx xh : int256) 128))
+      (0,64) : int64 =
+    word_subword xl (0,64)`,
+  REPEAT GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+let KARATSUBA_LIMB_64_127 = prove
+ (`!(xl:int128) (xh:int128) (mid:int128).
+    word_subword
+      (word_xor (word_xor (word_zx xl : int256)
+                          (word_shl (word_zx mid : int256) 64))
+                (word_shl (word_zx xh : int256) 128))
+      (64,64) : int64 =
+    word_xor (word_subword xl (64,64)) (word_subword mid (0,64))`,
+  REPEAT GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+let KARATSUBA_LIMB_128_191 = prove
+ (`!(xl:int128) (xh:int128) (mid:int128).
+    word_subword
+      (word_xor (word_xor (word_zx xl : int256)
+                          (word_shl (word_zx mid : int256) 64))
+                (word_shl (word_zx xh : int256) 128))
+      (128,64) : int64 =
+    word_xor (word_subword xh (0,64)) (word_subword mid (64,64))`,
+  REPEAT GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+let KARATSUBA_LIMB_192_255 = prove
+ (`!(xl:int128) (xh:int128) (mid:int128).
+    word_subword
+      (word_xor (word_xor (word_zx xl : int256)
+                          (word_shl (word_zx mid : int256) 64))
+                (word_shl (word_zx xh : int256) 128))
+      (192,64) : int64 =
+    word_subword xh (64,64)`,
+  REPEAT GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+let KARATSUBA_LIMBS =
+  CONJ (CONJ KARATSUBA_LIMB_0_63 KARATSUBA_LIMB_64_127)
+       (CONJ KARATSUBA_LIMB_128_191 KARATSUBA_LIMB_192_255);;
+
+(* ------------------------------------------------------------------------- *)
 (* Correctness.                                                              *)
 (*                                                                           *)
 (* `nonoverlapping (word pc,LENGTH mc) (Xi,16)` lets the stepper discharge   *)
@@ -315,13 +418,60 @@ let GCM_GMULT_X86_CORRECT = prove
   FIRST_X_ASSUM(SUBST1_TAC o
     check (can (term_match[] `read (memory :> bytes128 xi) s41 = w`) o concl)) THEN
   AP_TERM_TAC THEN
-  REWRITE_TAC[polyval_dot; polyval_reduce_prop3; LET_DEF; LET_END_DEF] THEN
-  (* Remaining 128-bit GF(2) identity: the stepper-produced expression (in
-     terms of the per-step abbreviations) equals `word_pmul` of the two
-     operands reduced modulo Q(x) by Prop 3.  This is a pure bitwise identity;
-     `WORD_BLAST` handles it in principle but takes prohibitive time on the
-     ~200 KB fully-unfolded form.  A faster closure via `PMUL_KARATSUBA` /
-     `PMUL_SCHOOLBOOK` from `common/karatsuba_pmul.ml` is planned but out of
-     scope for Milestone 6 (Milestone 7's GHASH block will re-use the same
-     lemma form).  Left as CHEAT_TAC with the stepper fully discharged. *)
-  CHEAT_TAC);;
+  (* Reorient any `<expr> = read YMM_ s41` assumption produced by the stepper
+     so that we can substitute the (single) `read YMM1 s41` left in the goal
+     by its pLo/pHi/pMid expression. *)
+  TRY(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o
+   check (fun th -> let c = concl th in
+     is_eq c && is_comb (rand c) &&
+     (match (rator (rand c)) with
+      | Comb(Const("read",_),_) -> true | _ -> false)))) THEN
+  (* Unfold the genvar per-step abbreviations created by
+     GHASH_ABBREV_STEP_TAC so the residual is purely in the three Karatsuba
+     products. *)
+  REPEAT(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o
+   check (fun th -> let c = concl th in
+     is_eq c && is_var(rand c) &&
+     String.length(fst(dest_var(rand c))) > 1 &&
+     String.get (fst(dest_var(rand c))) 0 = Char.chr 95))) THEN
+  (* The YMM1 hypothesis became available only after the genvar unfold;
+     reorient/substitute it into the goal now. *)
+  TRY(FIRST_X_ASSUM(SUBST_ALL_TAC o SYM o
+   check (fun th -> let c = concl th in
+     is_eq c && is_comb (rand c) &&
+     (match (rator (rand c)) with
+      | Comb(Const("read",_),_) -> true | _ -> false)))) THEN
+  (* The stepper emitted the Karatsuba middle operand as
+     `subword(xor(join(lo,hi), xi), 0, 64)`; normalise to `xor(lo,hi)`. *)
+  REWRITE_TAC[MID_SUBWORD_FOLD] THEN
+  (* Unfold polyval_dot, Karatsuba-expand the RHS 128 x 128 -> 256 product,
+     extract its four 64-bit limbs, then unfold prop3.  After this the goal's
+     two sides are both 128-bit expressions in three 64x64 `word_pmul` terms. *)
+  REWRITE_TAC[polyval_dot; PMUL_KARATSUBA_FLAT] THEN
+  REWRITE_TAC[polyval_reduce_prop3; LET_DEF; LET_END_DEF] THEN
+  REWRITE_TAC[KARATSUBA_LIMBS] THEN
+  (* Abbreviate the three 64 x 64 products so BITBLAST sees only three
+     opaque 128-bit variables rather than rebuilding the whole multiply. *)
+  ABBREV_TAC
+   `pLo:int128 = word_pmul
+      (word_subword (word_reversefields 8 (xi:int128)) (0,64):int64)
+      (word_subword (h:int128) (0,64):int64)` THEN
+  ABBREV_TAC
+   `pHi:int128 = word_pmul
+      (word_subword (word_reversefields 8 (xi:int128)) (64,64):int64)
+      (word_subword (h:int128) (64,64):int64)` THEN
+  ABBREV_TAC
+   `pMid:int128 = word_pmul
+      (word_xor
+        (word_subword (word_reversefields 8 (xi:int128)) (0,64):int64)
+        (word_subword (word_reversefields 8 (xi:int128)) (64,64)))
+      (word_xor
+        (word_subword (h:int128) (0,64):int64)
+        (word_subword (h:int128) (64,64)))` THEN
+  ASM_REWRITE_TAC[] THEN
+  (* Unfold the two `word_pmul _ W` reduction multiplies. *)
+  REWRITE_TAC[PMUL_W_64_128; WORD_ZX_ZX_128] THEN
+  (* The residual is a 128-bit GF(2) identity in pLo, pHi, pMid.  Split
+     into two 64-bit lanes and close each with BITBLAST_TAC; ~8 s total. *)
+  GEN_REWRITE_TAC I [WORD_EQ_LANES_128_LOCAL] THEN
+  CONJ_TAC THEN BITBLAST_TAC);;
