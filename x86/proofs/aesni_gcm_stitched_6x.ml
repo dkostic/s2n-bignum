@@ -57,7 +57,7 @@ needs "common/karatsuba_pmul.ml";;   (* PMUL_KARATSUBA                     *)
 (* Machine code.                                                             *)
 (*                                                                           *)
 (* 166 steppable VEX instructions + ret, 841 bytes total (pre-ret is at      *)
-(* pc + 0x348; RIP after ret is pc + 0x349).  Instruction mix:               *)
+(* pc + 0x348; RIP after ret is pc + 0x348).  Instruction mix:               *)
 (*                                                                           *)
 (*   54  vaesenc        (9 AES rounds, 6 lanes)                              *)
 (*    6  vaesenclast    (round 10, 6 lanes)                                  *)
@@ -413,7 +413,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read YMM13 s = word_zx (cb4:int128) /\
                 read YMM14 s = word_zx (cb5:int128) /\
                 read YMM15 s = word_zx (k0:int128))
-           (\s. read RIP s = word (pc + 0x349) /\
+           (\s. read RIP s = word (pc + 0x348) /\
                 read (memory :> bytes128 optr) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb0 p0 /\
