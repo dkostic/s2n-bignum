@@ -182,9 +182,35 @@ See aes-gcm-x86-plan.md §1.4 for the performance commitment.
 ## File layout
 
 ```
-aesni_gcm_encrypt.S       # monolithic encrypt (~830 lines, inlined)
-aesni_gcm_decrypt.S       # monolithic decrypt (~490 lines, inlined)
+aesni_gcm_encrypt.S          # monolithic encrypt (~830 lines, inlined)
+aesni_gcm_decrypt.S          # monolithic decrypt (~490 lines, inlined)
+aesni_ctr32_6x_core.S        # 6-way AES-128-CTR body (Milestone 5 artefact)
+aesni_gcm_stitched_6x.S      # stitched 6-way CTR+GHASH body (Milestone 7 artefact)
 ```
 
 The `.o` files are produced at build time from these `.S` files (no
 static `.o` lives in the repo).
+
+### Milestone 7 extraction (`aesni_gcm_stitched_6x.S`)
+
+Produced from `.Loop6x__aesni_gcm_encrypt_aesni_ctr32_ghash_6x_0` (lines
+310–616 of `aesni_gcm_encrypt.S`) by
+[`tools/extract_stitched_6x.py`](../../tools/extract_stitched_6x.py).
+The extractor keeps every VEX SIMD instruction on the AES-128 fast path
+(no CTR32 wrap, more-blocks-remain) and drops the interleaved scalar
+plumbing, which only updates *next*-iteration state: the CTR32 wrap
+probe, the end-of-input / loop-count arithmetic, the plaintext
+`movbeq/movq` stash chain into the scratch stack frame,
+`prefetcht0` hints, and the `leaq 96(%rdi/%rsi)` pointer advances.
+Negative `-N(%rsi)` ciphertext-store offsets are rewritten positive
+(`(96-N)(%rsi)`) to compensate for the dropped `leaq 96(%rsi),%rsi`.
+The output is a 167-instruction (~841 byte) straight-line routine
+`aesni_gcm_stitched_6x_core`.
+
+Regenerate with:
+
+```bash
+python3 tools/extract_stitched_6x.py \
+    x86/aes-gcm/aesni_gcm_encrypt.S \
+    x86/aes-gcm/aesni_gcm_stitched_6x.S
+```
