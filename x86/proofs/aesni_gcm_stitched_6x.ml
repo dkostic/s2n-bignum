@@ -13,15 +13,15 @@
 (*                                                                           *)
 (* System V ABI used by the body:                                            *)
 (*                                                                           *)
-(*   %rdi  plaintext pointer       (6 blocks at rdi + {0,16,..,80})          *)
-(*   %rsi  ciphertext pointer      (6 blocks at rsi + {0,16,..,80})          *)
-(*   %rcx  key schedule pointer biased by -128                               *)
-(*                                 (k_i at (16*i - 128)(%rcx))               *)
-(*   %r9   H-table pointer biased by -32                                     *)
-(*                                 (H-power j at (16*j - 32)(%r9))           *)
-(*   %r8   counter-block output    (16 bytes, inc32^6 icb after body)        *)
-(*   %r11  constants pointer       (16(%r11)=reduction-poly selector,        *)
-(*                                  32(%r11)=+1-step constant)               *)
+(*   %iptr  plaintext pointer       (6 blocks at iptr + {0,16,..,80})          *)
+(*   %optr  ciphertext pointer      (6 blocks at optr + {0,16,..,80})          *)
+(*   %kptr  key schedule pointer biased by -128                               *)
+(*                                 (k_i at (16*i - 128)(%kptr))               *)
+(*   %hptr   H-table pointer biased by -32                                     *)
+(*                                 (H-power j at (16*j - 32)(%hptr))           *)
+(*   %cbptr   counter-block output    (16 bytes, inc32^6 icb after body)        *)
+(*   %cptr  constants pointer       (16(%cptr)=reduction-poly selector,        *)
+(*                                  32(%cptr)=+1-step constant)               *)
 (*                                                                           *)
 (* Entry register state (matching the original `.Loop6x` entry fan-out):     *)
 (*                                                                           *)
@@ -36,7 +36,7 @@
 (*   xmm8  = prior-iter GHASH low accumulator                                *)
 (*   xmm4  = prior-iter residue                                              *)
 (*   xmm2  = +1-step constant for counter fan-out                            *)
-(*   stack 16(%rsp)..112(%rsp) = prior-iter ciphertext blocks                *)
+(*   stack 16(%sptr)..112(%sptr) = prior-iter ciphertext blocks                *)
 (*                                                                           *)
 (* Correctness scope.  This milestone is the Stage-A skeleton: it commits    *)
 (* the statement of the register-post and memory-post conditions but uses   *)
@@ -291,23 +291,23 @@ let AESNI_GCM_STITCHED_6X_EXEC = X86_MK_CORE_EXEC_RULE aesni_gcm_stitched_6x_mc;
 (*                                                                           *)
 (* The 166 instructions produce the following observable side effects:       *)
 (*                                                                           *)
-(*   - 6 ciphertext blocks at memory :> bytes128 (rsi + 16*j), j=0..5.       *)
-(*   - 1 new-counter block at memory :> bytes128 r8.                         *)
-(*   - 1 stash block at memory :> bytes128 (rsp + 16) (this is the per-iter  *)
+(*   - 6 ciphertext blocks at memory :> bytes128 (optr + 16*j), j=0..5.       *)
+(*   - 1 new-counter block at memory :> bytes128 cbptr.                         *)
+(*   - 1 stash block at memory :> bytes128 (sptr + 16) (this is the per-iter  *)
 (*     cipherblock-XOR-GHASH value saved for the NEXT iteration's dot).      *)
 (*                                                                           *)
 (* The ABI inputs we expose as preconditions:                                *)
 (*                                                                           *)
 (*   k_i                for i = 0..10     (AES-128 round keys)               *)
 (*   h_j  :int128        for j = 0..5     (6 Htable entries used in-body)    *)
-(*   p_j  :int128        for j = 0..5     (6 plaintext blocks at rdi+16*j)   *)
+(*   p_j  :int128        for j = 0..5     (6 plaintext blocks at iptr+16*j)   *)
 (*   cb0..cb5            (6 pre-shuffled counter blocks c0..c5)              *)
-(*   new_cb = icb + 6    (the +1 step constant at 32(%r11) and its +6        *)
+(*   new_cb = icb + 6    (the +1 step constant at 32(%cptr) and its +6        *)
 (*                        result are derived from the 6 vpaddb chain)        *)
-(*   red  :int128        (reduction-poly operand at 16(%r11))                *)
-(*   plus :int128        (+1-step counter-increment pattern at 32(%r11))     *)
+(*   red  :int128        (reduction-poly operand at 16(%cptr))                *)
+(*   plus :int128        (+1-step counter-increment pattern at 32(%cptr))     *)
 (*   xi8, xi7, xi4       (prior-iter GHASH and residue registers)            *)
-(*   sp16..sp112         (prior-iter stash slots at 16(%rsp)..112(%rsp))     *)
+(*   sp16..sp112         (prior-iter stash slots at 16(%sptr)..112(%sptr))     *)
 (*                                                                           *)
 (* The postcondition uses uninterpreted spec functions                       *)
 (* `aes128_ctr_lane` (from Milestone 5) for the 6 ciphertext blocks.  The    *)
@@ -336,7 +336,7 @@ let stitched_6x_ct_block = new_definition
 (* Correctness.                                                              *)
 
 let AESNI_GCM_STITCHED_6X_CORRECT = prove
- (`!rsi rdi rcx r9 r8 r11 rsp
+ (`!optr iptr kptr hptr cbptr cptr sptr
       p0 p1 p2 p3 p4 p5
       cb0 cb1 cb2 cb3 cb4 cb5
       k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
@@ -346,53 +346,53 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
       red plus
       new_cb new_xi4 new_xi7 new_xi8 new_sp16
       pc.
-      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (rsi,96) /\
-      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (r8,16) /\
+      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (optr,96) /\
+      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (cbptr,16) /\
       nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc)
-        (word_add rsp (word 16),16)
+        (word_add sptr (word 16),16)
       ==> ensures x86
            (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_mc) /\
                 read RIP s = word pc /\
-                read RDI s = rdi /\
-                read RSI s = rsi /\
-                read RCX s = rcx /\
-                read R9  s = r9 /\
-                read R8  s = r8 /\
-                read R11 s = r11 /\
-                read RSP s = rsp /\
-                read (memory :> bytes128 rdi) s = p0 /\
-                read (memory :> bytes128 (word_add rdi (word 16))) s = p1 /\
-                read (memory :> bytes128 (word_add rdi (word 32))) s = p2 /\
-                read (memory :> bytes128 (word_add rdi (word 48))) s = p3 /\
-                read (memory :> bytes128 (word_add rdi (word 64))) s = p4 /\
-                read (memory :> bytes128 (word_add rdi (word 80))) s = p5 /\
-                read (memory :> bytes128 (word_sub rcx (word 128))) s = k0 /\
-                read (memory :> bytes128 (word_sub rcx (word 112))) s = k1 /\
-                read (memory :> bytes128 (word_sub rcx (word 96))) s = k2 /\
-                read (memory :> bytes128 (word_sub rcx (word 80))) s = k3 /\
-                read (memory :> bytes128 (word_sub rcx (word 64))) s = k4 /\
-                read (memory :> bytes128 (word_sub rcx (word 48))) s = k5 /\
-                read (memory :> bytes128 (word_sub rcx (word 32))) s = k6 /\
-                read (memory :> bytes128 (word_sub rcx (word 16))) s = k7 /\
-                read (memory :> bytes128 rcx) s = k8 /\
-                read (memory :> bytes128 (word_add rcx (word 16))) s = k9 /\
-                read (memory :> bytes128 (word_add rcx (word 32))) s = k10 /\
-                read (memory :> bytes128 (word_sub r9 (word 32))) s = h0 /\
-                read (memory :> bytes128 (word_sub r9 (word 16))) s = h1 /\
-                read (memory :> bytes128 (word_add r9 (word 16))) s = h3 /\
-                read (memory :> bytes128 (word_add r9 (word 32))) s = h4 /\
-                read (memory :> bytes128 (word_add r9 (word 64))) s = h6 /\
-                read (memory :> bytes128 (word_add r9 (word 80))) s = h7 /\
-                read (memory :> bytes128 (word_add r11 (word 16))) s = red /\
-                read (memory :> bytes128 (word_add r11 (word 32))) s = plus /\
-                read (memory :> bytes128 r8) s = cb0 /\
-                read (memory :> bytes128 (word_add rsp (word 16))) s = sp16 /\
-                read (memory :> bytes128 (word_add rsp (word 32))) s = sp32 /\
-                read (memory :> bytes128 (word_add rsp (word 48))) s = sp48 /\
-                read (memory :> bytes128 (word_add rsp (word 64))) s = sp64 /\
-                read (memory :> bytes128 (word_add rsp (word 80))) s = sp80 /\
-                read (memory :> bytes128 (word_add rsp (word 96))) s = sp96 /\
-                read (memory :> bytes128 (word_add rsp (word 112))) s = sp112 /\
+                read RDI s = iptr /\
+                read RSI s = optr /\
+                read RCX s = kptr /\
+                read R9  s = hptr /\
+                read R8  s = cbptr /\
+                read R11 s = cptr /\
+                read RSP s = sptr /\
+                read (memory :> bytes128 iptr) s = p0 /\
+                read (memory :> bytes128 (word_add iptr (word 16))) s = p1 /\
+                read (memory :> bytes128 (word_add iptr (word 32))) s = p2 /\
+                read (memory :> bytes128 (word_add iptr (word 48))) s = p3 /\
+                read (memory :> bytes128 (word_add iptr (word 64))) s = p4 /\
+                read (memory :> bytes128 (word_add iptr (word 80))) s = p5 /\
+                read (memory :> bytes128 (word_sub kptr (word 128))) s = k0 /\
+                read (memory :> bytes128 (word_sub kptr (word 112))) s = k1 /\
+                read (memory :> bytes128 (word_sub kptr (word 96))) s = k2 /\
+                read (memory :> bytes128 (word_sub kptr (word 80))) s = k3 /\
+                read (memory :> bytes128 (word_sub kptr (word 64))) s = k4 /\
+                read (memory :> bytes128 (word_sub kptr (word 48))) s = k5 /\
+                read (memory :> bytes128 (word_sub kptr (word 32))) s = k6 /\
+                read (memory :> bytes128 (word_sub kptr (word 16))) s = k7 /\
+                read (memory :> bytes128 kptr) s = k8 /\
+                read (memory :> bytes128 (word_add kptr (word 16))) s = k9 /\
+                read (memory :> bytes128 (word_add kptr (word 32))) s = k10 /\
+                read (memory :> bytes128 (word_sub hptr (word 32))) s = h0 /\
+                read (memory :> bytes128 (word_sub hptr (word 16))) s = h1 /\
+                read (memory :> bytes128 (word_add hptr (word 16))) s = h3 /\
+                read (memory :> bytes128 (word_add hptr (word 32))) s = h4 /\
+                read (memory :> bytes128 (word_add hptr (word 64))) s = h6 /\
+                read (memory :> bytes128 (word_add hptr (word 80))) s = h7 /\
+                read (memory :> bytes128 (word_add cptr (word 16))) s = red /\
+                read (memory :> bytes128 (word_add cptr (word 32))) s = plus /\
+                read (memory :> bytes128 cbptr) s = cb0 /\
+                read (memory :> bytes128 (word_add sptr (word 16))) s = sp16 /\
+                read (memory :> bytes128 (word_add sptr (word 32))) s = sp32 /\
+                read (memory :> bytes128 (word_add sptr (word 48))) s = sp48 /\
+                read (memory :> bytes128 (word_add sptr (word 64))) s = sp64 /\
+                read (memory :> bytes128 (word_add sptr (word 80))) s = sp80 /\
+                read (memory :> bytes128 (word_add sptr (word 96))) s = sp96 /\
+                read (memory :> bytes128 (word_add sptr (word 112))) s = sp112 /\
                 read XMM2  s = plus /\
                 read XMM4  s = xi4 /\
                 read XMM7  s = xi7 /\
@@ -405,26 +405,26 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read XMM14 s = cb5 /\
                 read XMM15 s = k0)
            (\s. read RIP s = word (pc + 0x349) /\
-                read (memory :> bytes128 rsi) s =
+                read (memory :> bytes128 optr) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb0 p0 /\
-                read (memory :> bytes128 (word_add rsi (word 16))) s =
+                read (memory :> bytes128 (word_add optr (word 16))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb1 p1 /\
-                read (memory :> bytes128 (word_add rsi (word 32))) s =
+                read (memory :> bytes128 (word_add optr (word 32))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb2 p2 /\
-                read (memory :> bytes128 (word_add rsi (word 48))) s =
+                read (memory :> bytes128 (word_add optr (word 48))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb3 p3 /\
-                read (memory :> bytes128 (word_add rsi (word 64))) s =
+                read (memory :> bytes128 (word_add optr (word 64))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb4 p4 /\
-                read (memory :> bytes128 (word_add rsi (word 80))) s =
+                read (memory :> bytes128 (word_add optr (word 80))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5 /\
-                read (memory :> bytes128 r8) s = new_cb /\
-                read (memory :> bytes128 (word_add rsp (word 16))) s =
+                read (memory :> bytes128 cbptr) s = new_cb /\
+                read (memory :> bytes128 (word_add sptr (word 16))) s =
                   new_sp16 /\
                 read XMM4 s = new_xi4 /\
                 read XMM7 s = new_xi7 /\
@@ -433,13 +433,13 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
             MAYCHANGE [events] ,,
-            MAYCHANGE [memory :> bytes128 rsi;
-                       memory :> bytes128 (word_add rsi (word 16));
-                       memory :> bytes128 (word_add rsi (word 32));
-                       memory :> bytes128 (word_add rsi (word 48));
-                       memory :> bytes128 (word_add rsi (word 64));
-                       memory :> bytes128 (word_add rsi (word 80));
-                       memory :> bytes128 r8;
-                       memory :> bytes128 (word_add rsp (word 16))])`,
+            MAYCHANGE [memory :> bytes128 optr;
+                       memory :> bytes128 (word_add optr (word 16));
+                       memory :> bytes128 (word_add optr (word 32));
+                       memory :> bytes128 (word_add optr (word 48));
+                       memory :> bytes128 (word_add optr (word 64));
+                       memory :> bytes128 (word_add optr (word 80));
+                       memory :> bytes128 cbptr;
+                       memory :> bytes128 (word_add sptr (word 16))])`,
   (* Stage-A skeleton: defer stepping + closure to Stages B and C. *)
   CHEAT_TAC);;
