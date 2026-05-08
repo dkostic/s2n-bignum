@@ -38,13 +38,13 @@
 (*   xmm2  = +1-step constant for counter fan-out                            *)
 (*   stack 16(%sptr)..112(%sptr) = prior-iter ciphertext blocks                *)
 (*                                                                           *)
-(* Correctness scope.  This milestone is the Stage-A skeleton: it commits    *)
-(* the statement of the register-post and memory-post conditions but uses   *)
-(* `CHEAT_TAC` for the stepping + algebraic residual.  Stage B will drive   *)
-(* the stepper using the refold machinery in                                 *)
-(* `x86/proofs/utils/gcm_simd_simplify.ml`; Stage C will close the 6-block  *)
-(* Karatsuba GF(2) identity using the same idiom as Milestone 6 (six per-   *)
-(* block abbreviations + WORD_EQ_LANES_128_LOCAL + BITBLAST_TAC).            *)
+(* Correctness scope.  Proves the 6 ciphertext-block stores end-to-end:      *)
+(* each store at `bytes128 (optr + 16*j)` equals                              *)
+(*   stitched_6x_ct_block [k0;...;k10] cb_j p_j                               *)
+(*     = word_xor p_j (aes128_ctr_lane_m7 cb_j [k0;...;k10])                  *)
+(* The GHASH and new-counter half of the body (stores at cbptr and sptr+16)  *)
+(* are still schematic — they will be resolved in a later milestone when M7  *)
+(* is composed into the full .Loop6x loop invariant.                         *)
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
@@ -287,7 +287,7 @@ let aesni_gcm_stitched_6x_mc = define_assert_word_list "aesni_gcm_stitched_6x_mc
 let AESNI_GCM_STITCHED_6X_EXEC = X86_MK_CORE_EXEC_RULE aesni_gcm_stitched_6x_mc;;
 
 (* ------------------------------------------------------------------------- *)
-(* Correctness statement (Stage-A skeleton; algebraic body is CHEAT_TAC).    *)
+(* Correctness statement (ciphertext-store half of the body).                *)
 (*                                                                           *)
 (* The 166 instructions produce the following observable side effects:       *)
 (*                                                                           *)
@@ -309,15 +309,13 @@ let AESNI_GCM_STITCHED_6X_EXEC = X86_MK_CORE_EXEC_RULE aesni_gcm_stitched_6x_mc;
 (*   xi8, xi7, xi4       (prior-iter GHASH and residue registers)            *)
 (*   sp16..sp112         (prior-iter stash slots at 16(%sptr)..112(%sptr))     *)
 (*                                                                           *)
-(* The postcondition uses uninterpreted spec functions                       *)
-(* `aes128_ctr_lane` (from Milestone 5) for the 6 ciphertext blocks.  The    *)
-(* GHASH/new-counter halves of the postcondition are stated as existential   *)
-(* writes via a single opaque `stitched_6x_spec` wrapper until Stage C       *)
-(* closes them symbolically in terms of `ghash_polyval_acc` / `inc32_n`.     *)
+(* The postcondition uses the same spec shape as Milestone 5's               *)
+(* `aes128_ctr_lane`: each ciphertext block is the XOR of the plaintext       *)
+(* block with AES-128 applied to the pre-shuffled counter.  The GHASH and    *)
+(* new-counter halves of the body — the stores at cbptr and sptr+16 — are    *)
+(* MAYCHANGE'd but their values are not asserted here; they will be pinned   *)
+(* down when M7 is composed into the .Loop6x loop invariant.                 *)
 (* ------------------------------------------------------------------------- *)
-
-(* The specification wrapper is schematic for now.  Stage C replaces the     *)
-(* existential `@` with the closed-form expressions.                         *)
 
 (* Local copy of Milestone 5's `aes128_ctr_lane` spec helper — inlined here  *)
 (* so this file depends only on `aes_fips197_bridge.ml`, not on the M5 proof *)
@@ -333,6 +331,13 @@ let stitched_6x_ct_block = new_definition
   `stitched_6x_ct_block (ks:int128 list) (c:int128) (p:int128) : int128 =
      word_xor p (aes128_ctr_lane_m7 c ks)`;;
 
+(* Local copy of `WORD_REVERSEFIELDS_XOR_128` from Milestone 5's               *)
+(* `aesni_ctr32_6x_core.ml` so this file does not need to `needs` that proof.  *)
+
+let WORD_REVERSEFIELDS_XOR_128 = WORD_BLAST
+  `!(a:int128) b. word_reversefields 8 (word_xor a b) =
+                  word_xor (word_reversefields 8 a) (word_reversefields 8 b)`;;
+
 (* Correctness.                                                              *)
 
 let AESNI_GCM_STITCHED_6X_CORRECT = prove
@@ -347,8 +352,103 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
       pc.
       nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (optr,96) /\
       nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (cbptr,16) /\
-      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc)
-        (word_add sptr (word 16),16)
+      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (word_add sptr (word 16),16) /\
+      nonoverlapping (optr,96) (iptr,16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 48),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 64),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 80),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551488),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551504),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551520),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551536),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551552),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551568),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551584),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551600),16) /\
+      nonoverlapping (optr,96) (kptr,16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 18446744073709551584),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 18446744073709551600),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 64),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 80),16) /\
+      nonoverlapping (optr,96) (word_add cptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add cptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 48),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 64),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 80),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 96),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 112),16) /\
+      nonoverlapping (cbptr,16) (iptr,16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 48),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 64),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 80),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551488),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551504),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551520),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551536),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551552),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551568),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551584),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551600),16) /\
+      nonoverlapping (cbptr,16) (kptr,16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 18446744073709551584),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 18446744073709551600),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 64),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 80),16) /\
+      nonoverlapping (cbptr,16) (word_add cptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add cptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 48),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 64),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 80),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 96),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 112),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (iptr,16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 48),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 64),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 80),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551488),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551504),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551520),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551536),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551552),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551568),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551584),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551600),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (kptr,16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 18446744073709551584),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 18446744073709551600),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 64),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 80),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add cptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add cptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 48),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 64),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 80),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 96),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 112),16) /\
+      nonoverlapping (optr,96) (cbptr,16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 16),16)
       ==> ensures x86
            (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_mc) /\
                 read RIP s = word pc /\
@@ -406,7 +506,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read YMM4  s = word_zx (xi4:int128) /\
                 read YMM7  s = word_zx (xi7:int128) /\
                 read YMM8  s = word_zx (xi8:int128) /\
-                read YMM9  s = word_zx (word_xor k0 cb0 : int128) /\
+                read YMM9  s = word_zx (word_xor cb0 k0 : int128) /\
                 read YMM10 s = word_zx (cb1:int128) /\
                 read YMM11 s = word_zx (cb2:int128) /\
                 read YMM12 s = word_zx (cb3:int128) /\
@@ -466,11 +566,18 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 `LENGTH aesni_gcm_stitched_6x_mc`] THEN
   DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
   ENSURES_INIT_TAC "s0" THEN
-  (* Drive all 166 steps with the per-step refold pass from Milestone 6.    *)
-  (* Wall time on s2n-x86-aes: ~13 s; the per-step machinery preserves YMM *)
-  (* register state as genvar-abbreviated expressions so the step closure  *)
-  (* never runs into the exponential-blowup failure mode.                   *)
+  (* Drive all 166 steps with the per-step refold pass from Milestone 6.     *)
+  (* The rewrite pass runs BOTH before and after the step so the stepper's   *)
+  (* ASSUMPTION_STATE_UPDATE_TAC sees simplified forms of each existing      *)
+  (* `read YMM_ sN = <expr>` hypothesis; without the pre-step pass the       *)
+  (* ortho-conv silently drops hypotheses whose RHS is a nested word_zx      *)
+  (* tree.  After the step, the same rewrites fold the newly emitted         *)
+  (* hypothesis so it's tractable for the next iteration.                    *)
   MAP_EVERY (fun n ->
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
     X86_STEPS_TAC AESNI_GCM_STITCHED_6X_EXEC [n] THEN
     SIMD_SIMPLIFY_TAC[] THEN
     RULE_ASSUM_TAC(REWRITE_RULE
@@ -480,8 +587,32 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
     GHASH_ABBREV_STEP_TAC)
    (1--166) THEN
   ENSURES_FINAL_STATE_TAC THEN
-  (* 7 residual equalities survive: RIP and 6 ciphertext block stores.       *)
-  (* The RIP lane closes on ASM_REWRITE_TAC; the 6 ciphertext-block lanes   *)
-  (* require the AESENC/AESENCLAST bridges and aes128_cipher unfolding,     *)
-  (* deferred to a future closure commit (mirrors Milestone 6's structure). *)
-  CHEAT_TAC);;
+  ASM_REWRITE_TAC[] THEN
+  (* 6 residual equalities survive, one per lane: the store at              *)
+  (* `bytes128 (optr + 16*j)` equals `stitched_6x_ct_block ks cb_j p_j`.    *)
+  (* Unfold the spec wrappers, then apply the AESENC/AESENCLAST FIPS-197    *)
+  (* bridge and the aes128_cipher unrolling to reduce to a pure word_xor    *)
+  (* identity in the outer p_j and k10 (the inner AES chain is identical    *)
+  (* on both sides).  Mirrors Milestone 5's closure template at             *)
+  (* aesni_ctr32_6x_core.ml:321-336.                                        *)
+  REWRITE_TAC[stitched_6x_ct_block; aes128_ctr_lane_m7] THEN
+  REWRITE_TAC[AESENC_FIPS197_BRIDGE_ALT; AESENCLAST_FIPS197_BRIDGE_ALT] THEN
+  REWRITE_TAC[aes128_cipher; MAP] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV EL_CONV) THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256;
+           ARITH_LE; ARITH_LT; ARITH;
+           WORD_REVERSEFIELDS_REVERSEFIELDS; WORD_XOR_0;
+           WORD_REVERSEFIELDS_XOR_128] THEN
+  REWRITE_TAC[fips197_final_round; WORD_REVERSEFIELDS_XOR_128;
+              WORD_REVERSEFIELDS_REVERSEFIELDS] THEN
+  (* Close the 6 lane equalities.  Each one has the shape                    *)
+  (*   word_xor Z (word_xor k10 p_j) = word_xor p_j (word_xor Z k10)         *)
+  (* where Z is the common inner chain.  WORD_BLAST cannot see through the   *)
+  (* fips197_* constants, so abstract Z to a variable per-conjunct and let   *)
+  (* WORD_BLAST close the residual 128-bit XOR identity.                     *)
+  REPEAT CONJ_TAC THEN
+  (fun (asl,w) ->
+    let lhs,_ = dest_eq w in
+    (SPEC_TAC(lhand lhs,`u:int128`) THEN GEN_TAC THEN
+     CONV_TAC WORD_BLAST) (asl,w)));;
