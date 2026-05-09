@@ -389,7 +389,7 @@ let loopinv = new_definition
     (iter_count:num) (i:num) (s:x86state) <=>
       read RDI s = word_add iptr_base (word (16 * 6 * i)) /\
       read RSI s = word_add optr_base (word (16 * 6 * i)) /\
-      read RDX s = word (6 * (iter_count - i)) /\
+      read RDX s = word_sub (word (6 * iter_count)) (word (6 + 6 * i)) /\
       read RCX s = kptr /\
       read R9  s = hptr /\
       read R8  s = cbptr /\
@@ -482,6 +482,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       (red:int128) (plus:int128)
       (iter_count:num) (pc:num).
       1 <= iter_count /\
+      6 * iter_count < 2 EXP 64 /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc) (optr, 16 * 6 * iter_count) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc) ((cbptr:int64), 16) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc) (word_add sptr (word 16), 16) /\
