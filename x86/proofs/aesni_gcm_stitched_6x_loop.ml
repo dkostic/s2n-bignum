@@ -312,6 +312,37 @@ let BYTES_LOADED_LOOP_IMPLIES_M7_BUTLAST = prove
   FIRST_X_ASSUM(MP_TAC o REWRITE_RULE[AESNI_GCM_STITCHED_6X_LOOP_MC_APPEND]) THEN
   SIMP_TAC[bytes_loaded_append]);;
 
+(* Companion: `BUTLAST loop_mc` also extends over M7's body.  This is the    *)
+(* form X86_BIGSTEP_TAC needs inside the inductive-step proof, because the   *)
+(* outer CORRECT statement uses BUTLAST-of-loop-mc (as X86_MK_CORE_EXEC_RULE *)
+(* strips the trailing ret).                                                 *)
+
+let BUTLAST_LOOP_MC_APPEND = prove
+ (`BUTLAST aesni_gcm_stitched_6x_loop_mc =
+   APPEND (BUTLAST aesni_gcm_stitched_6x_mc)
+          [word 0x48; word 0x83; word 0xea; word 0x06;
+           word 0x72; word 0x24; word 0xc4; word 0x41;
+           word 0x71; word 0xef; word 0xcf; word 0xc5;
+           word 0x79; word 0x6f; word 0xd0; word 0xc5;
+           word 0x79; word 0x6f; word 0xdd; word 0xc5;
+           word 0x79; word 0x6f; word 0xe6; word 0xc5;
+           word 0x79; word 0x6f; word 0xef; word 0xc5;
+           word 0x79; word 0x6f; word 0xf3; word 0xc5;
+           word 0xfa; word 0x6f; word 0x7c; word 0x24;
+           word 0x20; word 0xe9; word 0x8e; word 0xfc;
+           word 0xff; word 0xff]`,
+  REWRITE_TAC[aesni_gcm_stitched_6x_loop_mc; aesni_gcm_stitched_6x_mc;
+              BUTLAST_CLAUSES; APPEND; NOT_CONS_NIL]);;
+
+let BYTES_LOADED_LOOP_BUTLAST_IMPLIES_M7_BUTLAST = prove
+ (`!s pc.
+     bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc)
+     ==> bytes_loaded s (word pc)
+           (BUTLAST aesni_gcm_stitched_6x_mc)`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o REWRITE_RULE[BUTLAST_LOOP_MC_APPEND]) THEN
+  SIMP_TAC[bytes_loaded_append]);;
+
 (* ------------------------------------------------------------------------- *)
 (* Loop invariant.                                                           *)
 (*                                                                           *)
