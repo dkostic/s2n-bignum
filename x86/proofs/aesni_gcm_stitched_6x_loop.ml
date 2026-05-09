@@ -434,6 +434,45 @@ let NONOVERLAPPING_SUBREGION_RIGHT = prove
       ==> nonoverlapping (x, lx) (word_add base (word off), len)`,
   MESON_TAC[NONOVERLAPPING_SUBREGION_LEFT; NONOVERLAPPING_SYM]);;
 
+(* Both-sided sub-region: used when iter_optr and iter_iptr are BOTH sub-  *)
+(* regions of larger bulk regions.                                          *)
+
+let NONOVERLAPPING_SUBREGION_BOTH = prove
+ (`!(base1:int64) (n1:num) (off1:num) (len1:num)
+     (base2:int64) (n2:num) (off2:num) (len2:num).
+      off1 + len1 <= n1 /\ off2 + len2 <= n2 /\
+      nonoverlapping (base1, n1) (base2, n2)
+      ==> nonoverlapping (word_add base1 (word off1), len1)
+                         (word_add base2 (word off2), len2)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC (ISPECL [`base2:int64`; `n2:num`; `off2:num`; `len2:num`;
+                  `word_add (base1:int64) (word off1)`; `len1:num`]
+                 NONOVERLAPPING_SUBREGION_RIGHT) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  MP_TAC (ISPECL [`base1:int64`; `n1:num`; `off1:num`; `len1:num`;
+                  `base2:int64`; `n2:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+  ASM_REWRITE_TAC[]);;
+
+(* Pointer-equality identities used for loopinv_common closure in Case A/B  *)
+(* of M8's inductive step.  Both reduce `word_add (iter_ptr) (word 96)`     *)
+(* (where iter_ptr = word_add x (word (96*i))) to the target form.          *)
+
+let CASEA_PTR_EQ = prove
+ (`!(x:int64) (i:num) (iter_count:num).
+     i + 1 = iter_count
+     ==> word_add (word_add x (word (96 * i))) (word 96) =
+         word_add x (word (96 * iter_count))`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+  AP_TERM_TAC THEN AP_TERM_TAC THEN ASM_ARITH_TAC);;
+
+let CASEB_PTR_EQ = prove
+ (`!(x:int64) (i:num).
+     word_add (word_add x (word (96 * i))) (word 96) =
+     word_add x (word (96 * (i + 1)))`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+  AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
+
 (* ------------------------------------------------------------------------- *)
 (* Loop invariant.                                                           *)
 (*                                                                           *)
@@ -764,19 +803,25 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                via the tail rotations.  loopinv_common plus the
                pre-body existential block both close. *)
     (* Inductive step: with loopinv_common now asserting RDI/RSI advance by
-       96*i per iteration (tracking M7's leaq advances), the prior composition
-       via MP_TAC AESNI_GCM_STITCHED_6X_CORRECT_EXT3 no longer matches
-       s0's state directly — the per-iteration optr becomes
-       `word_add optr (word (96*i))`, and M7's 99-clause nonoverlap
-       antecedent needs to be discharged at this sub-range rather than at
-       the bulk `(optr, 16*6*iter_count)` range.  The helpers
-       NONOVERLAPPING_SUBREGION_{LEFT,RIGHT} + the plan §5 M9 stashed-ct
-       predicate together with the concatenated aes_ctr_stream predicate
-       (sketched in the plan) are the right tools to close this, but the
-       restructuring is large and is deferred to the next session.  For now
-       we leave the inductive-step case with a CHEAT_TAC residual to keep
-       the rest of the file consumable.  Memory:
-       feedback_m8_ptr_advance_blocker.md summarises what remains. *)
+       96*i per iteration (tracking M7's leaq advances), the composition via
+       MP_TAC AESNI_GCM_STITCHED_6X_CORRECT_EXT3 must be SPECL'd at the
+       per-iteration pointers iter_optr := word_add optr (word (96*i)) and
+       iter_iptr := word_add iptr (word (96*i)).  The 99-clause nonoverlap
+       antecedent splits into 99 individual goals via REPEAT CONJ_TAC; each
+       closes with NONOVERLAPPING_TAC once per-iter bulk nonoverlaps have
+       been added as named hypotheses via SUBGOAL_THEN + the three helpers
+       NONOVERLAPPING_SUBREGION_LEFT/RIGHT/BOTH (defined above).  The
+       per-iter derivations needed: 27 (iter_optr,96) X nonoverlaps
+       (readables: 11 kptr entries, 6 hptr, 2 cptr, 6 sptr, cbptr, sp+16),
+       1 (iter_optr,96) (iter_iptr,96) (via SUBREGION_BOTH), 2
+       (cbptr|sp+16, 16) (iter_iptr, 96), 1 (pc,LENGTH mc) (iter_optr,96),
+       and 6 (pc,892) (iter_optr+k,16) for the BIGSTEP program-mod check.
+       Probed 2026-05-09 session 7: antecedent discharge works end-to-end
+       and BIGSTEP succeeds, but Case A closure stalls on ASM_ARITH_TAC
+       over 180+ hypotheses.  CASEA_PTR_EQ / CASEB_PTR_EQ (defined above)
+       should close Case A/B ptr-equality subgoals once the MAYCHANGE
+       frame-subsumption residual is navigated.  Memory:
+       feedback_m8_ptr_advance_blocker.md summarises what remains.  *)
     CHEAT_TAC;
 
     (* Exit case — at pc+0x37b we have loopinv iter_count; simply discharge
