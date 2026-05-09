@@ -344,6 +344,40 @@ let BYTES_LOADED_LOOP_BUTLAST_IMPLIES_M7_BUTLAST = prove
   SIMP_TAC[bytes_loaded_append]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Equivalence for the CF flag set by the `subq $6, %rdx` tail instruction.  *)
+(*                                                                           *)
+(* At loop-top iteration i, rdx = word_sub (word (6*iter_count))             *)
+(* (word (6 + 6*i)).  After `subq $6, %rdx`, the instruction's CF = 1 iff    *)
+(* the pre-subtraction value was < 6 (unsigned), i.e., the val of the rdx    *)
+(* word is < 6.  Under the bounds `i < iter_count` and `6 * iter_count <     *)
+(* 2^64`, this val is exactly `6 * (iter_count - 1 - i)`, which is < 6 iff   *)
+(* i + 1 = iter_count.  The `jc` at pc+0x34c branches to pc+0x372 when CF=1, *)
+(* which matches the ENSURES_WHILE_UP2 step's expected RIP at the last      *)
+(* iteration.                                                                *)
+(* ------------------------------------------------------------------------- *)
+
+let LOOP_CF_EQUIV = prove
+ (`!(i:num) (iter_count:num).
+     i < iter_count /\ 6 * iter_count < 2 EXP 64
+     ==> (val (word_sub (word (6 * iter_count)) (word (6 + 6 * i)):int64) < 6
+          <=> i + 1 = iter_count)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[VAL_WORD_SUB; VAL_WORD; DIMINDEX_64] THEN
+  SUBGOAL_THEN `(6 * iter_count) MOD 2 EXP 64 = 6 * iter_count`
+   SUBST1_TAC THENL [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(6 + 6 * i) MOD 2 EXP 64 = 6 + 6 * i`
+   SUBST1_TAC THENL [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `6 * iter_count + 2 EXP 64 - (6 + 6 * i) =
+                (6 * iter_count - (6 + 6 * i)) + 2 EXP 64`
+   SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  ONCE_REWRITE_TAC[GSYM MOD_ADD_MOD] THEN
+  REWRITE_TAC[MOD_REFL; ADD_CLAUSES; MOD_MOD_REFL] THEN
+  SUBGOAL_THEN `(6 * iter_count - (6 + 6 * i)) MOD 2 EXP 64 =
+                6 * iter_count - (6 + 6 * i)`
+   SUBST1_TAC THENL [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_ARITH_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Loop invariant.                                                           *)
 (*                                                                           *)
 (* At iteration i (0..k), with k = number of 6-block iterations the caller   *)
