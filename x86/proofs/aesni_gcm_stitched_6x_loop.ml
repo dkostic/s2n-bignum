@@ -431,3 +431,44 @@ let loopinv = new_definition
 (* expressions in ghash_polyval_acc / inc32_chain.                          *)
 (* ========================================================================= *)
 
+let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
+ (`!(optr:int64) (iptr:int64) (kptr:int64) (hptr:int64)
+      (cbptr:int64) (cptr:int64) (sptr:int64)
+      (k0:int128) (k1:int128) (k2:int128) (k3:int128) (k4:int128)
+      (k5:int128) (k6:int128) (k7:int128) (k8:int128)
+      (k9:int128) (k10:int128)
+      (h0:int128) (h1:int128) (h3:int128) (h4:int128) (h6:int128) (h7:int128)
+      (sp32:int128) (sp48:int128) (sp64:int128) (sp80:int128)
+      (sp96:int128) (sp112:int128)
+      (red:int128) (plus:int128)
+      (iter_count:num) (returnaddress:int64) (pc:num).
+      1 <= iter_count /\
+      nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
+                     (optr,16 * 6 * iter_count) /\
+      nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
+                     (cbptr,16) /\
+      nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
+                     (word_add sptr (word 16),16) /\
+      nonoverlapping (sptr,8)
+                     (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
+      ==> ensures x86
+           (\s. bytes_loaded s (word pc) aesni_gcm_stitched_6x_loop_mc /\
+                read RIP s = word pc /\
+                read (memory :> bytes64 sptr) s = returnaddress /\
+                loopinv iptr optr kptr hptr cbptr cptr sptr
+                        k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+                        h0 h1 h3 h4 h6 h7
+                        sp32 sp48 sp64 sp80 sp96 sp112
+                        red plus
+                        iter_count 0 s)
+           (\s. read RIP s = returnaddress)
+           (MAYCHANGE [RIP; RSP; RDI; RSI; RDX] ,,
+            MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+                       ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+            MAYCHANGE SOME_FLAGS ,,
+            MAYCHANGE [events] ,,
+            MAYCHANGE [memory :> bytes (optr,16 * 6 * iter_count);
+                       memory :> bytes ((cbptr:int64),16);
+                       memory :> bytes (word_add sptr (word 16),16)])`,
+  CHEAT_TAC);;
+
