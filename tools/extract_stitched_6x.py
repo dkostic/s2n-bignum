@@ -6,23 +6,24 @@
 branch) of `aesni_gcm_encrypt.S` into a straight-line, VEX-only standalone
 routine suitable for Milestone 7's register-only proof.
 
-The filtered output retains every SIMD/VEX instruction on the fast path and
-every memory load/store that participates in the cryptographic body.  The
-interleaved scalar plumbing is dropped because it only updates loop
-state that does not affect the ciphertext/ghash/counter outputs of the
-current iteration:
+The filtered output retains every SIMD/VEX instruction on the fast path,
+every memory load/store that participates in the cryptographic body, and
+the two pointer-advance `leaq 96(%rdi),%rdi` / `leaq 96(%rsi),%rsi`
+instructions that carry state across iterations of the loop wrapper.  The
+remaining interleaved scalar plumbing is dropped because it only updates
+loop state that does not affect the ciphertext/ghash/counter outputs of
+the current iteration:
 
   * `addl $100663296,%ebx ; jc .Lhandle_ctr32`  — CTR32 wrap probe, not
     taken in the fast path.
-  * `xorq/cmpq/setnc/negq/andq/leaq`  — end-of-input probe, setting up
-    `%r14` for NEXT iteration's plaintext-stash address.
+  * `xorq/cmpq/setnc/negq/andq`, scalar `leaq (%r14,%r12,1),%r14`  —
+    end-of-input probe, setting up `%r14` for NEXT iteration's
+    plaintext-stash address.
   * `movbeq N(%r14),%r1[23] ; movq %r1[23],M(%rsp)` pairs — stash the
     NEXT iteration's plaintext blocks into a scratch stack frame for
     that iteration's GHASH accumulator, not consumed by the current
     iteration's outputs.
   * `prefetcht0 N(%rdi)`  — memory hints.
-  * `leaq 96(%rdi),%rdi ; leaq 96(%rsi),%rsi`  — advance input/output
-    pointers for the NEXT iteration.
   * `addq $0x60,%rax ; subq $0x6,%rdx ; jc .L6x_done`  — loop-count
     update (we take the fall-through, 'more blocks remain').
   * `cmpl $11,%r10d ; jb .Lenc_tail`  — AES-128 ↦ take the branch to
@@ -36,9 +37,11 @@ current iteration:
 
 Output addressing:
 
-  * `-N(%rsi)` stores at lines 603..613 are rewritten to `(96-N)(%rsi)`
-    to compensate for dropping the leaq 96(%rsi),%rsi pointer advance.
-    The caller passes %rsi pointing at the output buffer origin.
+  * `leaq 96(%rdi),%rdi` (line 583) and `leaq 96(%rsi),%rsi` (line 590)
+    are preserved so that RDI and RSI advance by 96 across each
+    wrapper iteration.  The `-N(%rsi)` stores at lines 603..613 are
+    emitted verbatim; they resolve correctly because the preceding
+    `leaq` has already advanced %rsi by 96.
 
 The script emits the extracted body to stdout, annotated with
 source-line comments to preserve traceability.
@@ -69,15 +72,29 @@ REGIONS = [
 
 # Scalar mnemonics on the fast path that do not contribute to the
 # cryptographic body.  Matched at the start of the instruction after
-# leading whitespace.
+# leading whitespace.  `leaq` is handled separately by LEAQ_KEEP below
+# so that the two pointer-advance `leaq 96(%rdi),%rdi` and
+# `leaq 96(%rsi),%rsi` are preserved while other leaqs (e.g. the
+# r14 stash-pointer advance at line 367) are dropped.
 SCALAR_DROP = {
     "addl", "addq", "andq", "cmpl", "cmpq", "decl", "je", "jb", "jc",
-    "jmp", "jnz", "leaq", "movbeq", "movq", "negq", "prefetcht0",
+    "jmp", "jnz", "movbeq", "movq", "negq", "prefetcht0",
     "setnc", "subq", "xorq",
 }
 
-# Instructions to include even though they touch non-XMM state or address
-# memory; they are all VEX-encoded SIMD ops.
+# Pointer-advance leaqs to preserve.  Matched against the instruction with
+# all whitespace collapsed to single spaces; keeps RDI/RSI advances by 96.
+LEAQ_KEEP = {
+    "leaq 96(%rdi),%rdi",
+    "leaq 96(%rsi),%rsi",
+}
+
+
+def _normalize(insn: str) -> str:
+    """Collapse whitespace runs to single spaces for LEAQ_KEEP matching."""
+    return " ".join(insn.split())
+
+
 def is_simd_or_branch_label(line: str) -> bool:
     t = line.strip()
     if not t or t.startswith("//") or t.startswith("#") or t.startswith("/*"):
@@ -85,20 +102,9 @@ def is_simd_or_branch_label(line: str) -> bool:
     if t.endswith(":"):
         return False
     first = t.split(None, 1)[0]
+    if first == "leaq":
+        return _normalize(t) in LEAQ_KEEP
     return first not in SCALAR_DROP
-
-
-RSI_STORE_RE = re.compile(r"(-\d+)\(%rsi\)")
-
-def rewrite_rsi_store(insn: str) -> str:
-    """Rewrite negative `-N(%rsi)` to positive `(96-N)(%rsi)` for the
-    fast-path ciphertext stores, because we dropped `leaq 96(%rsi),%rsi`."""
-    def sub(m):
-        off = int(m.group(1))
-        # Original code used -96 -> offset 0, -80 -> 16, ..., -16 -> 80.
-        new = 96 + off
-        return f"{new}(%rsi)"
-    return RSI_STORE_RE.sub(sub, insn)
 
 
 def main(argv):
@@ -157,7 +163,8 @@ def main(argv):
                 continue
             insn = line.strip()
             if kind == "ciphertext-stores":
-                insn = rewrite_rsi_store(insn)
+                # The `leaq 96(%rsi),%rsi` at line 590 has already advanced
+                # rsi, so the original `-N(%rsi)` offsets resolve correctly.
                 # Of the 12 instructions at lines 603-614, keep only the six
                 # vmovdqu stores (603,605,607,609,611,613).  The six in-between
                 # vpxor/vmovdqa at 604,606,608,610,612,614 set up the NEXT

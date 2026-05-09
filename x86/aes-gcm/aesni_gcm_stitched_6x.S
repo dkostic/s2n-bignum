@@ -194,8 +194,10 @@ aesni_gcm_stitched_6x_core:
         vmovdqu	32(%r11),%xmm2
         vaesenclast	%xmm0,%xmm10,%xmm10
         vpaddb	%xmm2,%xmm1,%xmm0
+        leaq	96(%rdi),%rdi
         vaesenclast	%xmm5,%xmm11,%xmm11
         vpaddb	%xmm2,%xmm0,%xmm5
+        leaq	96(%rsi),%rsi
         vmovdqu	0-128(%rcx),%xmm15
         vaesenclast	%xmm6,%xmm12,%xmm12
         vpaddb	%xmm2,%xmm5,%xmm6
@@ -205,12 +207,12 @@ aesni_gcm_stitched_6x_core:
         vpaddb	%xmm2,%xmm7,%xmm3
 
         // --- region ciphertext-stores : source lines 603-613 ---
-        vmovdqu	%xmm9,0(%rsi)
-        vmovdqu	%xmm10,16(%rsi)
-        vmovdqu	%xmm11,32(%rsi)
-        vmovdqu	%xmm12,48(%rsi)
-        vmovdqu	%xmm13,64(%rsi)
-        vmovdqu	%xmm14,80(%rsi)
+        vmovdqu	%xmm9,-96(%rsi)
+        vmovdqu	%xmm10,-80(%rsi)
+        vmovdqu	%xmm11,-64(%rsi)
+        vmovdqu	%xmm12,-48(%rsi)
+        vmovdqu	%xmm13,-32(%rsi)
+        vmovdqu	%xmm14,-16(%rsi)
 
         ret
         .size   aesni_gcm_stitched_6x_core,.-aesni_gcm_stitched_6x_core

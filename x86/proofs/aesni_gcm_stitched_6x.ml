@@ -56,8 +56,8 @@ needs "common/karatsuba_pmul.ml";;   (* PMUL_KARATSUBA                     *)
 (* ------------------------------------------------------------------------- *)
 (* Machine code.                                                             *)
 (*                                                                           *)
-(* 166 steppable VEX instructions + ret, 841 bytes total (pre-ret is at      *)
-(* pc + 0x348; RIP after ret is pc + 0x348).  Instruction mix:               *)
+(* 168 steppable VEX+scalar instructions + ret, 850 bytes total (pre-ret is  *)
+(* at pc + 0x351; RIP after ret is pc + 0x351).  Instruction mix:            *)
 (*                                                                           *)
 (*   54  vaesenc        (9 AES rounds, 6 lanes)                              *)
 (*    6  vaesenclast    (round 10, 6 lanes)                                  *)
@@ -68,6 +68,7 @@ needs "common/karatsuba_pmul.ml";;   (* PMUL_KARATSUBA                     *)
 (*    6  vpaddb         (6-lane counter increment for next iter)             *)
 (*    2  vpalignr       (mid-lane carry)                                     *)
 (*    1  vpsrldq / 1 vpslldq (reduction byte shifts)                         *)
+(*    2  leaq           (%rdi and %rsi pointer advance by 96)                *)
 (* ------------------------------------------------------------------------- *)
 
 let aesni_gcm_stitched_6x_mc = define_assert_word_list "aesni_gcm_stitched_6x_mc"
@@ -199,19 +200,20 @@ let aesni_gcm_stitched_6x_mc = define_assert_word_list "aesni_gcm_stitched_6x_mc
    word 0xc4; word 0x62; word 0x31; word 0xdd; word 0xca; word 0xc4;
    word 0xc1; word 0x7a; word 0x6f; word 0x53; word 0x20; word 0xc4;
    word 0x62; word 0x29; word 0xdd; word 0xd0; word 0xc5; word 0xf1;
-   word 0xfc; word 0xc2; word 0xc4; word 0x62; word 0x21; word 0xdd;
-   word 0xdd; word 0xc5; word 0xf9; word 0xfc; word 0xea; word 0xc5;
-   word 0x7a; word 0x6f; word 0x79; word 0x80; word 0xc4; word 0x62;
-   word 0x19; word 0xdd; word 0xe6; word 0xc5; word 0xd1; word 0xfc;
-   word 0xf2; word 0xc4; word 0x62; word 0x11; word 0xdd; word 0xef;
-   word 0xc5; word 0xc9; word 0xfc; word 0xfa; word 0xc4; word 0x62;
-   word 0x09; word 0xdd; word 0xf3; word 0xc5; word 0xc1; word 0xfc;
-   word 0xda; word 0xc5; word 0x7a; word 0x7f; word 0x0e; word 0xc5;
-   word 0x7a; word 0x7f; word 0x56; word 0x10; word 0xc5; word 0x7a;
-   word 0x7f; word 0x5e; word 0x20; word 0xc5; word 0x7a; word 0x7f;
-   word 0x66; word 0x30; word 0xc5; word 0x7a; word 0x7f; word 0x6e;
-   word 0x40; word 0xc5; word 0x7a; word 0x7f; word 0x76; word 0x50;
-   word 0xc3]:byte list`
+   word 0xfc; word 0xc2; word 0x48; word 0x8d; word 0x7f; word 0x60;
+   word 0xc4; word 0x62; word 0x21; word 0xdd; word 0xdd; word 0xc5;
+   word 0xf9; word 0xfc; word 0xea; word 0x48; word 0x8d; word 0x76;
+   word 0x60; word 0xc5; word 0x7a; word 0x6f; word 0x79; word 0x80;
+   word 0xc4; word 0x62; word 0x19; word 0xdd; word 0xe6; word 0xc5;
+   word 0xd1; word 0xfc; word 0xf2; word 0xc4; word 0x62; word 0x11;
+   word 0xdd; word 0xef; word 0xc5; word 0xc9; word 0xfc; word 0xfa;
+   word 0xc4; word 0x62; word 0x09; word 0xdd; word 0xf3; word 0xc5;
+   word 0xc1; word 0xfc; word 0xda; word 0xc5; word 0x7a; word 0x7f;
+   word 0x4e; word 0xa0; word 0xc5; word 0x7a; word 0x7f; word 0x56;
+   word 0xb0; word 0xc5; word 0x7a; word 0x7f; word 0x5e; word 0xc0;
+   word 0xc5; word 0x7a; word 0x7f; word 0x66; word 0xd0; word 0xc5;
+   word 0x7a; word 0x7f; word 0x6e; word 0xe0; word 0xc5; word 0x7a;
+   word 0x7f; word 0x76; word 0xf0; word 0xc3]:byte list`
   [0xc4; 0xc1; 0x7a; 0x6f; 0x59; 0xe0; 0xc5; 0x89; 0xfc; 0xca; 0xc4; 0x41;
    0x29; 0xef; 0xd7; 0xc4; 0x41; 0x21; 0xef; 0xdf; 0xc4; 0xc1; 0x7a; 0x7f;
    0x08; 0xc4; 0xe3; 0x41; 0x44; 0xeb; 0x10; 0xc4; 0x41; 0x19; 0xef; 0xe7;
@@ -276,13 +278,13 @@ let aesni_gcm_stitched_6x_mc = define_assert_word_list "aesni_gcm_stitched_6x_mc
    0x09; 0xdc; 0xf7; 0xc5; 0xf1; 0xef; 0x7f; 0x40; 0xc5; 0xf1; 0xef; 0x5f;
    0x50; 0xc4; 0xc1; 0x7a; 0x6f; 0x08; 0xc4; 0x62; 0x31; 0xdd; 0xca; 0xc4;
    0xc1; 0x7a; 0x6f; 0x53; 0x20; 0xc4; 0x62; 0x29; 0xdd; 0xd0; 0xc5; 0xf1;
-   0xfc; 0xc2; 0xc4; 0x62; 0x21; 0xdd; 0xdd; 0xc5; 0xf9; 0xfc; 0xea; 0xc5;
-   0x7a; 0x6f; 0x79; 0x80; 0xc4; 0x62; 0x19; 0xdd; 0xe6; 0xc5; 0xd1; 0xfc;
-   0xf2; 0xc4; 0x62; 0x11; 0xdd; 0xef; 0xc5; 0xc9; 0xfc; 0xfa; 0xc4; 0x62;
-   0x09; 0xdd; 0xf3; 0xc5; 0xc1; 0xfc; 0xda; 0xc5; 0x7a; 0x7f; 0x0e; 0xc5;
-   0x7a; 0x7f; 0x56; 0x10; 0xc5; 0x7a; 0x7f; 0x5e; 0x20; 0xc5; 0x7a; 0x7f;
-   0x66; 0x30; 0xc5; 0x7a; 0x7f; 0x6e; 0x40; 0xc5; 0x7a; 0x7f; 0x76; 0x50;
-   0xc3];;
+   0xfc; 0xc2; 0x48; 0x8d; 0x7f; 0x60; 0xc4; 0x62; 0x21; 0xdd; 0xdd; 0xc5;
+   0xf9; 0xfc; 0xea; 0x48; 0x8d; 0x76; 0x60; 0xc5; 0x7a; 0x6f; 0x79; 0x80;
+   0xc4; 0x62; 0x19; 0xdd; 0xe6; 0xc5; 0xd1; 0xfc; 0xf2; 0xc4; 0x62; 0x11;
+   0xdd; 0xef; 0xc5; 0xc9; 0xfc; 0xfa; 0xc4; 0x62; 0x09; 0xdd; 0xf3; 0xc5;
+   0xc1; 0xfc; 0xda; 0xc5; 0x7a; 0x7f; 0x4e; 0xa0; 0xc5; 0x7a; 0x7f; 0x56;
+   0xb0; 0xc5; 0x7a; 0x7f; 0x5e; 0xc0; 0xc5; 0x7a; 0x7f; 0x66; 0xd0; 0xc5;
+   0x7a; 0x7f; 0x6e; 0xe0; 0xc5; 0x7a; 0x7f; 0x76; 0xf0; 0xc3];;
 
 let AESNI_GCM_STITCHED_6X_EXEC = X86_MK_CORE_EXEC_RULE aesni_gcm_stitched_6x_mc;;
 
@@ -513,7 +515,9 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read YMM13 s = word_zx (cb4:int128) /\
                 read YMM14 s = word_zx (cb5:int128) /\
                 read YMM15 s = word_zx (k0:int128))
-           (\s. read RIP s = word (pc + 0x348) /\
+           (\s. read RIP s = word (pc + 0x351) /\
+                read RDI s = word_add iptr (word 96) /\
+                read RSI s = word_add optr (word 96) /\
                 read (memory :> bytes128 optr) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb0 p0 /\
@@ -532,7 +536,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 read (memory :> bytes128 (word_add optr (word 80))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5)
-           (MAYCHANGE [RIP] ,,
+           (MAYCHANGE [RIP; RDI; RSI] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
             MAYCHANGE [events] ,,
@@ -566,7 +570,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
                 `LENGTH aesni_gcm_stitched_6x_mc`] THEN
   DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
   ENSURES_INIT_TAC "s0" THEN
-  (* Drive all 166 steps with the per-step refold pass from Milestone 6.     *)
+  (* Drive all 168 steps with the per-step refold pass from Milestone 6.     *)
   (* The rewrite pass runs BOTH before and after the step so the stepper's   *)
   (* ASSUMPTION_STATE_UPDATE_TAC sees simplified forms of each existing      *)
   (* `read YMM_ sN = <expr>` hypothesis; without the pre-step pass the       *)
@@ -585,7 +589,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT = prove
       VPALIGNR_8_SWAP_128_VIA_ZX_256;
       WORD_ZX_ZX_128]) THEN
     GHASH_ABBREV_STEP_TAC)
-   (1--166) THEN
+   (1--168) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   (* 6 residual equalities survive, one per lane: the store at              *)
@@ -799,7 +803,9 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT = prove
                 read YMM13 s = word_zx (cb4:int128) /\
                 read YMM14 s = word_zx (cb5:int128) /\
                 read YMM15 s = word_zx (k0:int128))
-           (\s. read RIP s = word (pc + 0x348) /\
+           (\s. read RIP s = word (pc + 0x351) /\
+                read RDI s = word_add iptr (word 96) /\
+                read RSI s = word_add optr (word 96) /\
                 read YMM2  s = word_zx (plus:int128) /\
                 read YMM15 s = word_zx (k0:int128) /\
                 read (memory :> bytes128 optr) s =
@@ -820,7 +826,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT = prove
                 read (memory :> bytes128 (word_add optr (word 80))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5)
-           (MAYCHANGE [RIP] ,,
+           (MAYCHANGE [RIP; RDI; RSI] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
             MAYCHANGE [events] ,,
@@ -866,7 +872,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT = prove
       VPALIGNR_8_SWAP_128_VIA_ZX_256;
       WORD_ZX_ZX_128]) THEN
     GHASH_ABBREV_STEP_TAC)
-   (1--166) THEN
+   (1--168) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   REWRITE_TAC[stitched_6x_ct_block; aes128_ctr_lane_m7] THEN
@@ -1077,7 +1083,9 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT3 = prove
                 read YMM13 s = word_zx (cb4:int128) /\
                 read YMM14 s = word_zx (cb5:int128) /\
                 read YMM15 s = word_zx (k0:int128))
-           (\s. read RIP s = word (pc + 0x348) /\
+           (\s. read RIP s = word (pc + 0x351) /\
+                read RDI s = word_add iptr (word 96) /\
+                read RSI s = word_add optr (word 96) /\
                 read YMM2  s = word_zx (plus:int128) /\
                 read YMM15 s = word_zx (k0:int128) /\
                 (?(new_cb0:int128) (c0_out:int128) (c5_out:int128)
@@ -1110,7 +1118,7 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT3 = prove
                 read (memory :> bytes128 (word_add optr (word 80))) s =
                   stitched_6x_ct_block
                     [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5)
-           (MAYCHANGE [RIP] ,,
+           (MAYCHANGE [RIP; RDI; RSI] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
             MAYCHANGE [events] ,,
@@ -1156,25 +1164,25 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT3 = prove
       VPALIGNR_8_SWAP_128_VIA_ZX_256;
       WORD_ZX_ZX_128]) THEN
     GHASH_ABBREV_STEP_TAC)
-   (1--166) THEN
+   (1--168) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   CONJ_TAC THENL [
     (* Existential block — 8 witnesses.  For cbptr-mem and YMM1, pick the
-       value at s166 directly.  For bare-metavar YMM_X, pick
-       `word_subword (read YMM_X s166) (0,128)` — the low 128 bits.  After
+       value at s168 directly.  For bare-metavar YMM_X, pick
+       `word_subword (read YMM_X s168) (0,128)` — the low 128 bits.  After
        ASM_REWRITE folds read-YMM hypotheses, residuals have shape
          `_metaX = word_zx (word_subword _metaX (0,128))`
        which closes via WORD_SUBWORD_ZX_EQ + the asl hyp
        `word_zx <inner> = _metaX`. *)
-    EXISTS_TAC `read (memory :> bytes128 cbptr) s166 :int128` THEN
-    EXISTS_TAC `word_subword (read YMM0 s166 :int256) (0,128) :int128` THEN
-    EXISTS_TAC `word_subword (read YMM5 s166 :int256) (0,128) :int128` THEN
-    EXISTS_TAC `word_subword (read YMM6 s166 :int256) (0,128) :int128` THEN
-    EXISTS_TAC `word_subword (read YMM7 s166 :int256) (0,128) :int128` THEN
-    EXISTS_TAC `word_subword (read YMM3 s166 :int256) (0,128) :int128` THEN
-    EXISTS_TAC `word_subword (read YMM4 s166 :int256) (0,128) :int128` THEN
-    EXISTS_TAC `word_subword (read YMM8 s166 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `read (memory :> bytes128 cbptr) s168 :int128` THEN
+    EXISTS_TAC `word_subword (read YMM0 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM5 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM6 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM7 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM3 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM4 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM8 s168 :int256) (0,128) :int128` THEN
     ASM_REWRITE_TAC[] THEN
     REPEAT CONJ_TAC THEN
     MATCH_MP_TAC WORD_SUBWORD_ZX_EQ THEN
