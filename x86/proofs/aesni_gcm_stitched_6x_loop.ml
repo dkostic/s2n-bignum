@@ -439,8 +439,23 @@ let LOOP_CF_EQUIV = prove
 (* the precise expression in terms of ghash_polyval_acc + inc32 chains.      *)
 (* ------------------------------------------------------------------------- *)
 
-let loopinv = new_definition
- `loopinv
+(* The invariant has two forms:
+   - `loop-top form` (for i = 0..iter_count-1, state at pc+0 about to run body).
+     Pins YMM4/7/8/9..14 via the cb0..cb5/xi4/xi7/xi8 existentials with the
+     strong coupling `YMM9 = word_zx (word_xor cb0 k0)` and
+     `cbptr-mem = cb0`, needed to discharge M7's precondition.
+   - `exit form` (for i = iter_count, state at pc+882 after jc taken in the
+     last iteration).  Pins only YMM2/YMM15 via memory invariants;
+     YMM4/7/8/9..14 and cbptr/sptr+16 are arbitrary post-body.
+
+   The two forms differ in the YMM existential block: loop-top requires the
+   pre-body coupling, exit form requires nothing.  This matches the actual
+   control flow: at loop-top, the 7-insn tail rotation has just run and set
+   up YMM9..14 for the next iteration's counter fan-out; at exit, jc skipped
+   the rotation so YMM9..14 hold the last iteration's ciphertext outputs. *)
+
+let loopinv_common = new_definition
+ `loopinv_common
     (iptr_base:int64) (optr_base:int64) (kptr:int64) (hptr:int64)
     (cbptr:int64) (cptr:int64) (sptr:int64)
     (k0:int128) (k1:int128) (k2:int128) (k3:int128) (k4:int128)
@@ -494,21 +509,40 @@ let loopinv = new_definition
       read (memory :> bytes128 (word_add sptr (word 96))) s = sp96 /\
       read (memory :> bytes128 (word_add sptr (word 112))) s = sp112 /\
       read YMM2  s = (word_zx (plus:int128) : int256) /\
-      read YMM15 s = (word_zx (k0:int128) : int256) /\
-      (?(cb0:int128) (cb1:int128) (cb2:int128) (cb3:int128)
-        (cb4:int128) (cb5:int128)
-        (xi4:int128) (xi7:int128) (xi8:int128) (sp16:int128).
-         read YMM4  s = (word_zx xi4 : int256) /\
-         read YMM7  s = (word_zx xi7 : int256) /\
-         read YMM8  s = (word_zx xi8 : int256) /\
-         read YMM9  s = (word_zx (word_xor cb0 k0 : int128) : int256) /\
-         read YMM10 s = (word_zx cb1 : int256) /\
-         read YMM11 s = (word_zx cb2 : int256) /\
-         read YMM12 s = (word_zx cb3 : int256) /\
-         read YMM13 s = (word_zx cb4 : int256) /\
-         read YMM14 s = (word_zx cb5 : int256) /\
-         read (memory :> bytes128 cbptr) s = cb0 /\
-         read (memory :> bytes128 (word_add sptr (word 16))) s = sp16)`;;
+      read YMM15 s = (word_zx (k0:int128) : int256)`;;
+
+let loopinv = new_definition
+ `loopinv
+    (iptr_base:int64) (optr_base:int64) (kptr:int64) (hptr:int64)
+    (cbptr:int64) (cptr:int64) (sptr:int64)
+    (k0:int128) (k1:int128) (k2:int128) (k3:int128) (k4:int128)
+    (k5:int128) (k6:int128) (k7:int128) (k8:int128) (k9:int128) (k10:int128)
+    (h0:int128) (h1:int128) (h3:int128) (h4:int128) (h6:int128) (h7:int128)
+    (sp32:int128) (sp48:int128) (sp64:int128) (sp80:int128)
+    (sp96:int128) (sp112:int128)
+    (red:int128) (plus:int128)
+    (iter_count:num) (i:num) (s:x86state) <=>
+      loopinv_common iptr_base optr_base kptr hptr cbptr cptr sptr
+                     k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+                     h0 h1 h3 h4 h6 h7
+                     sp32 sp48 sp64 sp80 sp96 sp112
+                     red plus
+                     iter_count i s /\
+      (i < iter_count
+       ==> (?(cb0:int128) (cb1:int128) (cb2:int128) (cb3:int128)
+             (cb4:int128) (cb5:int128)
+             (xi4:int128) (xi7:int128) (xi8:int128) (sp16:int128).
+              read YMM4  s = (word_zx xi4 : int256) /\
+              read YMM7  s = (word_zx xi7 : int256) /\
+              read YMM8  s = (word_zx xi8 : int256) /\
+              read YMM9  s = (word_zx (word_xor cb0 k0 : int128) : int256) /\
+              read YMM10 s = (word_zx cb1 : int256) /\
+              read YMM11 s = (word_zx cb2 : int256) /\
+              read YMM12 s = (word_zx cb3 : int256) /\
+              read YMM13 s = (word_zx cb4 : int256) /\
+              read YMM14 s = (word_zx cb5 : int256) /\
+              read (memory :> bytes128 cbptr) s = cb0 /\
+              read (memory :> bytes128 (word_add sptr (word 16))) s = sp16))`;;
 
 (* ========================================================================= *)
 (* Correctness statement for the bulk-loop wrapper.                          *)
@@ -674,50 +708,115 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
     ASM_REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0];
 
     (* Inductive step — M7 via X86_BIGSTEP_TAC, then subq+jc + case split,
-       then reconstitute loopinv (i+1).  Phase structure:
+       then reconstitute loopinv (i+1).  Phases (a)-(f):
 
-         (a) X_GEN_TAC i THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0", then
-             unfold loopinv and STRIP_ASSUME_TAC the existential so
-             cb0..cb5, xi4, xi7, xi8, sp16 become free hypothesis vars.
+         (a) X_GEN_TAC i THEN STRIP_TAC THEN unfold loopinv.  The `i <
+             iter_count` precondition (from the outer STRIP_TAC) fires the
+             loop-top existential block, which STRIP_ASSUME_TAC brings into
+             scope as cb0..cb5, xi4, xi7, xi8, sp16.
          (b) ABBREV_TAC plaintext blocks p0..p5 at iptr+{0..80}.
-         (c) MP_TAC (SPECL [...] AESNI_GCM_STITCHED_6X_CORRECT) to bring
-             M7's ensures into scope, then discharge its 99-clause
-             antecedent via NONOVERLAPPING_TAC after normalising
-             LENGTH via rewrites.
+         (c) MP_TAC (SPECL [...] AESNI_GCM_STITCHED_6X_CORRECT_EXT) to bring
+             the extended M7 (with YMM2/YMM15 pins) into scope, then
+             discharge its 99-clause antecedent via NONOVERLAPPING_TAC.
          (d) X86_BIGSTEP_TAC with BYTES_LOADED_LOOP_BUTLAST_IMPLIES_
              M7_BUTLAST for the exec side-condition — lands at s1 with
-             RIP = pc + 0x348 and 6 ciphertext stores + cbptr + sp16
-             MAYCHANGE'd by M7.
-         (e) X86_STEPS_TAC [2; 3] — subq $6, %rdx (sets CF based on
-             rdx < 6) and jc .Ldone_exit — RIP at s3 is
-             (if val(word_sub...) < 6 then pc+882 else pc+846).
+             RIP = pc + 0x348.
+         (e) X86_STEPS_TAC [2; 3] for subq + jc.
          (f) LOOP_CF_EQUIV folds the CF test into `i + 1 = iter_count`.
              ASM_CASES_TAC `i + 1 = iter_count` splits:
-             - Case A (last iter, jc taken): RIP s3 = pc+882; we've
-               already reached the expected exit state.  Reconstitute
-               loopinv iter_count by providing post-M7 witnesses via
-               EXISTS_TAC.
-             - Case B (middle iter, jc not taken): continue X86_STEPS
-               through 7 more insns (6 xmm rotations + xmm7 reload +
-               jmp back to pc+0), landing at s10 with RIP = pc + 0.
-               Reconstitute loopinv (i+1).
-
-       Residuals still CHEAT_TAC'd in this version:
-       - WORD_RULE for rdx_{i+1} = rdx_i - 6 via word_sub (hangs on
-         CONV_TAC WORD_RULE due to variables — needs a targeted lemma).
-       - YMM2 and YMM15 preservation across M7's MAYCHANGE frame.
-         M7's MAYCHANGE [ZMM2; ZMM15] is over-permissive; the body
-         never writes YMM2/YMM15 but the post-condition loses pinning.
-         Fixing requires tightening M7's MAYCHANGE or adding explicit
-         read-pins to M7's postcondition.
-       - Existential witnesses for cb0..cb5/xi4/xi7/xi8/sp16 at the
-         (i+1) state — these come from the post-M7 register/memory
-         state but need to be derived from M7's stepper (not pinned
-         in M7's current postcondition; M7 only pins the 6 ciphertext
-         stores).  Requires further M7 work OR composing with an
-         iter-local loopinv that tolerates schematic next-iter witnesses.
-       - The 7-instruction rotation step through Case B post-s3. *)
-    CHEAT_TAC;
+             - Case A (last iter, jc taken): RIP s3 = pc+882; the exit-form
+               loopinv requires only loopinv_common, which is trivially
+               derivable from s3's pinned state.
+             - Case B (middle iter, jc not taken): 7 more insns land at
+               s10 with RIP = pc + 0 and YMM9..14 set up for iter (i+1)
+               via the tail rotations.  loopinv_common plus the
+               pre-body existential block both close. *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[loopinv; loopinv_common] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    (* Strip in the existential block produced by `i < iter_count`. *)
+    FIRST_X_ASSUM (fun th ->
+      let c = concl th in
+      if is_imp c && is_exists (snd (dest_imp c))
+      then STRIP_ASSUME_TAC (MATCH_MP th (ASSUME `i < iter_count`))
+      else NO_TAC) THEN
+    (* Abbreviate plaintext blocks. *)
+    ABBREV_TAC `p0:int128 = read (memory :> bytes128 iptr) s0` THEN
+    ABBREV_TAC
+      `p1:int128 = read (memory :> bytes128 (word_add iptr (word 16))) s0` THEN
+    ABBREV_TAC
+      `p2:int128 = read (memory :> bytes128 (word_add iptr (word 32))) s0` THEN
+    ABBREV_TAC
+      `p3:int128 = read (memory :> bytes128 (word_add iptr (word 48))) s0` THEN
+    ABBREV_TAC
+      `p4:int128 = read (memory :> bytes128 (word_add iptr (word 64))) s0` THEN
+    ABBREV_TAC
+      `p5:int128 = read (memory :> bytes128 (word_add iptr (word 80))) s0` THEN
+    (* Bring M7_EXT into scope, specialised to these abbreviations. *)
+    MP_TAC (SPECL
+      [`optr:int64`;
+       `iptr:int64`;
+       `kptr:int64`; `hptr:int64`; `cbptr:int64`; `cptr:int64`; `sptr:int64`;
+       `p0:int128`; `p1:int128`; `p2:int128`;
+       `p3:int128`; `p4:int128`; `p5:int128`;
+       `cb0:int128`; `cb1:int128`; `cb2:int128`;
+       `cb3:int128`; `cb4:int128`; `cb5:int128`;
+       `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+       `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+       `k8:int128`; `k9:int128`; `k10:int128`;
+       `h0:int128`; `h1:int128`; `h3:int128`;
+       `h4:int128`; `h6:int128`; `h7:int128`;
+       `xi4:int128`; `xi7:int128`; `xi8:int128`;
+       `sp16:int128`; `sp32:int128`; `sp48:int128`; `sp64:int128`;
+       `sp80:int128`; `sp96:int128`; `sp112:int128`;
+       `red:int128`; `plus:int128`;
+       `pc:num`] AESNI_GCM_STITCHED_6X_CORRECT_EXT) THEN
+    (* Discharge M7 EXT's 99-clause nonoverlap antecedent. *)
+    REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+    REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
+                  `LENGTH aesni_gcm_stitched_6x_mc`] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE
+       [NONOVERLAPPING_CLAUSES;
+        (REWRITE_CONV[aesni_gcm_stitched_6x_loop_mc] THENC LENGTH_CONV)
+          `LENGTH aesni_gcm_stitched_6x_loop_mc`]) THEN
+    ANTS_TAC THENL [
+      REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC;
+      ALL_TAC
+    ] THEN
+    (* BIGSTEP through M7_EXT's body. *)
+    X86_BIGSTEP_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC "s1" THENL [
+      REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0] THEN
+      MATCH_MP_TAC BYTES_LOADED_LOOP_BUTLAST_IMPLIES_M7_BUTLAST THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC
+    ] THEN
+    (* Step subq + jc. *)
+    X86_STEPS_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC [2; 3] THEN
+    (* Fold CF test into `i + 1 = iter_count`. *)
+    MP_TAC(SPECL [`i:num`; `iter_count:num`] LOOP_CF_EQUIV) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    DISCH_TAC THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[ASSUME
+      `val (word_sub (word (6 * iter_count)) (word (6 + 6 * i)):int64) < 6 <=>
+       i + 1 = iter_count`]) THEN
+    ASM_CASES_TAC `i + 1 = iter_count` THENL [
+      (* Case A: last iteration, jc taken, RIP s3 = pc+882, exit form of
+         loopinv iter_count.  The exit-form disjunct's existential collapses
+         to True because `iter_count < iter_count = F`, so the only residual
+         is the RDX arithmetic (word_sub chain). *)
+      ASM_REWRITE_TAC[LT_REFL] THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      MATCH_MP_TAC LOOP_RDX_STEP_LAST THEN ASM_REWRITE_TAC[];
+      (* Case B: middle iteration, jc not taken, step 7 tail insns.  The
+         existential block in loopinv (i+1) needs witnesses for cb0..cb5,
+         xi4, xi7, xi8, sp16 consistent with the post-rotation state.  The
+         tail rotation sets YMM9..14 from M7's post-body xmm0/5/6/7/3 — but
+         M7's current post only pins YMM2/YMM15, not xmm0/5/6/7/3.  A
+         stronger M7 EXT variant that pins 8 more YMMs would close this;
+         residual for a later session. *)
+      CHEAT_TAC
+    ];
 
     (* Exit case — at pc+0x372 we have loopinv iter_count; simply discharge
        since the postcondition asserts loopinv iter_count at pc+0x372. *)
