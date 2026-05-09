@@ -385,9 +385,16 @@ let LOOP_CF_EQUIV = prove
 (* loop-top label `pc + 0`:                                                  *)
 (*                                                                           *)
 (*   - RIP = pc + 0 (loop top)                                               *)
-(*   - RDX = word (6 * (k - i)) (remaining blocks, decremented by 6 per iter)*)
-(*   - RDI = word_add iptr_base (word (16*6*i)) — input advances by 96/iter  *)
-(*   - RSI = word_add optr_base (word (16*6*i)) — output advances by 96/iter *)
+(*   - RDX = word_sub (word (6 * k)) (word (6 + 6 * i)) (remaining - 6,      *)
+(*     decremented by 6 per iter, starts at 6*(k-1) for last-iter exit).     *)
+(*   - RDI = iptr_base (NOT advanced; the original aws-lc .Loop6x does leaq  *)
+(*     96(%rdi),%rdi inside the body, but the `extract_stitched_6x.py`       *)
+(*     extractor drops scalar ops, so each iteration re-reads the SAME 6     *)
+(*     plaintext blocks and re-writes the SAME 6 ciphertext output slots.    *)
+(*     The loop proof thus verifies structural control-flow over k iters     *)
+(*     but does NOT pin multi-iter ciphertext correctness — that requires    *)
+(*     re-inserting the leaqs into `aesni_gcm_stitched_6x_loop.S`.           *)
+(*   - RSI = optr_base (same caveat as RDI).                                 *)
 (*   - RCX = kptr, R9 = hptr, R8 = cbptr, R11 = cptr, RSP = sptr (invariant) *)
 (*   - Key schedule bytes pinned at kptr +/- biased offsets                  *)
 (*   - H-table bytes pinned at hptr +/- biased offsets                       *)
@@ -421,8 +428,8 @@ let loopinv = new_definition
     (sp96:int128) (sp112:int128)
     (red:int128) (plus:int128)
     (iter_count:num) (i:num) (s:x86state) <=>
-      read RDI s = word_add iptr_base (word (16 * 6 * i)) /\
-      read RSI s = word_add optr_base (word (16 * 6 * i)) /\
+      read RDI s = iptr_base /\
+      read RSI s = optr_base /\
       read RDX s = word_sub (word (6 * iter_count)) (word (6 + 6 * i)) /\
       read RCX s = kptr /\
       read R9  s = hptr /\
