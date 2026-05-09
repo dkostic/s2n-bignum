@@ -651,12 +651,50 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0];
 
-    (* Inductive step — M7 via X86_BIGSTEP_TAC, then 9 plumbing insns.
-       CHEAT_TAC placeholder: the step case requires the M7 composition
-       (X86_BIGSTEP_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC) on BUTLAST of
-       M7's mc, discharged via BYTES_LOADED_LOOP_IMPLIES_M7_BUTLAST, plus
-       9 X86_STEPS for the subq/jc/6 counter-rotation/xmm7 reload/jmp
-       back-edge.  Left as a forward-progress marker. *)
+    (* Inductive step — M7 via X86_BIGSTEP_TAC, then subq+jc + case split,
+       then reconstitute loopinv (i+1).  Phase structure:
+
+         (a) X_GEN_TAC i THEN STRIP_TAC THEN ENSURES_INIT_TAC "s0", then
+             unfold loopinv and STRIP_ASSUME_TAC the existential so
+             cb0..cb5, xi4, xi7, xi8, sp16 become free hypothesis vars.
+         (b) ABBREV_TAC plaintext blocks p0..p5 at iptr+{0..80}.
+         (c) MP_TAC (SPECL [...] AESNI_GCM_STITCHED_6X_CORRECT) to bring
+             M7's ensures into scope, then discharge its 99-clause
+             antecedent via NONOVERLAPPING_TAC after normalising
+             LENGTH via rewrites.
+         (d) X86_BIGSTEP_TAC with BYTES_LOADED_LOOP_BUTLAST_IMPLIES_
+             M7_BUTLAST for the exec side-condition — lands at s1 with
+             RIP = pc + 0x348 and 6 ciphertext stores + cbptr + sp16
+             MAYCHANGE'd by M7.
+         (e) X86_STEPS_TAC [2; 3] — subq $6, %rdx (sets CF based on
+             rdx < 6) and jc .Ldone_exit — RIP at s3 is
+             (if val(word_sub...) < 6 then pc+882 else pc+846).
+         (f) LOOP_CF_EQUIV folds the CF test into `i + 1 = iter_count`.
+             ASM_CASES_TAC `i + 1 = iter_count` splits:
+             - Case A (last iter, jc taken): RIP s3 = pc+882; we've
+               already reached the expected exit state.  Reconstitute
+               loopinv iter_count by providing post-M7 witnesses via
+               EXISTS_TAC.
+             - Case B (middle iter, jc not taken): continue X86_STEPS
+               through 7 more insns (6 xmm rotations + xmm7 reload +
+               jmp back to pc+0), landing at s10 with RIP = pc + 0.
+               Reconstitute loopinv (i+1).
+
+       Residuals still CHEAT_TAC'd in this version:
+       - WORD_RULE for rdx_{i+1} = rdx_i - 6 via word_sub (hangs on
+         CONV_TAC WORD_RULE due to variables — needs a targeted lemma).
+       - YMM2 and YMM15 preservation across M7's MAYCHANGE frame.
+         M7's MAYCHANGE [ZMM2; ZMM15] is over-permissive; the body
+         never writes YMM2/YMM15 but the post-condition loses pinning.
+         Fixing requires tightening M7's MAYCHANGE or adding explicit
+         read-pins to M7's postcondition.
+       - Existential witnesses for cb0..cb5/xi4/xi7/xi8/sp16 at the
+         (i+1) state — these come from the post-M7 register/memory
+         state but need to be derived from M7's stepper (not pinned
+         in M7's current postcondition; M7 only pins the 6 ciphertext
+         stores).  Requires further M7 work OR composing with an
+         iter-local loopinv that tolerates schematic next-iter witnesses.
+       - The 7-instruction rotation step through Case B post-s3. *)
     CHEAT_TAC;
 
     (* Exit case — at pc+0x372 we have loopinv iter_count; simply discharge
