@@ -356,6 +356,28 @@ let BYTES_LOADED_LOOP_BUTLAST_IMPLIES_M7_BUTLAST = prove
 (* iteration.                                                                *)
 (* ------------------------------------------------------------------------- *)
 
+(* Rdx-step arithmetic: after `subq $6, %rdx`, the new rdx value matches
+   either the next-iter invariant (i+1 < iter_count) or the exit-case
+   invariant (i+1 = iter_count).  Both identities are pure-arithmetic
+   facts about word_sub under the loop-top rdx spec. *)
+
+let LOOP_RDX_STEP_MID = prove
+ (`!(i:num) (iter_count:num).
+     word_sub (word_sub (word (6 * iter_count)) (word (6 + 6 * i))) (word 6)
+       = (word_sub (word (6 * iter_count)) (word (6 + 6 * (i + 1))):int64)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[WORD_RULE
+    `!a b c:int64. word_sub (word_sub a b) c = word_sub a (word_add b c)`] THEN
+  AP_TERM_TAC THEN REWRITE_TAC[GSYM WORD_ADD] THEN AP_TERM_TAC THEN
+  ARITH_TAC);;
+
+let LOOP_RDX_STEP_LAST = prove
+ (`!(i:num) (iter_count:num).
+     i + 1 = iter_count
+     ==> word_sub (word_sub (word (6 * iter_count)) (word (6 + 6 * i))) (word 6)
+       = (word_sub (word (6 * iter_count)) (word (6 + 6 * iter_count)):int64)`,
+  REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[LOOP_RDX_STEP_MID]);;
+
 let LOOP_CF_EQUIV = prove
  (`!(i:num) (iter_count:num).
      i < iter_count /\ 6 * iter_count < 2 EXP 64
