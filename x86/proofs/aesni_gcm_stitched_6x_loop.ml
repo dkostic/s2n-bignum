@@ -470,5 +470,36 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
             MAYCHANGE [memory :> bytes (optr,16 * 6 * iter_count);
                        memory :> bytes ((cbptr:int64),16);
                        memory :> bytes (word_add sptr (word 16),16)])`,
-  CHEAT_TAC);;
+  REPEAT STRIP_TAC THEN REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_WHILE_UP2_TAC `iter_count:num` `pc + 0x0` `pc + 0x372`
+   `\(i:num) (s:x86state).
+       loopinv iptr optr kptr hptr cbptr cptr sptr
+               k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+               h0 h1 h3 h4 h6 h7
+               sp32 sp48 sp64 sp80 sp96 sp112
+               red plus
+               iter_count i s /\
+       read (memory :> bytes64 sptr) s = returnaddress /\
+       bytes_loaded s (word pc) aesni_gcm_stitched_6x_loop_mc` THEN
+  REPEAT CONJ_TAC THENL
+   [(* Non-zeroness of iter_count *)
+    ASM_ARITH_TAC;
+
+    (* Base case — loopinv 0 holds on entry since the precond asserts it. *)
+    ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0];
+
+    (* Inductive step — M7 via X86_BIGSTEP_TAC, then 9 plumbing insns.
+       CHEAT_TAC placeholder: the step case requires the M7 composition
+       (X86_BIGSTEP_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC) on BUTLAST of
+       M7's mc, discharged via BYTES_LOADED_LOOP_IMPLIES_M7_BUTLAST, plus
+       9 X86_STEPS for the subq/jc/6 counter-rotation/xmm7 reload/jmp
+       back-edge.  Left as a forward-progress marker. *)
+    CHEAT_TAC;
+
+    (* Exit case — one-step `ret` from pc+0x372 to returnaddress on stack.
+       CHEAT_TAC placeholder: ret-stepping through the final insn plus the
+       RSP/RIP postcondition discharge. *)
+    CHEAT_TAC]);;
 
