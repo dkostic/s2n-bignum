@@ -770,7 +770,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
        `sp16:int128`; `sp32:int128`; `sp48:int128`; `sp64:int128`;
        `sp80:int128`; `sp96:int128`; `sp112:int128`;
        `red:int128`; `plus:int128`;
-       `pc:num`] AESNI_GCM_STITCHED_6X_CORRECT_EXT) THEN
+       `pc:num`] AESNI_GCM_STITCHED_6X_CORRECT_EXT3) THEN
     (* Discharge M7 EXT's 99-clause nonoverlap antecedent. *)
     REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
     REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
@@ -808,14 +808,46 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
       MATCH_MP_TAC LOOP_RDX_STEP_LAST THEN ASM_REWRITE_TAC[];
-      (* Case B: middle iteration, jc not taken, step 7 tail insns.  The
-         existential block in loopinv (i+1) needs witnesses for cb0..cb5,
-         xi4, xi7, xi8, sp16 consistent with the post-rotation state.  The
-         tail rotation sets YMM9..14 from M7's post-body xmm0/5/6/7/3 — but
-         M7's current post only pins YMM2/YMM15, not xmm0/5/6/7/3.  A
-         stronger M7 EXT variant that pins 8 more YMMs would close this;
-         residual for a later session. *)
-      CHEAT_TAC
+      (* Case B: middle iteration (i + 1 < iter_count), jc not taken,
+         step 7 tail insns.  The tail rotations land at pc+0 with:
+           YMM9  = word_zx (word_xor new_cb0 k0)
+           YMM10 = word_zx c0_out     (from YMM0 at s3)
+           YMM11 = word_zx c5_out     (from YMM5 at s3)
+           YMM12 = word_zx c6_out     (from YMM6 at s3)
+           YMM13 = word_zx c7_out     (from YMM7 at s3)
+           YMM14 = word_zx c3_out     (from YMM3 at s3)
+           YMM7  = word_zx sp32       (reload from sp+32)
+           cbptr-mem = new_cb0        (set by M7 body)
+           YMM4  = word_zx xi4_out    (unchanged, from M7 EXT3)
+           YMM8  = word_zx xi8_out    (unchanged, from M7 EXT3)
+         The loopinv (i+1) existential witnesses are:
+           cb0 := new_cb0, cb1 := c0_out, cb2 := c5_out, cb3 := c6_out,
+           cb4 := c7_out, cb5 := c3_out, xi4 := xi4_out, xi7 := sp32,
+           xi8 := xi8_out, sp16 := read(sp+16) at s10 (unchanged). *)
+      SUBGOAL_THEN `i + 1 < iter_count` ASSUME_TAC THENL [
+        UNDISCH_TAC `i < iter_count` THEN
+        UNDISCH_TAC `~(i + 1 = iter_count)` THEN
+        ARITH_TAC;
+        ALL_TAC
+      ] THEN
+      RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(i + 1 = iter_count)`]) THEN
+      X86_STEPS_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC (4--11) THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      REPEAT CONJ_TAC THENL [
+        (* RIP at pc+0 *)
+        REWRITE_TAC[ADD_CLAUSES];
+        (* word_sub arithmetic — same rdx update as Case A's MID form. *)
+        REWRITE_TAC[LOOP_RDX_STEP_MID];
+        (* existential witnesses for cb0..cb5, xi4, xi7, xi8, sp16 *)
+        MAP_EVERY EXISTS_TAC
+          [`new_cb0:int128`; `c0_out:int128`; `c5_out:int128`;
+           `c6_out:int128`; `c7_out:int128`; `c3_out:int128`;
+           `xi4_out:int128`; `sp32:int128`; `xi8_out:int128`;
+           `read (memory :> bytes128 (word_add sptr (word 16))) s11 :int128`] THEN
+        REWRITE_TAC[WORD_ZX_ZX_128] THEN
+        ASM_REWRITE_TAC[]
+      ]
     ];
 
     (* Exit case — at pc+0x372 we have loopinv iter_count; simply discharge
