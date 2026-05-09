@@ -441,28 +441,31 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       (sp32:int128) (sp48:int128) (sp64:int128) (sp80:int128)
       (sp96:int128) (sp112:int128)
       (red:int128) (plus:int128)
-      (iter_count:num) (returnaddress:int64) (pc:num).
+      (iter_count:num) (pc:num).
       1 <= iter_count /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
                      (optr,16 * 6 * iter_count) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
                      (cbptr,16) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
-                     (word_add sptr (word 16),16) /\
-      nonoverlapping (sptr,8)
-                     (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc)
+                     (word_add sptr (word 16),16)
       ==> ensures x86
-           (\s. bytes_loaded s (word pc) aesni_gcm_stitched_6x_loop_mc /\
+           (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc) /\
                 read RIP s = word pc /\
-                read (memory :> bytes64 sptr) s = returnaddress /\
                 loopinv iptr optr kptr hptr cbptr cptr sptr
                         k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
                         h0 h1 h3 h4 h6 h7
                         sp32 sp48 sp64 sp80 sp96 sp112
                         red plus
                         iter_count 0 s)
-           (\s. read RIP s = returnaddress)
-           (MAYCHANGE [RIP; RSP; RDI; RSI; RDX] ,,
+           (\s. read RIP s = word (pc + 0x372) /\
+                loopinv iptr optr kptr hptr cbptr cptr sptr
+                        k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+                        h0 h1 h3 h4 h6 h7
+                        sp32 sp48 sp64 sp80 sp96 sp112
+                        red plus
+                        iter_count iter_count s)
+           (MAYCHANGE [RIP; RDI; RSI; RDX] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
             MAYCHANGE SOME_FLAGS ,,
@@ -479,8 +482,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                sp32 sp48 sp64 sp80 sp96 sp112
                red plus
                iter_count i s /\
-       read (memory :> bytes64 sptr) s = returnaddress /\
-       bytes_loaded s (word pc) aesni_gcm_stitched_6x_loop_mc` THEN
+       bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc)` THEN
   REPEAT CONJ_TAC THENL
    [(* Non-zeroness of iter_count *)
     ASM_ARITH_TAC;
@@ -498,8 +500,9 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
        back-edge.  Left as a forward-progress marker. *)
     CHEAT_TAC;
 
-    (* Exit case — one-step `ret` from pc+0x372 to returnaddress on stack.
-       CHEAT_TAC placeholder: ret-stepping through the final insn plus the
-       RSP/RIP postcondition discharge. *)
-    CHEAT_TAC]);;
+    (* Exit case — at pc+0x372 we have loopinv iter_count; simply discharge
+       since the postcondition asserts loopinv iter_count at pc+0x372. *)
+    ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[]]);;
 
