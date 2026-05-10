@@ -532,6 +532,7 @@ let loopinv_common = new_definition
     (sp32:int128) (sp48:int128) (sp64:int128) (sp80:int128)
     (sp96:int128) (sp112:int128)
     (red:int128) (plus:int128)
+    (counter_fn:num->int128) (p_fn:num->int128)
     (iter_count:num) (i:num) (s:x86state) <=>
       read RDI s = word_add iptr_base (word (96 * i)) /\
       read RSI s = word_add optr_base (word (96 * i)) /\
@@ -589,12 +590,14 @@ let loopinv = new_definition
     (sp32:int128) (sp48:int128) (sp64:int128) (sp80:int128)
     (sp96:int128) (sp112:int128)
     (red:int128) (plus:int128)
+    (counter_fn:num->int128) (p_fn:num->int128)
     (iter_count:num) (i:num) (s:x86state) <=>
       loopinv_common iptr_base optr_base kptr hptr cbptr cptr sptr
                      k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
                      h0 h1 h3 h4 h6 h7
                      sp32 sp48 sp64 sp80 sp96 sp112
                      red plus
+                     counter_fn p_fn
                      iter_count i s /\
       (i < iter_count
        ==> (?(cb0:int128) (cb1:int128) (cb2:int128) (cb3:int128)
@@ -645,6 +648,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       (sp32:int128) (sp48:int128) (sp64:int128) (sp80:int128)
       (sp96:int128) (sp112:int128)
       (red:int128) (plus:int128)
+      (counter_fn:num->int128) (p_fn:num->int128)
       (iter_count:num) (pc:num).
       1 <= iter_count /\
       6 * iter_count < 2 EXP 64 /\
@@ -740,6 +744,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                         h0 h1 h3 h4 h6 h7
                         sp32 sp48 sp64 sp80 sp96 sp112
                         red plus
+                        counter_fn p_fn
                         iter_count 0 s)
            (\s. read RIP s = word (pc + 0x37b) /\
                 loopinv iptr optr kptr hptr cbptr cptr sptr
@@ -747,6 +752,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                         h0 h1 h3 h4 h6 h7
                         sp32 sp48 sp64 sp80 sp96 sp112
                         red plus
+                        counter_fn p_fn
                         iter_count iter_count s)
            (MAYCHANGE [RIP; RDI; RSI; RDX] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
@@ -764,6 +770,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                h0 h1 h3 h4 h6 h7
                sp32 sp48 sp64 sp80 sp96 sp112
                red plus
+               counter_fn p_fn
                iter_count i s /\
        bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc)` THEN
   REPEAT CONJ_TAC THENL
