@@ -1205,3 +1205,464 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT3 = prove
     let lhs,_ = dest_eq w in
     (SPEC_TAC(lhand lhs,`u:int128`) THEN GEN_TAC THEN
      CONV_TAC WORD_BLAST) (asl,w)));;
+(* M7 EXT4: enriched EXT3 with closed-form chain for the 6 counter-tail ghosts.
+
+   Post-state binds 6 int256 ghost variables zcb0, zc0, zc5, zc6, zc7, zc3
+   (matching the actual YMM1/YMM0/YMM5/YMM6/YMM7/YMM3 at body exit) plus 2
+   int128 ghosts xi4_out, xi8_out (same as EXT3).  Each zX is pinned to a
+   closed-form `word_zx (simd16 word_add <chain> plus :int128)` expression
+   rooted at cb5 via the 6 vpaddb tail instructions of the 6x body:
+
+     new_cb0 stored at cbptr = simd16 word_add cb5 plus   (vpaddb xmm2,xmm14,xmm1)
+     zcb0 = read YMM1 s     = word_zx (simd16 word_add cb5 plus)
+     zc0  = read YMM0 s     = word_zx (simd16 word_add (word_zx zcb0) plus)
+     zc5  = read YMM5 s     = word_zx (simd16 word_add (word_zx zc0)  plus)
+     zc6  = read YMM6 s     = word_zx (simd16 word_add (word_zx zc5)  plus)
+     zc7  = read YMM7 s     = word_zx (simd16 word_add (word_zx zc6)  plus)
+     zc3  = read YMM3 s     = word_zx (simd16 word_add (word_zx zc7)  plus)
+
+   Each subword-of-X-added-to-subword-of-plus chain in the per-step stepper
+   state is folded back to `simd16 word_add X plus` via the bridge lemmas
+   SIMD16_WORD_ADD_TREE (for x:int128) and SIMD16_WORD_ADD_TREE_256 (for
+   x:int256).  With the folds applied, the asl chain matches the goal
+   chain 1:1 and ASM_REWRITE closes most conjuncts automatically. *)
+
+(* Tree→simd16 bridges.  Both proved by direct RAND_CONV unfolding of simd16
+   to the tree form via the simd16/simd8/simd4/simd2/DIMINDEX_* chain +
+   SIMD_SIMPLIFY_CONV; REFL_TAC closes since both sides become
+   syntactically identical. *)
+
+let SIMD16_WORD_ADD_TREE = prove
+ (`!(x:int128) (y:int128).
+    (word_join:(64)word->(64)word->(128)word)
+     ((word_join:(32)word->(32)word->(64)word)
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          ((word_add:(8)word->(8)word->(8)word) (word_subword x (120,8)) (word_subword y (120,8)))
+          (word_add (word_subword x (112,8)) (word_subword y (112,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (104,8)) (word_subword y (104,8)))
+          (word_add (word_subword x (96,8)) (word_subword y (96,8)))))
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (88,8)) (word_subword y (88,8)))
+          (word_add (word_subword x (80,8)) (word_subword y (80,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (72,8)) (word_subword y (72,8)))
+          (word_add (word_subword x (64,8)) (word_subword y (64,8))))))
+     ((word_join:(32)word->(32)word->(64)word)
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (56,8)) (word_subword y (56,8)))
+          (word_add (word_subword x (48,8)) (word_subword y (48,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (40,8)) (word_subword y (40,8)))
+          (word_add (word_subword x (32,8)) (word_subword y (32,8)))))
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (24,8)) (word_subword y (24,8)))
+          (word_add (word_subword x (16,8)) (word_subword y (16,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (8,8)) (word_subword y (8,8)))
+          (word_add (word_subword x (0,8)) (word_subword y (0,8))))))
+    = simd16 word_add x y`,
+  REPEAT GEN_TAC THEN
+  CONV_TAC (RAND_CONV
+    (REWRITE_CONV[simd16;simd8;simd4;simd2;
+                  DIMINDEX_8;DIMINDEX_16;DIMINDEX_32;DIMINDEX_64;DIMINDEX_128]
+     THENC SIMD_SIMPLIFY_CONV [])) THEN
+  REFL_TAC);;
+
+let SIMD16_WORD_ADD_TREE_256 = prove
+ (`!(x:int256) (y:int128).
+    (word_join:(64)word->(64)word->(128)word)
+     ((word_join:(32)word->(32)word->(64)word)
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          ((word_add:(8)word->(8)word->(8)word) (word_subword x (120,8)) (word_subword y (120,8)))
+          (word_add (word_subword x (112,8)) (word_subword y (112,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (104,8)) (word_subword y (104,8)))
+          (word_add (word_subword x (96,8)) (word_subword y (96,8)))))
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (88,8)) (word_subword y (88,8)))
+          (word_add (word_subword x (80,8)) (word_subword y (80,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (72,8)) (word_subword y (72,8)))
+          (word_add (word_subword x (64,8)) (word_subword y (64,8))))))
+     ((word_join:(32)word->(32)word->(64)word)
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (56,8)) (word_subword y (56,8)))
+          (word_add (word_subword x (48,8)) (word_subword y (48,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (40,8)) (word_subword y (40,8)))
+          (word_add (word_subword x (32,8)) (word_subword y (32,8)))))
+      ((word_join:(16)word->(16)word->(32)word)
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (24,8)) (word_subword y (24,8)))
+          (word_add (word_subword x (16,8)) (word_subword y (16,8))))
+        ((word_join:(8)word->(8)word->(16)word)
+          (word_add (word_subword x (8,8)) (word_subword y (8,8)))
+          (word_add (word_subword x (0,8)) (word_subword y (0,8))))))
+    = simd16 word_add (word_zx x :int128) y`,
+  REPEAT GEN_TAC THEN
+  CONV_TAC (RAND_CONV
+    (REWRITE_CONV[simd16;simd8;simd4;simd2;
+                  DIMINDEX_8;DIMINDEX_16;DIMINDEX_32;DIMINDEX_64;DIMINDEX_128]
+     THENC SIMD_SIMPLIFY_CONV [])) THEN
+  CONV_TAC (LAND_CONV
+    (DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV)) THEN
+  REFL_TAC);;
+
+(* EXT4 theorem.  Same statement as EXT3 but the post-state existential
+   block now pins new_cb0 and the five follow-on counter outputs (c0, c5,
+   c6, c7, c3) to specific simd16-word_add chains rooted at cb5.  These
+   closed forms are sufficient to discharge the loopinv (i+1) existential
+   block in M8's inductive step Case B: the new iteration's cb0..cb5 can
+   be expressed in terms of cb5_{i} and `plus` via the chain. *)
+
+let AESNI_GCM_STITCHED_6X_CORRECT_EXT4 = prove
+ (`!optr iptr kptr hptr cbptr cptr sptr
+      p0 p1 p2 p3 p4 p5
+      cb0 cb1 cb2 cb3 cb4 cb5
+      k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+      h0 h1 h3 h4 h6 h7
+      xi4 xi7 xi8
+      sp16 sp32 sp48 sp64 sp80 sp96 sp112
+      red plus
+      pc.
+      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (optr,96) /\
+      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (cbptr,16) /\
+      nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc) (word_add sptr (word 16),16) /\
+      nonoverlapping (optr,96) (iptr,16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 48),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 64),16) /\
+      nonoverlapping (optr,96) (word_add iptr (word 80),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551488),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551504),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551520),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551536),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551552),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551568),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551584),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 18446744073709551600),16) /\
+      nonoverlapping (optr,96) (kptr,16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add kptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 18446744073709551584),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 18446744073709551600),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 64),16) /\
+      nonoverlapping (optr,96) (word_add hptr (word 80),16) /\
+      nonoverlapping (optr,96) (word_add cptr (word 16),16) /\
+      nonoverlapping (optr,96) (word_add cptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 32),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 48),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 64),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 80),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 96),16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 112),16) /\
+      nonoverlapping (cbptr,16) (iptr,16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 48),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 64),16) /\
+      nonoverlapping (cbptr,16) (word_add iptr (word 80),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551488),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551504),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551520),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551536),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551552),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551568),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551584),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 18446744073709551600),16) /\
+      nonoverlapping (cbptr,16) (kptr,16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add kptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 18446744073709551584),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 18446744073709551600),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 64),16) /\
+      nonoverlapping (cbptr,16) (word_add hptr (word 80),16) /\
+      nonoverlapping (cbptr,16) (word_add cptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add cptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 32),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 48),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 64),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 80),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 96),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 112),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (iptr,16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 48),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 64),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add iptr (word 80),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551488),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551504),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551520),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551536),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551552),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551568),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551584),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 18446744073709551600),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (kptr,16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add kptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 18446744073709551584),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 18446744073709551600),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 64),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add hptr (word 80),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add cptr (word 16),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add cptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 32),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 48),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 64),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 80),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 96),16) /\
+      nonoverlapping (word_add sptr (word 16),16) (word_add sptr (word 112),16) /\
+      nonoverlapping (optr,96) (cbptr,16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 16),16)
+      ==> ensures x86
+           (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_mc) /\
+                read RIP s = word pc /\
+                read RDI s = iptr /\
+                read RSI s = optr /\
+                read RCX s = kptr /\
+                read R9  s = hptr /\
+                read R8  s = cbptr /\
+                read R11 s = cptr /\
+                read RSP s = sptr /\
+                read (memory :> bytes128 iptr) s = p0 /\
+                read (memory :> bytes128 (word_add iptr (word 16))) s = p1 /\
+                read (memory :> bytes128 (word_add iptr (word 32))) s = p2 /\
+                read (memory :> bytes128 (word_add iptr (word 48))) s = p3 /\
+                read (memory :> bytes128 (word_add iptr (word 64))) s = p4 /\
+                read (memory :> bytes128 (word_add iptr (word 80))) s = p5 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551488))) s = k0 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551504))) s = k1 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551520))) s = k2 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551536))) s = k3 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551552))) s = k4 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551568))) s = k5 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551584))) s = k6 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551600))) s = k7 /\
+                read (memory :> bytes128 kptr) s = k8 /\
+                read (memory :> bytes128 (word_add kptr (word 16))) s = k9 /\
+                read (memory :> bytes128 (word_add kptr (word 32))) s = k10 /\
+                read (memory :> bytes128
+                  (word_add hptr (word 18446744073709551584))) s = h0 /\
+                read (memory :> bytes128
+                  (word_add hptr (word 18446744073709551600))) s = h1 /\
+                read (memory :> bytes128 (word_add hptr (word 16))) s = h3 /\
+                read (memory :> bytes128 (word_add hptr (word 32))) s = h4 /\
+                read (memory :> bytes128 (word_add hptr (word 64))) s = h6 /\
+                read (memory :> bytes128 (word_add hptr (word 80))) s = h7 /\
+                read (memory :> bytes128 (word_add cptr (word 16))) s = red /\
+                read (memory :> bytes128 (word_add cptr (word 32))) s = plus /\
+                read (memory :> bytes128 cbptr) s = cb0 /\
+                read (memory :> bytes128 (word_add sptr (word 16))) s = sp16 /\
+                read (memory :> bytes128 (word_add sptr (word 32))) s = sp32 /\
+                read (memory :> bytes128 (word_add sptr (word 48))) s = sp48 /\
+                read (memory :> bytes128 (word_add sptr (word 64))) s = sp64 /\
+                read (memory :> bytes128 (word_add sptr (word 80))) s = sp80 /\
+                read (memory :> bytes128 (word_add sptr (word 96))) s = sp96 /\
+                read (memory :> bytes128 (word_add sptr (word 112))) s = sp112 /\
+                read YMM2  s = word_zx (plus:int128) /\
+                read YMM4  s = word_zx (xi4:int128) /\
+                read YMM7  s = word_zx (xi7:int128) /\
+                read YMM8  s = word_zx (xi8:int128) /\
+                read YMM9  s = word_zx (word_xor cb0 k0 : int128) /\
+                read YMM10 s = word_zx (cb1:int128) /\
+                read YMM11 s = word_zx (cb2:int128) /\
+                read YMM12 s = word_zx (cb3:int128) /\
+                read YMM13 s = word_zx (cb4:int128) /\
+                read YMM14 s = word_zx (cb5:int128) /\
+                read YMM15 s = word_zx (k0:int128))
+           (\s. read RIP s = word (pc + 0x351) /\
+                read RDI s = word_add iptr (word 96) /\
+                read RSI s = word_add optr (word 96) /\
+                read YMM2  s = word_zx (plus:int128) /\
+                read YMM15 s = word_zx (k0:int128) /\
+                (?(zcb0:int256) (zc0:int256) (zc5:int256) (zc6:int256)
+                  (zc7:int256) (zc3:int256) (xi4_out:int128) (xi8_out:int128).
+                   zcb0 = word_zx (simd16 word_add (cb5:int128) plus :int128) /\
+                   read (memory :> bytes128 cbptr) s = word_zx zcb0 /\
+                   read YMM1 s = zcb0 /\
+                   zc0 = word_zx (simd16 word_add (word_zx zcb0:int128) plus :int128) /\
+                   read YMM0 s = zc0 /\
+                   zc5 = word_zx (simd16 word_add (word_zx zc0:int128) plus :int128) /\
+                   read YMM5 s = zc5 /\
+                   zc6 = word_zx (simd16 word_add (word_zx zc5:int128) plus :int128) /\
+                   read YMM6 s = zc6 /\
+                   zc7 = word_zx (simd16 word_add (word_zx zc6:int128) plus :int128) /\
+                   read YMM7 s = zc7 /\
+                   zc3 = word_zx (simd16 word_add (word_zx zc7:int128) plus :int128) /\
+                   read YMM3 s = zc3 /\
+                   read YMM4 s = word_zx xi4_out /\
+                   read YMM8 s = word_zx xi8_out) /\
+                read (memory :> bytes128 optr) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb0 p0 /\
+                read (memory :> bytes128 (word_add optr (word 16))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb1 p1 /\
+                read (memory :> bytes128 (word_add optr (word 32))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb2 p2 /\
+                read (memory :> bytes128 (word_add optr (word 48))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb3 p3 /\
+                read (memory :> bytes128 (word_add optr (word 64))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb4 p4 /\
+                read (memory :> bytes128 (word_add optr (word 80))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5)
+           (MAYCHANGE [RIP; RDI; RSI] ,,
+            MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+                       ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+            MAYCHANGE [events] ,,
+            MAYCHANGE [memory :> bytes128 optr;
+                       memory :> bytes128 (word_add optr (word 16));
+                       memory :> bytes128 (word_add optr (word 32));
+                       memory :> bytes128 (word_add optr (word 48));
+                       memory :> bytes128 (word_add optr (word 64));
+                       memory :> bytes128 (word_add optr (word 80));
+                       memory :> bytes128 cbptr;
+                       memory :> bytes128 (word_add sptr (word 16))])`,
+  MAP_EVERY X_GEN_TAC
+   [`optr:int64`; `iptr:int64`; `kptr:int64`; `hptr:int64`; `cbptr:int64`;
+    `cptr:int64`; `sptr:int64`;
+    `p0:int128`; `p1:int128`; `p2:int128`;
+    `p3:int128`; `p4:int128`; `p5:int128`;
+    `cb0:int128`; `cb1:int128`; `cb2:int128`;
+    `cb3:int128`; `cb4:int128`; `cb5:int128`;
+    `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+    `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+    `k8:int128`; `k9:int128`; `k10:int128`;
+    `h0:int128`; `h1:int128`; `h3:int128`;
+    `h4:int128`; `h6:int128`; `h7:int128`;
+    `xi4:int128`; `xi7:int128`; `xi8:int128`;
+    `sp16:int128`; `sp32:int128`; `sp48:int128`; `sp64:int128`;
+    `sp80:int128`; `sp96:int128`; `sp112:int128`;
+    `red:int128`; `plus:int128`;
+    `pc:num`] THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+  REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
+                `LENGTH aesni_gcm_stitched_6x_mc`] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MAP_EVERY (fun n ->
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    X86_STEPS_TAC AESNI_GCM_STITCHED_6X_EXEC [n] THEN
+    SIMD_SIMPLIFY_TAC[] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    GHASH_ABBREV_STEP_TAC)
+   (1--168) THEN
+  (* Fold per-step-stepper word_join/word_subword tree-forms in asl back
+     to `simd16 word_add` form.  This turns the 6 counter-tail abbrev
+     chain hyps into a form that matches the goal's closed-form chain. *)
+  RULE_ASSUM_TAC(REWRITE_RULE
+    [SIMD16_WORD_ADD_TREE; SIMD16_WORD_ADD_TREE_256]) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL [
+    (* Existential block: pick the int256-abbrev witnesses via read YMM_x
+       s168 (which asl resolves to the underlying abbrev).  For xi4_out,
+       xi8_out use `word_subword (read YMM_x s168) (0,128)` as in EXT3.
+       After ASM_REWRITE fires the asl chain, 7 residuals remain:
+         - a `word_zx (word_zx _Abbrev):int256 = _Abbrev` identity, which
+           closes by substituting `_Abbrev = word_zx (simd16 word_add cb5
+           plus)` from asl then SIMP-ing WORD_ZX_ZX;
+         - a `simd16 word_add (word_zx _prev) plus` chain residual that
+           already matches asl after SIMP;
+         - 2 `_Abbrev = word_zx (word_subword _Abbrev (0,128))` residuals
+           that close via WORD_SUBWORD_ZX_EQ + MESON on the
+           `read YMM_x s168 = word_zx xi` hyp. *)
+    EXISTS_TAC `read YMM1 s168 :int256` THEN
+    EXISTS_TAC `read YMM0 s168 :int256` THEN
+    EXISTS_TAC `read YMM5 s168 :int256` THEN
+    EXISTS_TAC `read YMM6 s168 :int256` THEN
+    EXISTS_TAC `read YMM7 s168 :int256` THEN
+    EXISTS_TAC `read YMM3 s168 :int256` THEN
+    EXISTS_TAC `word_subword (read YMM4 s168 :int256) (0,128) :int128` THEN
+    EXISTS_TAC `word_subword (read YMM8 s168 :int256) (0,128) :int128` THEN
+    ASM_REWRITE_TAC[] THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256; LE_REFL;
+             ARITH_LE; ARITH_LT] THEN
+    REPEAT CONJ_TAC THEN
+    TRY (MATCH_MP_TAC WORD_SUBWORD_ZX_EQ THEN ASM_MESON_TAC[]) THEN
+    (* The remaining `word_zx (word_zx _A) :int256 = _A` residual: pull
+       the asl chain `word_zx (simd16 word_add cb5 plus) = _A` via an
+       explicit UNDISCH + SUBST on LHS, then collapse via WORD_ZX_ZX.  We
+       use ASM_REWRITE + SIMP: asl rewrite substitutes `_A` for
+       `word_zx (simd16 word_add cb5 plus)` in the goal, producing
+       `word_zx (word_zx (word_zx (simd16 word_add cb5 plus) :int256)
+         :int128) :int256 = word_zx (simd16 word_add cb5 plus) :int256`,
+       which SIMP closes via WORD_ZX_ZX cascade.  However ASM_REWRITE's
+       default rewrite direction fires only once; we need to SYM each asl
+       chain hyp so the substitution fires in the other direction, giving
+       `_A = word_zx (simd16 word_add cb5 plus)` for pattern-matching. *)
+    (* For each asl hyp `word_zx (simd16 word_add X plus) = _A`, derive
+       its SYM form `_A = word_zx (simd16 word_add X plus)` and use to
+       SUBST the goal, then collapse via WORD_ZX_ZX. *)
+    REPEAT (FIRST_X_ASSUM (fun th ->
+      try
+        let c = concl th in
+        if not (is_eq c) then NO_TAC else
+        let lhs, _ = dest_eq c in
+        if not (is_comb lhs) then NO_TAC else
+        let outer, inner = dest_comb lhs in
+        if not (is_const outer) then NO_TAC else
+        let (outer_name, _) = dest_const outer in
+        if outer_name <> "word_zx" then NO_TAC else
+        if not (is_comb inner) then NO_TAC else
+        let fn, _ = strip_comb inner in
+        if not (is_const fn) then NO_TAC else
+        let (fn_name, _) = dest_const fn in
+        if fn_name = "simd16" then SUBST_ALL_TAC (SYM th) else NO_TAC
+      with _ -> NO_TAC)) THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256; LE_REFL;
+             ARITH_LE; ARITH_LT];
+    ALL_TAC
+  ] THEN
+  REWRITE_TAC[stitched_6x_ct_block; aes128_ctr_lane_m7] THEN
+  REWRITE_TAC[AESENC_FIPS197_BRIDGE_ALT; AESENCLAST_FIPS197_BRIDGE_ALT] THEN
+  REWRITE_TAC[aes128_cipher; MAP] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV EL_CONV) THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256;
+           ARITH_LE; ARITH_LT; ARITH;
+           WORD_REVERSEFIELDS_REVERSEFIELDS; WORD_XOR_0;
+           WORD_REVERSEFIELDS_XOR_128] THEN
+  REWRITE_TAC[fips197_final_round; WORD_REVERSEFIELDS_XOR_128;
+              WORD_REVERSEFIELDS_REVERSEFIELDS] THEN
+  REPEAT CONJ_TAC THEN
+  (fun (asl,w) ->
+    let lhs,_ = dest_eq w in
+    (SPEC_TAC(lhand lhs,`u:int128`) THEN GEN_TAC THEN
+     CONV_TAC WORD_BLAST) (asl,w)));;
