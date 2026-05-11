@@ -522,6 +522,86 @@ let CASEB_PTR_EQ = prove
    up YMM9..14 for the next iteration's counter fan-out; at exit, jc skipped
    the rotation so YMM9..14 hold the last iteration's ciphertext outputs. *)
 
+(* Wrapper around the universally-quantified plaintext-memory read.  Hiding
+   the quantifier inside a constant keeps `DISCARD_OLDSTATE_TAC`'s
+   `unbound_statevars_of_read` from tripping on the outer `!j ... read c s`
+   pattern when the stepper advances the state; see
+   feedback_plaintext_framing_tactic.md for the reasoning.                  *)
+let pt_preserved = new_definition
+ `pt_preserved (iter_count:num) (iptr_base:int64) (s:x86state)
+               (p_fn:num->int128) <=>
+    !j. j < 6 * iter_count
+        ==> read (memory :> bytes128
+                    (word_add iptr_base (word (16 * j)))) s = p_fn j`;;
+
+(* Framing tactic: given `pt_preserved iter_count iptr s0 p_fn` in the
+   assumptions and a MAYCHANGE hypothesis `(M...) s0 s_end` (the accumulated
+   writable frame for the iteration's body, which does NOT touch
+   (iptr, 16*6*iter_count)), prove `pt_preserved iter_count iptr s_end p_fn`.
+
+   Strategy:
+     1. Unfold the goal to `!j. j < 6*iter_count ==> read(iptr+16j) s_end = p_fn j`
+     2. Strip universal j, discharge the bound, and rewrite the RHS
+        `p_fn j` to `read(iptr+16j) s0` via the pt_preserved s0 assumption.
+     3. Pull the MAYCHANGE s0 s_end hypothesis, unfold to its write-chain
+        component, substitute nested write-chain state abbrevs, and close
+        via READ_OVER_WRITE_ORTHOGONAL_TAC using the bulk `nonoverlapping
+        (optr, 96*iter_count) (iptr, ...)`, cbptr- and sp+16- vs-iptr
+        nonoverlaps, together with the per-iter bound 96*i+96 <= 96*iter_count
+        and j < 6*iter_count.
+
+   See feedback_plaintext_framing_tactic.md for the origin. *)
+let PT_FRAME_TAC (s_end_name:string) : tactic =
+  REWRITE_TAC[pt_preserved] THEN
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM (fun th ->
+    let c = concl th in
+    try
+      if name_of (fst (strip_comb c)) = "pt_preserved"
+      then MP_TAC (REWRITE_RULE[pt_preserved] th) else NO_TAC
+    with _ -> NO_TAC) THEN
+  DISCH_THEN (MP_TAC o SPEC `j:num`) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN (SUBST1_TAC o SYM) THEN
+  (* Goal: read (mem :> bytes128 (word_add iptr (word (16*j)))) s_end =
+           read (mem :> bytes128 (word_add iptr (word (16*j)))) s0 *)
+  FIRST_X_ASSUM (fun th ->
+    let c = concl th in
+    try
+      let _, args = strip_comb c in
+      let n = List.length args in
+      if n >= 2 &&
+         is_var (List.nth args (n-2)) &&
+         fst(dest_var (List.nth args (n-2))) = "s0" &&
+         is_var (List.nth args (n-1)) &&
+         fst(dest_var (List.nth args (n-1))) = s_end_name
+      then MP_TAC th else NO_TAC
+    with _ -> NO_TAC) THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID; seq; ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN
+  REPEAT STRIP_TAC THEN
+  (* Only substitute write-chain equations; do NOT substitute hyps like
+     `read R8 s0 = cbptr`, which would replace `cbptr` with `read R8 s0`
+     in MAYCHANGE writables and break ROWOT. *)
+  REPEAT (FIRST_X_ASSUM (fun th ->
+    try
+      let c = concl th in
+      if not (is_eq c) then NO_TAC else
+      let lhs, rhs = dest_eq c in
+      let is_write_term t =
+        try name_of (fst (strip_comb t)) = "write" with _ -> false in
+      let is_fresh_state t =
+        is_var t &&
+        (let n = fst (dest_var t) in
+         String.length n >= 2 &&
+         String.get n 0 = 's' &&
+         String.get n 1 <> '0') in
+      if (is_write_term lhs && is_fresh_state rhs) ||
+         (is_fresh_state lhs && is_fresh_state rhs) ||
+         (is_fresh_state lhs && is_write_term rhs)
+      then SUBST_ALL_TAC (SYM th) else NO_TAC
+    with _ -> NO_TAC)) THEN
+  READ_OVER_WRITE_ORTHOGONAL_TAC;;
+
 let loopinv_common = new_definition
  `loopinv_common
     (iptr_base:int64) (optr_base:int64) (kptr:int64) (hptr:int64)
@@ -534,6 +614,7 @@ let loopinv_common = new_definition
     (red:int128) (plus:int128)
     (counter_fn:num->int128) (p_fn:num->int128)
     (iter_count:num) (i:num) (s:x86state) <=>
+      pt_preserved iter_count iptr_base s p_fn /\
       read RDI s = word_add iptr_base (word (96 * i)) /\
       read RSI s = word_add optr_base (word (96 * i)) /\
       read RDX s = word_sub (word (6 * iter_count)) (word (6 + 6 * i)) /\
@@ -1224,6 +1305,8 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
         if string_of_term (concl th) =
              "word_add iptr (word (96 * i)) = iter_iptr"
         then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      SUBGOAL_THEN `pt_preserved iter_count iptr s3 p_fn` ASSUME_TAC THENL
+       [PT_FRAME_TAC "s3"; ALL_TAC] THEN
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
       REPEAT CONJ_TAC THENL [
@@ -1246,12 +1329,22 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       ] THEN
       RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(i + 1 = iter_count)`]) THEN
       X86_STEPS_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC (4--11) THEN
+      FIRST_X_ASSUM (fun th ->
+        if string_of_term (concl th) =
+             "word_add optr (word (96 * i)) = iter_optr"
+        then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      FIRST_X_ASSUM (fun th ->
+        if string_of_term (concl th) =
+             "word_add iptr (word (96 * i)) = iter_iptr"
+        then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      SUBGOAL_THEN `pt_preserved iter_count iptr s11 p_fn` ASSUME_TAC THENL
+       [PT_FRAME_TAC "s11"; ALL_TAC] THEN
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
       REPEAT CONJ_TAC THENL [
         REWRITE_TAC[ADD_CLAUSES];
-        EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[CASEB_PTR_EQ];
-        EXPAND_TAC "iter_optr" THEN REWRITE_TAC[CASEB_PTR_EQ];
+        REWRITE_TAC[CASEB_PTR_EQ];
+        REWRITE_TAC[CASEB_PTR_EQ];
         REWRITE_TAC[LOOP_RDX_STEP_MID];
         MAP_EVERY EXISTS_TAC
           [`new_cb0:int128`; `c0_out:int128`; `c5_out:int128`;
@@ -1259,16 +1352,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
            `xi4_out:int128`; `sp32:int128`; `xi8_out:int128`;
            `read (memory :> bytes128 (word_add sptr (word 16))) s11 :int128`] THEN
         REWRITE_TAC[WORD_ZX_ZX_128] THEN
-        ASM_REWRITE_TAC[];
-        FIRST_X_ASSUM (fun th ->
-          if string_of_term (concl th) =
-               "word_add optr (word (96 * i)) = iter_optr"
-          then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
-        FIRST_X_ASSUM (fun th ->
-          if string_of_term (concl th) =
-               "word_add iptr (word (96 * i)) = iter_iptr"
-          then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
-        MONOTONE_MAYCHANGE_TAC
+        ASM_REWRITE_TAC[]
       ]
     ];
 
