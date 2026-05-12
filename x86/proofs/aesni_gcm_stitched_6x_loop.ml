@@ -1061,7 +1061,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       (counter_fn:num->int128) (p_fn:num->int128)
       (iter_count:num) (pc:num).
       1 <= iter_count /\
-      6 * iter_count < 2 EXP 64 /\
+      16 * 6 * iter_count < 2 EXP 64 /\
       (!j. counter_fn (j + 1) =
            simd16 word_add ((counter_fn j):int128) (plus:int128)) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc) (optr, 16 * 6 * iter_count) /\
@@ -1629,7 +1629,13 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
     ] THEN
     X86_STEPS_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC [2; 3] THEN
     MP_TAC(SPECL [`i:num`; `iter_count:num`] LOOP_CF_EQUIV) THEN
-    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    ANTS_TAC THENL [
+      CONJ_TAC THENL [
+        FIRST_ASSUM ACCEPT_TAC;
+        UNDISCH_TAC `16 * 6 * iter_count < 2 EXP 64` THEN ARITH_TAC
+      ];
+      ALL_TAC
+    ] THEN
     DISCH_TAC THEN
     RULE_ASSUM_TAC(REWRITE_RULE[ASSUME
       `val (word_sub (word (6 * iter_count)) (word (6 + 6 * i)):int64) < 6 <=>
@@ -1652,37 +1658,118 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
         then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
       SUBGOAL_THEN `pt_preserved iter_count iptr s3 p_fn` ASSUME_TAC THENL
        [PT_FRAME_TAC "s3"; ALL_TAC] THEN
-      (* WIP (2026-05-11 session aborted by reboot): ct_preserved Case A
-         closure is behind CHEAT_TAC.  Strategy mostly designed + partially
-         probed:
-
-         1. Reduce iter_count to i+1 (Case A assumes i+1=iter_count).
-         2. Unfold ct_preserved; X_GEN_TAC j; ASM_CASES_TAC `j < 6 * i`.
-         3. Old j (j < 6*i): bridge s0 -> s3 via MAYCHANGE orthogonality
-            through `ct_preserved i optr s0` (opaque, survives).  Requires
-            deriving 8 per-j nonoverlaps: (optr+16j, 16) vs each of the
-            6 MAYCHANGE writables `(word_add (word_add optr (word 96i))
-            (word r), 16)` for r in {0,16,..,80}, plus cbptr and sptr+16.
-            BLOCKER (probed): NONOVERLAPPING_SUBREGION_BOTH requires two
-            DISJOINT superregions (same-base optr vs optr fails with
-            `nonoverlapping (optr,N) (optr,N)` which is always false).
-            Fix: add a new helper lemma `NONOVERLAPPING_SUBREGION_SAME_BASE`:
-               !base n off1 len1 off2 len2.
-                  off1 + len1 <= off2 /\ off2 + len2 <= n ==>
-                  nonoverlapping (word_add base (word off1), len1)
-                                 (word_add base (word off2), len2)
-            Follows from NONOVERLAPPING_DISJOINT_INTERVALS + word arith.
-         4. New j (j = 6*i+k', k'<6): use EXT4's 6 stitched hyps
-            (in asl at s3 with `p_k` form) + bridge `p_k = p_fn(6*i+k)` via
-            pt_preserved s3 SPEC'd at `6*i+k`.  Case-split k' in {0..5} and
-            close each by ASM_REWRITE.
-
-         The WIP skeleton below (after this CHEAT_TAC) is preserved as a
-         reference for the next session.  See feedback_b2b_wip.md. *)
+      (* Case A ct_preserved closure via CT_PRESERVED_LIFT.  Case A has
+         i+1 = iter_count; the helper produces `ct_preserved (i+1) optr s_end`,
+         which equals `ct_preserved iter_count optr s_end` after ASM_REWRITE.
+         Pre-expanding SOME_FLAGS via the REWRITE list lets MONOTONE_MAYCHANGE_TAC
+         match the combined body+tail asl frame `(bigframe) s0 s3` (whose flags
+         come through as the concrete [CF;PF;AF;ZF;SF;OF] list from the stepper).
+         The closure dispatches on goal shape: MAYCHANGE conjuncts go to
+         MONOTONE; the 96*i+96 arithmetic conjunct gets targeted UNDISCH +
+         ARITH; everything else is discharged by FIRST_ASSUM or targeted
+         ASM_REWRITE[ASSUME (i + 1 = iter_count)].  Using targeted-UNDISCH
+         ARITH (not ASM_ARITH_TAC) avoids the multi-minute cost of ARITH
+         scanning 100+ hypotheses from the outer M8 precondition. *)
       SUBGOAL_THEN
         `ct_preserved iter_count optr s3
            [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] counter_fn p_fn`
-        ASSUME_TAC THENL [CHEAT_TAC; ALL_TAC] THEN
+        ASSUME_TAC THENL [
+        SUBGOAL_THEN `iter_count = i + 1` SUBST1_TAC THENL
+         [UNDISCH_TAC `i + 1 = iter_count` THEN ARITH_TAC; ALL_TAC] THEN
+        MP_TAC (SPECL
+          [`optr:int64`; `iptr:int64`; `cbptr:int64`; `sptr:int64`;
+           `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+           `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+           `k8:int128`; `k9:int128`; `k10:int128`;
+           `p0:int128`; `p1:int128`; `p2:int128`;
+           `p3:int128`; `p4:int128`; `p5:int128`;
+           `counter_fn:num->int128`; `p_fn:num->int128`;
+           `iter_count:num`; `i:num`;
+           `s0:x86state`; `s3:x86state`] CT_PRESERVED_LIFT) THEN
+        REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0; SOME_FLAGS;
+                    NONOVERLAPPING_CLAUSES;
+                    GSYM WORD_ADD_ASSOC_CONSTS] THEN
+        (* Normalize asl's `counter_fn (6*i + 0)` form (left by M7 EXT4) to
+           `counter_fn (6*i)` so the helper's post-rewrite form matches. *)
+        RULE_ASSUM_TAC(REWRITE_RULE[ADD_CLAUSES]) THEN
+        (* Pre-derive the 6 `p_k = read(iptr+96*i+16k) s0` bridges.  Asl has
+           `read(iptr+96*i+16k) s3 = p_k` (ABBREV propagated by the stepper)
+           and pt_preserved s0 + s3 (via PT_FRAME_TAC); chain via p_fn. *)
+        SUBGOAL_THEN
+          `(p0:int128) = read (memory :> bytes128
+                                 (word_add iptr (word (96 * i)))) s0 /\
+           (p1:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 16))) s0 /\
+           (p2:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 32))) s0 /\
+           (p3:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 48))) s0 /\
+           (p4:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 64))) s0 /\
+           (p5:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 80))) s0`
+          STRIP_ASSUME_TAC THENL [
+          SUBGOAL_THEN
+            `6 * i + 0 < 6 * iter_count /\ 6 * i + 1 < 6 * iter_count /\
+             6 * i + 2 < 6 * iter_count /\ 6 * i + 3 < 6 * iter_count /\
+             6 * i + 4 < 6 * iter_count /\ 6 * i + 5 < 6 * iter_count`
+            STRIP_ASSUME_TAC THENL
+           [UNDISCH_TAC `(i:num) + 1 = iter_count` THEN ARITH_TAC; ALL_TAC] THEN
+          MP_TAC (REWRITE_RULE[pt_preserved]
+                   (ASSUME `pt_preserved iter_count iptr s0 p_fn`)) THEN
+          MP_TAC (REWRITE_RULE[pt_preserved]
+                   (ASSUME `pt_preserved iter_count iptr s3 p_fn`)) THEN
+          REWRITE_TAC[ARITH_RULE `16 * (6 * i + 0) = 96 * i`;
+                      ARITH_RULE `16 * (6 * i + 1) = 96 * i + 16`;
+                      ARITH_RULE `16 * (6 * i + 2) = 96 * i + 32`;
+                      ARITH_RULE `16 * (6 * i + 3) = 96 * i + 48`;
+                      ARITH_RULE `16 * (6 * i + 4) = 96 * i + 64`;
+                      ARITH_RULE `16 * (6 * i + 5) = 96 * i + 80`;
+                      ADD_CLAUSES; WORD_ADD_0;
+                      GSYM WORD_ADD_ASSOC_CONSTS] THEN
+          DISCH_THEN (fun pt3 -> DISCH_THEN (fun pt0 ->
+            REPEAT CONJ_TAC THEN
+            (MP_TAC (SPEC `6 * i + 0` pt0) THEN
+             MP_TAC (SPEC `6 * i + 1` pt0) THEN
+             MP_TAC (SPEC `6 * i + 2` pt0) THEN
+             MP_TAC (SPEC `6 * i + 3` pt0) THEN
+             MP_TAC (SPEC `6 * i + 4` pt0) THEN
+             MP_TAC (SPEC `6 * i + 5` pt0) THEN
+             MP_TAC (SPEC `6 * i + 0` pt3) THEN
+             MP_TAC (SPEC `6 * i + 1` pt3) THEN
+             MP_TAC (SPEC `6 * i + 2` pt3) THEN
+             MP_TAC (SPEC `6 * i + 3` pt3) THEN
+             MP_TAC (SPEC `6 * i + 4` pt3) THEN
+             MP_TAC (SPEC `6 * i + 5` pt3) THEN
+             ASM_REWRITE_TAC[ARITH_RULE `16 * (6 * i + 0) = 96 * i`;
+                             ARITH_RULE `16 * (6 * i + 1) = 96 * i + 16`;
+                             ARITH_RULE `16 * (6 * i + 2) = 96 * i + 32`;
+                             ARITH_RULE `16 * (6 * i + 3) = 96 * i + 48`;
+                             ARITH_RULE `16 * (6 * i + 4) = 96 * i + 64`;
+                             ARITH_RULE `16 * (6 * i + 5) = 96 * i + 80`;
+                             ADD_CLAUSES; WORD_ADD_0;
+                             GSYM WORD_ADD_ASSOC_CONSTS] THEN
+             REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[])));
+          ALL_TAC
+        ] THEN
+        ANTS_TAC THENL [
+          REPEAT CONJ_TAC THEN
+            W(fun (_,w) ->
+              if maychange_term w then MONOTONE_MAYCHANGE_TAC
+              else if w = `96 * i + 96 <= 16 * 6 * iter_count` then
+                UNDISCH_TAC `(i:num) < iter_count` THEN ARITH_TAC
+              else if w = `i + 1 <= iter_count` then
+                UNDISCH_TAC `(i:num) + 1 = iter_count` THEN ARITH_TAC
+              else FIRST_ASSUM ACCEPT_TAC ORELSE
+                   FIRST_ASSUM (ACCEPT_TAC o SYM));
+          SIMP_TAC[]
+        ];
+        ALL_TAC] THEN
             ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
       REPEAT CONJ_TAC THENL [
@@ -1715,10 +1802,107 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
         then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
       SUBGOAL_THEN `pt_preserved iter_count iptr s11 p_fn` ASSUME_TAC THENL
        [PT_FRAME_TAC "s11"; ALL_TAC] THEN
+      (* Case B ct_preserved closure via CT_PRESERVED_LIFT.  s_end = s11.
+         Combined frame (body + 8 tail+backjmp insns) is built up in asl by
+         X86_BIGSTEP_TAC + X86_STEPS_TAC[4--11]; the last conjunct
+         (MAYCHANGE) is closed via MONOTONE_MAYCHANGE_TAC against that frame,
+         with SOME_FLAGS pre-expanded so the lists match.  Targeted-UNDISCH
+         ARITH for arithmetic conjuncts avoids scanning ~100 outer hyps. *)
       SUBGOAL_THEN
         `ct_preserved (i + 1) optr s11
            [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] counter_fn p_fn`
-        ASSUME_TAC THENL [CHEAT_TAC; ALL_TAC] THEN
+        ASSUME_TAC THENL [
+        MP_TAC (SPECL
+          [`optr:int64`; `iptr:int64`; `cbptr:int64`; `sptr:int64`;
+           `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+           `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+           `k8:int128`; `k9:int128`; `k10:int128`;
+           `p0:int128`; `p1:int128`; `p2:int128`;
+           `p3:int128`; `p4:int128`; `p5:int128`;
+           `counter_fn:num->int128`; `p_fn:num->int128`;
+           `iter_count:num`; `i:num`;
+           `s0:x86state`; `s11:x86state`] CT_PRESERVED_LIFT) THEN
+        REWRITE_TAC[ADD_CLAUSES; WORD_ADD_0; SOME_FLAGS;
+                    NONOVERLAPPING_CLAUSES;
+                    GSYM WORD_ADD_ASSOC_CONSTS] THEN
+        RULE_ASSUM_TAC(REWRITE_RULE[ADD_CLAUSES]) THEN
+        (* Pre-derive the 6 `p_k = read(iptr+96*i+16k) s0` bridges via
+           pt_preserved s0 + s11 + asl's ABBREV propagated to s11. *)
+        SUBGOAL_THEN
+          `(p0:int128) = read (memory :> bytes128
+                                 (word_add iptr (word (96 * i)))) s0 /\
+           (p1:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 16))) s0 /\
+           (p2:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 32))) s0 /\
+           (p3:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 48))) s0 /\
+           (p4:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 64))) s0 /\
+           (p5:int128) = read (memory :> bytes128
+                                 (word_add (word_add iptr (word (96 * i)))
+                                           (word 80))) s0`
+          STRIP_ASSUME_TAC THENL [
+          SUBGOAL_THEN
+            `6 * i + 0 < 6 * iter_count /\ 6 * i + 1 < 6 * iter_count /\
+             6 * i + 2 < 6 * iter_count /\ 6 * i + 3 < 6 * iter_count /\
+             6 * i + 4 < 6 * iter_count /\ 6 * i + 5 < 6 * iter_count`
+            STRIP_ASSUME_TAC THENL
+           [UNDISCH_TAC `i + 1 < iter_count` THEN ARITH_TAC; ALL_TAC] THEN
+          MP_TAC (REWRITE_RULE[pt_preserved]
+                   (ASSUME `pt_preserved iter_count iptr s0 p_fn`)) THEN
+          MP_TAC (REWRITE_RULE[pt_preserved]
+                   (ASSUME `pt_preserved iter_count iptr s11 p_fn`)) THEN
+          REWRITE_TAC[ARITH_RULE `16 * (6 * i + 0) = 96 * i`;
+                      ARITH_RULE `16 * (6 * i + 1) = 96 * i + 16`;
+                      ARITH_RULE `16 * (6 * i + 2) = 96 * i + 32`;
+                      ARITH_RULE `16 * (6 * i + 3) = 96 * i + 48`;
+                      ARITH_RULE `16 * (6 * i + 4) = 96 * i + 64`;
+                      ARITH_RULE `16 * (6 * i + 5) = 96 * i + 80`;
+                      ADD_CLAUSES; WORD_ADD_0;
+                      GSYM WORD_ADD_ASSOC_CONSTS] THEN
+          DISCH_THEN (fun pt11 -> DISCH_THEN (fun pt0 ->
+            REPEAT CONJ_TAC THEN
+            (MP_TAC (SPEC `6 * i + 0` pt0) THEN
+             MP_TAC (SPEC `6 * i + 1` pt0) THEN
+             MP_TAC (SPEC `6 * i + 2` pt0) THEN
+             MP_TAC (SPEC `6 * i + 3` pt0) THEN
+             MP_TAC (SPEC `6 * i + 4` pt0) THEN
+             MP_TAC (SPEC `6 * i + 5` pt0) THEN
+             MP_TAC (SPEC `6 * i + 0` pt11) THEN
+             MP_TAC (SPEC `6 * i + 1` pt11) THEN
+             MP_TAC (SPEC `6 * i + 2` pt11) THEN
+             MP_TAC (SPEC `6 * i + 3` pt11) THEN
+             MP_TAC (SPEC `6 * i + 4` pt11) THEN
+             MP_TAC (SPEC `6 * i + 5` pt11) THEN
+             ASM_REWRITE_TAC[ARITH_RULE `16 * (6 * i + 0) = 96 * i`;
+                             ARITH_RULE `16 * (6 * i + 1) = 96 * i + 16`;
+                             ARITH_RULE `16 * (6 * i + 2) = 96 * i + 32`;
+                             ARITH_RULE `16 * (6 * i + 3) = 96 * i + 48`;
+                             ARITH_RULE `16 * (6 * i + 4) = 96 * i + 64`;
+                             ARITH_RULE `16 * (6 * i + 5) = 96 * i + 80`;
+                             ADD_CLAUSES; WORD_ADD_0;
+                             GSYM WORD_ADD_ASSOC_CONSTS] THEN
+             REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[])));
+          ALL_TAC
+        ] THEN
+        ANTS_TAC THENL [
+          REPEAT CONJ_TAC THEN
+            W(fun (_,w) ->
+              if maychange_term w then MONOTONE_MAYCHANGE_TAC
+              else if w = `96 * i + 96 <= 16 * 6 * iter_count` then
+                UNDISCH_TAC `(i:num) < iter_count` THEN ARITH_TAC
+              else if w = `i + 1 <= iter_count` then
+                UNDISCH_TAC `i + 1 < iter_count` THEN ARITH_TAC
+              else FIRST_ASSUM ACCEPT_TAC ORELSE
+                   FIRST_ASSUM (ACCEPT_TAC o SYM));
+          SIMP_TAC[]
+        ];
+        ALL_TAC] THEN
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
       REPEAT CONJ_TAC THENL [
@@ -1729,7 +1913,58 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
         MAP_EVERY EXISTS_TAC
           [`xi4_out:int128`; `sp32:int128`; `xi8_out:int128`;
            `read (memory :> bytes128 (word_add sptr (word 16))) s11 :int128`] THEN
-        ASM_REWRITE_TAC[WORD_ZX_ZX_128] THEN CHEAT_TAC
+        REWRITE_TAC[ADD_CLAUSES] THEN
+        (* Expand the counter_fn(6*(i+1)+k) indices via the counter_fn
+           recurrence so they chain through the EXT4-produced zcb0/zc0/... forms.
+           6*(i+1)+0 = 6*i+6, 6*(i+1)+1 = 6*i+7, ..., 6*(i+1)+5 = 6*i+11.
+           After REWRITE[ADD_CLAUSES], `6*(i+1)+0` simplifies to `6*(i+1)`. *)
+        SUBGOAL_THEN
+          `(counter_fn (6 * (i + 1)) : int128 =
+             simd16 word_add (counter_fn (6 * i + 5)) plus) /\
+           (counter_fn (6 * (i + 1) + 1) : int128 =
+             simd16 word_add (counter_fn (6 * (i + 1))) plus) /\
+           (counter_fn (6 * (i + 1) + 2) : int128 =
+             simd16 word_add (counter_fn (6 * (i + 1) + 1)) plus) /\
+           (counter_fn (6 * (i + 1) + 3) : int128 =
+             simd16 word_add (counter_fn (6 * (i + 1) + 2)) plus) /\
+           (counter_fn (6 * (i + 1) + 4) : int128 =
+             simd16 word_add (counter_fn (6 * (i + 1) + 3)) plus) /\
+           (counter_fn (6 * (i + 1) + 5) : int128 =
+             simd16 word_add (counter_fn (6 * (i + 1) + 4)) plus)`
+          STRIP_ASSUME_TAC THENL
+         [FIRST_ASSUM(fun recur ->
+            try
+              let c = concl recur in
+              let _, body = strip_forall c in
+              let lhs, _ = dest_eq body in
+              if name_of(fst(strip_comb lhs)) = "counter_fn"
+              then
+                MP_TAC (end_itlist CONJ
+                  (map (fun jtm -> SPEC jtm recur)
+                     [`6 * i + 5`;
+                      `6 * (i + 1)`;
+                      `6 * (i + 1) + 1`;
+                      `6 * (i + 1) + 2`;
+                      `6 * (i + 1) + 3`;
+                      `6 * (i + 1) + 4`]))
+              else NO_TAC
+            with _ -> NO_TAC) THEN
+          REWRITE_TAC[ARITH_RULE
+             `(6 * i + 5) + 1 = 6 * (i + 1) /\
+              (6 * (i + 1)) + 1 = 6 * (i + 1) + 1 /\
+              (6 * (i + 1) + 1) + 1 = 6 * (i + 1) + 2 /\
+              (6 * (i + 1) + 2) + 1 = 6 * (i + 1) + 3 /\
+              (6 * (i + 1) + 3) + 1 = 6 * (i + 1) + 4 /\
+              (6 * (i + 1) + 4) + 1 = 6 * (i + 1) + 5`] THEN
+          STRIP_TAC THEN ASM_REWRITE_TAC[];
+          ALL_TAC] THEN
+        (* Rewrite counter_fn(6*(i+1)+k) in the goal recursively via the 6
+           bridges (now in asl), exhaustively unfolding each to a nested
+           simd16 word_add chain rooted at counter_fn(6*i+5).  WORD_ZX_XOR
+           commutes word_zx/word_xor on the YMM9 conjunct.  ASM_REWRITE
+           then closes using zcb0/zc0/zc5/zc6/zc7/zc3 defs + the stepper
+           equations for YMM9..14 at s11 + WORD_ZX_ZX_128. *)
+        ASM_REWRITE_TAC[WORD_ZX_XOR; WORD_ZX_ZX_128]
       ]
     ];
 
