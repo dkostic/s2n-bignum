@@ -454,6 +454,40 @@ let NONOVERLAPPING_SUBREGION_BOTH = prove
                   `base2:int64`; `n2:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
   ASM_REWRITE_TAC[]);;
 
+(* Same-base sub-region: two disjoint windows [off1,off1+len1) and          *)
+(* [off2,off2+len2) on the SAME base pointer are nonoverlapping.  Used by   *)
+(* the Case A/B ct_preserved closures in M8's inductive step where the     *)
+(* iteration-i block (optr + 96*i, 96) and iteration-prefix block (optr,   *)
+(* 96*i) both live on optr.                                                 *)
+
+let NONOVERLAPPING_SUBREGION_SAME_BASE = prove
+ (`!(base:int64) (n:num) (off1:num) (len1:num) (off2:num) (len2:num).
+      off1 + len1 <= off2 /\ off2 + len2 <= n /\ n <= 2 EXP 64
+      ==> nonoverlapping (word_add base (word off1):int64, len1)
+                         (word_add base (word off2):int64, len2)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; nonoverlapping_modulo;
+              NOT_EXISTS_THM] THEN
+  REPEAT STRIP_TAC THEN POP_ASSUM MP_TAC THEN
+  REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64; CONG] THEN
+  CONV_TAC MOD_DOWN_CONV THEN
+  REWRITE_TAC[GSYM CONG] THEN DISCH_TAC THEN
+  RULE_ASSUM_TAC (REWRITE_RULE[GSYM ADD_ASSOC; CONG_ADD_LCANCEL_EQ]) THEN
+  SUBGOAL_THEN `off1 + i = off2 + j` MP_TAC THENL
+   [MATCH_MP_TAC CONG_IMP_EQ THEN EXISTS_TAC `2 EXP 64` THEN
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+    ASM_ARITH_TAC]);;
+
+let NONOVERLAPPING_SUBREGION_SAME_BASE_SYM = prove
+ (`!(base:int64) (n:num) (off1:num) (len1:num) (off2:num) (len2:num).
+      off2 + len2 <= off1 /\ off1 + len1 <= n /\ n <= 2 EXP 64
+      ==> nonoverlapping (word_add base (word off1):int64, len1)
+                         (word_add base (word off2):int64, len2)`,
+  REPEAT STRIP_TAC THEN
+  ONCE_REWRITE_TAC[NONOVERLAPPING_SYM] THEN
+  MATCH_MP_TAC NONOVERLAPPING_SUBREGION_SAME_BASE THEN
+  EXISTS_TAC `n:num` THEN ASM_REWRITE_TAC[]);;
+
 (* Pointer-equality identities used for loopinv_common closure in Case A/B  *)
 (* of M8's inductive step.  Both reduce `word_add (iter_ptr) (word 96)`     *)
 (* (where iter_ptr = word_add x (word (96*i))) to the target form.          *)
