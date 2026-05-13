@@ -378,6 +378,64 @@ let WORD_REVERSEFIELDS_XOR_128 = WORD_BLAST
   `!(a:int128) b. word_reversefields 8 (word_xor a b) =
                   word_xor (word_reversefields 8 a) (word_reversefields 8 b)`;;
 
+(* Opaque wrapper around the 6-block stash invariant written by M7's scalar
+   stash pipeline (6 movbeq/movq pairs at r14+{0..88} -> sp+{32..127}).
+   `stashed_ct_preserved sptr r14_new s` holds when the 6 bytes128 slots
+   at sp+32+16k (k=0..5) each byte-reverse to the bytes128 at
+   r14_new + 16*(5-k).  r14_new is the r14 value AFTER the body's end-probe
+   advances it (either r14_entry or r14_entry + 96); M7 EXT5's post pins
+   `read R14 s = r14_new` so downstream (M8 Stage B3b) can compose the
+   r14-indexed memory reads against its ct_preserved / warmup-stash
+   invariants.  The reads are against the post-state `s` (both sides): the
+   M7 body does not write to r14_new memory (per its MAYCHANGE and
+   nonoverlap preconditions), so the predicate's RHS equals the pre-state
+   read at the same address, but stating it against `s` keeps the
+   definition state-generic.                                                 *)
+let stashed_ct_preserved = new_definition
+ `stashed_ct_preserved (sptr:int64) (r14_new:int64) (s:x86state) <=>
+    !k. k < 6
+        ==> read (memory :> bytes128
+                    (word_add sptr (word (32 + 16 * k)))) s =
+            word_bytereverse
+              (read (memory :> bytes128
+                       (word_add r14_new (word (16 * (5 - k))))) s)`;;
+
+(* Bytes128-level bridge: derives the bytes128 stash equation from two
+   bytes64 equations (one per 8-byte half).  Used at M7 EXT5's closure to
+   package the stepper's per-movbeq bytes64 writes into a single bytes128
+   equation per k-slot.  Proof: split bytes128 into word_join of two
+   bytes64 on both sides (goal's LHS via sp+32+16k / sp+32+16k+8 split,
+   RHS via r14+16(5-k) / r14+16(5-k)+8), apply the two bytes64 hyps, then
+   close by WORD_BLAST over the 128-bit byte-reverse-commutes-with-join
+   identity.                                                                 *)
+let STASHED_BYTES128_FROM_BYTES64 = prove
+ (`!sptr r14_new (s:x86state) k.
+    k < 6 /\
+    read (memory :> bytes64 (word_add sptr (word (32 + 16 * k)))) s =
+      word_bytereverse
+        (read (memory :> bytes64
+                 (word_add r14_new (word (16 * (5 - k) + 8)))) s) /\
+    read (memory :> bytes64 (word_add sptr (word (32 + 16 * k + 8)))) s =
+      word_bytereverse
+        (read (memory :> bytes64
+                 (word_add r14_new (word (16 * (5 - k))))) s)
+    ==> read (memory :> bytes128 (word_add sptr (word (32 + 16 * k)))) s =
+        word_bytereverse
+          (read (memory :> bytes128
+                   (word_add r14_new (word (16 * (5 - k))))) s)`,
+  REPEAT STRIP_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV [READ_MEMORY_BYTESIZED_SPLIT] THEN
+  GEN_REWRITE_TAC (RAND_CONV o RAND_CONV) [READ_MEMORY_BYTESIZED_SPLIT] THEN
+  SUBGOAL_THEN
+    `word_add (word_add sptr (word (32 + 16 * k))) (word 8):int64 =
+     word_add sptr (word (32 + 16 * k + 8)) /\
+     word_add (word_add r14_new (word (16 * (5 - k)))) (word 8):int64 =
+     word_add r14_new (word (16 * (5 - k) + 8))`
+    (fun th -> REWRITE_TAC[th])
+  THENL [CONJ_TAC THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC WORD_BLAST);;
+
 (* Correctness.                                                              *)
 
 let AESNI_GCM_STITCHED_6X_CORRECT = prove
