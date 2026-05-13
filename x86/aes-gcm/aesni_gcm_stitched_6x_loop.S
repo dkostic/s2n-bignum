@@ -44,33 +44,43 @@ aesni_gcm_stitched_6x_loop_core:
         vpxor	%xmm15,%xmm12,%xmm12
         vmovdqu	16-128(%rcx),%xmm2
         vpclmulqdq	$0x01,%xmm3,%xmm7,%xmm6
+        xorq	%r12,%r12
+        cmpq	%r14,%r15
         vaesenc	%xmm2,%xmm9,%xmm9
         vmovdqu	48(%rsp),%xmm0
         vpxor	%xmm15,%xmm13,%xmm13
         vpclmulqdq	$0x00,%xmm3,%xmm7,%xmm1
         vaesenc	%xmm2,%xmm10,%xmm10
         vpxor	%xmm15,%xmm14,%xmm14
+        setnc	%r12b
         vpclmulqdq	$0x11,%xmm3,%xmm7,%xmm7
         vaesenc	%xmm2,%xmm11,%xmm11
         vmovdqu	16-32(%r9),%xmm3
+        negq	%r12
         vaesenc	%xmm2,%xmm12,%xmm12
         vpxor	%xmm5,%xmm6,%xmm6
         vpclmulqdq	$0x00,%xmm3,%xmm0,%xmm5
         vpxor	%xmm4,%xmm8,%xmm8
         vaesenc	%xmm2,%xmm13,%xmm13
         vpxor	%xmm5,%xmm1,%xmm4
+        andq	$0x60,%r12
         vmovdqu	32-128(%rcx),%xmm15
         vpclmulqdq	$0x10,%xmm3,%xmm0,%xmm1
         vaesenc	%xmm2,%xmm14,%xmm14
         vpclmulqdq	$0x01,%xmm3,%xmm0,%xmm2
+        leaq	(%r14,%r12,1),%r14
         vaesenc	%xmm15,%xmm9,%xmm9
         vpxor	16(%rsp),%xmm8,%xmm8
         vpclmulqdq	$0x11,%xmm3,%xmm0,%xmm3
         vmovdqu	64(%rsp),%xmm0
         vaesenc	%xmm15,%xmm10,%xmm10
+        movbeq	88(%r14),%r13
         vaesenc	%xmm15,%xmm11,%xmm11
+        movbeq	80(%r14),%r12
         vaesenc	%xmm15,%xmm12,%xmm12
+        movq	%r13,32(%rsp)
         vaesenc	%xmm15,%xmm13,%xmm13
+        movq	%r12,40(%rsp)
         vmovdqu	48-32(%r9),%xmm5
         vaesenc	%xmm15,%xmm14,%xmm14
         vmovdqu	48-128(%rcx),%xmm15
@@ -97,13 +107,17 @@ aesni_gcm_stitched_6x_loop_core:
         vpxor	%xmm3,%xmm6,%xmm6
         vpclmulqdq	$0x10,%xmm1,%xmm0,%xmm3
         vaesenc	%xmm15,%xmm10,%xmm10
+        movbeq	72(%r14),%r13
         vpxor	%xmm5,%xmm7,%xmm7
         vpclmulqdq	$0x01,%xmm1,%xmm0,%xmm5
         vaesenc	%xmm15,%xmm11,%xmm11
+        movbeq	64(%r14),%r12
         vpclmulqdq	$0x11,%xmm1,%xmm0,%xmm1
         vmovdqu	96(%rsp),%xmm0
         vaesenc	%xmm15,%xmm12,%xmm12
+        movq	%r13,48(%rsp)
         vaesenc	%xmm15,%xmm13,%xmm13
+        movq	%r12,56(%rsp)
         vpxor	%xmm2,%xmm4,%xmm4
         vmovdqu	96-32(%r9),%xmm2
         vaesenc	%xmm15,%xmm14,%xmm14
@@ -114,13 +128,17 @@ aesni_gcm_stitched_6x_loop_core:
         vpxor	%xmm5,%xmm6,%xmm6
         vpclmulqdq	$0x10,%xmm2,%xmm0,%xmm5
         vaesenc	%xmm15,%xmm10,%xmm10
+        movbeq	56(%r14),%r13
         vpxor	%xmm1,%xmm7,%xmm7
         vpclmulqdq	$0x01,%xmm2,%xmm0,%xmm1
         vpxor	112(%rsp),%xmm8,%xmm8
         vaesenc	%xmm15,%xmm11,%xmm11
+        movbeq	48(%r14),%r12
         vpclmulqdq	$0x11,%xmm2,%xmm0,%xmm2
         vaesenc	%xmm15,%xmm12,%xmm12
+        movq	%r13,64(%rsp)
         vaesenc	%xmm15,%xmm13,%xmm13
+        movq	%r12,72(%rsp)
         vpxor	%xmm3,%xmm4,%xmm4
         vmovdqu	112-32(%r9),%xmm3
         vaesenc	%xmm15,%xmm14,%xmm14
@@ -131,12 +149,16 @@ aesni_gcm_stitched_6x_loop_core:
         vpxor	%xmm1,%xmm6,%xmm6
         vpclmulqdq	$0x01,%xmm3,%xmm8,%xmm1
         vaesenc	%xmm15,%xmm10,%xmm10
+        movbeq	40(%r14),%r13
         vpxor	%xmm2,%xmm7,%xmm7
         vpclmulqdq	$0x00,%xmm3,%xmm8,%xmm2
         vaesenc	%xmm15,%xmm11,%xmm11
+        movbeq	32(%r14),%r12
         vpclmulqdq	$0x11,%xmm3,%xmm8,%xmm8
         vaesenc	%xmm15,%xmm12,%xmm12
+        movq	%r13,80(%rsp)
         vaesenc	%xmm15,%xmm13,%xmm13
+        movq	%r12,88(%rsp)
         vpxor	%xmm5,%xmm6,%xmm6
         vaesenc	%xmm15,%xmm14,%xmm14
         vpxor	%xmm1,%xmm6,%xmm6
@@ -148,10 +170,14 @@ aesni_gcm_stitched_6x_loop_core:
         vpxor	%xmm8,%xmm7,%xmm7
         vaesenc	%xmm15,%xmm10,%xmm10
         vpxor	%xmm5,%xmm4,%xmm4
+        movbeq	24(%r14),%r13
         vaesenc	%xmm15,%xmm11,%xmm11
+        movbeq	16(%r14),%r12
         vpalignr	$8,%xmm4,%xmm4,%xmm0
         vpclmulqdq	$0x10,%xmm3,%xmm4,%xmm4
+        movq	%r13,96(%rsp)
         vaesenc	%xmm15,%xmm12,%xmm12
+        movq	%r12,104(%rsp)
         vaesenc	%xmm15,%xmm13,%xmm13
         vmovdqu	128-128(%rcx),%xmm1
         vaesenc	%xmm15,%xmm14,%xmm14
@@ -163,7 +189,9 @@ aesni_gcm_stitched_6x_loop_core:
         vpxor	%xmm6,%xmm7,%xmm7
         vaesenc	%xmm1,%xmm12,%xmm12
         vpxor	%xmm0,%xmm4,%xmm4
+        movbeq	8(%r14),%r13
         vaesenc	%xmm1,%xmm13,%xmm13
+        movbeq	0(%r14),%r12
         vaesenc	%xmm1,%xmm14,%xmm14
         vmovdqu	160-128(%rcx),%xmm1
 
@@ -188,9 +216,11 @@ aesni_gcm_stitched_6x_loop_core:
         vmovdqu	32(%r11),%xmm2
         vaesenclast	%xmm0,%xmm10,%xmm10
         vpaddb	%xmm2,%xmm1,%xmm0
+        movq	%r13,112(%rsp)
         leaq	96(%rdi),%rdi
         vaesenclast	%xmm5,%xmm11,%xmm11
         vpaddb	%xmm2,%xmm0,%xmm5
+        movq	%r12,120(%rsp)
         leaq	96(%rsi),%rsi
         vmovdqu	0-128(%rcx),%xmm15
         vaesenclast	%xmm6,%xmm12,%xmm12

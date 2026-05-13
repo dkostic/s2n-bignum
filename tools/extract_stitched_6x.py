@@ -8,21 +8,23 @@ routine suitable for Milestone 7's register-only proof.
 
 The filtered output retains every SIMD/VEX instruction on the fast path,
 every memory load/store that participates in the cryptographic body, and
-the two pointer-advance `leaq 96(%rdi),%rdi` / `leaq 96(%rsi),%rsi`
-instructions that carry state across iterations of the loop wrapper.  The
-remaining interleaved scalar plumbing is dropped because it only updates
-loop state that does not affect the ciphertext/ghash/counter outputs of
-the current iteration:
+the pointer-advance `leaq` instructions that carry state across iterations
+of the loop wrapper (two for %rdi/%rsi, one for %r14/r12 stash pointer).
+It ALSO admits the scalar r14-advance probe and the movbeq/movq stash
+pairs that populate sp+32..sp+112 with byte-reversed ciphertext for the
+NEXT iteration's GHASH fold (see feedback_stash_offset_trace.md: the
+stash is off-by-TWO from M8-CT production).
+
+The MOVBE instruction is admitted verbatim — the s2n-bignum x86
+decoder gained MOVBE support in the same change that introduced this
+extractor widening.
+
+The remaining interleaved scalar plumbing is dropped because it only
+updates loop state that does not affect the ciphertext/ghash/counter
+outputs of the current iteration:
 
   * `addl $100663296,%ebx ; jc .Lhandle_ctr32`  — CTR32 wrap probe, not
     taken in the fast path.
-  * `xorq/cmpq/setnc/negq/andq`, scalar `leaq (%r14,%r12,1),%r14`  —
-    end-of-input probe, setting up `%r14` for NEXT iteration's
-    plaintext-stash address.
-  * `movbeq N(%r14),%r1[23] ; movq %r1[23],M(%rsp)` pairs — stash the
-    NEXT iteration's plaintext blocks into a scratch stack frame for
-    that iteration's GHASH accumulator, not consumed by the current
-    iteration's outputs.
   * `prefetcht0 N(%rdi)`  — memory hints.
   * `addq $0x60,%rax ; subq $0x6,%rdx ; jc .L6x_done`  — loop-count
     update (we take the fall-through, 'more blocks remain').
@@ -34,6 +36,19 @@ the current iteration:
   * The next-iteration register-setup block at lines 604/606/608/610/
     612/614/615 (vpxor/vmovdqa/vmovdqu 32(%rsp)) is dropped — those
     instructions belong to the NEXT iteration's entry fan-out.
+
+Admitted scalar insns (used by Stage B3a's stashed_ct_preserved
+invariant):
+
+  * Lines 341-361: end-probe `xorq %r12,%r12 ; cmpq %r14,%r15 ;
+    setnc %r12b ; negq %r12 ; andq $0x60,%r12` (6 insns) sets
+    %r12 to 0x60 when %r14 < %r15, else 0.
+  * Line 367: `leaq (%r14,%r12,1),%r14` (1 insn) advances r14 by 0
+    or 96 accordingly.
+  * Lines 373/375/408/412/430/435/452/456/475/477/495/497: the
+    12 movbeq reads (emitted verbatim, 5 bytes each).
+  * Lines 377/379/416/418/438/440/459/461/480/482/582/589: the
+    12 movq stores to (%rsp)+{32,40,48,56,64,72,80,88,96,104,112,120}.
 
 Output addressing:
 
@@ -70,23 +85,55 @@ REGIONS = [
     (603, 613, "ciphertext-stores"),
 ]
 
-# Scalar mnemonics on the fast path that do not contribute to the
-# cryptographic body.  Matched at the start of the instruction after
-# leading whitespace.  `leaq` is handled separately by LEAQ_KEEP below
-# so that the two pointer-advance `leaq 96(%rdi),%rdi` and
-# `leaq 96(%rsi),%rsi` are preserved while other leaqs (e.g. the
-# r14 stash-pointer advance at line 367) are dropped.
+# Scalar mnemonics that are ALWAYS dropped because they belong to loop
+# plumbing NOT on the per-iter data path (CTR32 wrap probe, loop-count
+# probe, AES-variant probe, prefetch hints, unconditional branches).
+#
+# Scalar mnemonics that are ADMITTED for Stage B3a are handled via
+# SCALAR_ADMIT below — NOT listed here.  The `movq` and `movbeq`
+# mnemonics are admitted by dedicated logic in main() (movq: line
+# whitelist; movbeq: line whitelist, emitted verbatim now that the
+# s2n-bignum decoder supports MOVBE — see feedback_movbe_decoder_added).
 SCALAR_DROP = {
-    "addl", "addq", "andq", "cmpl", "cmpq", "decl", "je", "jb", "jc",
-    "jmp", "jnz", "movbeq", "movq", "negq", "prefetcht0",
-    "setnc", "subq", "xorq",
+    "addl", "addq", "cmpl", "decl", "je", "jb", "jc",
+    "jmp", "jnz", "prefetcht0", "subq",
+}
+
+# Admitted scalar r14-advance probe (lines 341-361 of the source).
+# These set %r12 to 0 or 0x60 depending on whether %r14 < %r15, and
+# are followed by `leaq (%r14,%r12,1),%r14` (whitelisted below) that
+# advances %r14 by the same amount.  See
+# feedback_stash_offset_trace.md.
+SCALAR_ADMIT_LINES = {
+    341,  # xorq  %r12,%r12
+    342,  # cmpq  %r14,%r15
+    350,  # setnc %r12b
+    354,  # negq  %r12
+    361,  # andq  $0x60,%r12
+}
+
+# Lines carrying `movq %r1[23],N(%rsp)` stash stores (complement of the
+# movbeq reads).  Admitted unconditionally — the plain `movq` mnemonic is
+# in SCALAR_DROP by default (it is widely used for unrelated plumbing,
+# e.g. `movq %rsi,%r14` at line 84 of the source, which is OUTSIDE our
+# region range anyway), so we whitelist these 12 line numbers explicitly.
+MOVQ_STASH_LINES = {
+    377, 379, 416, 418, 438, 440, 459, 461, 480, 482, 582, 589,
+}
+
+# Lines carrying `movbeq N(%r14),%r1[23]` stash reads.  Admitted
+# verbatim now that the s2n-bignum decoder supports MOVBE.
+MOVBE_STASH_LINES = {
+    373, 375, 408, 412, 430, 435, 452, 456, 475, 477, 495, 497,
 }
 
 # Pointer-advance leaqs to preserve.  Matched against the instruction with
-# all whitespace collapsed to single spaces; keeps RDI/RSI advances by 96.
+# all whitespace collapsed to single spaces; keeps RDI/RSI advances by 96
+# and the r14 stash-pointer advance at source line 367.
 LEAQ_KEEP = {
     "leaq 96(%rdi),%rdi",
     "leaq 96(%rsi),%rsi",
+    "leaq (%r14,%r12,1),%r14",
 }
 
 
@@ -95,7 +142,7 @@ def _normalize(insn: str) -> str:
     return " ".join(insn.split())
 
 
-def is_simd_or_branch_label(line: str) -> bool:
+def is_simd_or_branch_label(line: str, lineno: int) -> bool:
     t = line.strip()
     if not t or t.startswith("//") or t.startswith("#") or t.startswith("/*"):
         return False
@@ -104,7 +151,16 @@ def is_simd_or_branch_label(line: str) -> bool:
     first = t.split(None, 1)[0]
     if first == "leaq":
         return _normalize(t) in LEAQ_KEEP
+    if first == "movbeq":
+        return lineno in MOVBE_STASH_LINES
+    if first == "movq":
+        return lineno in MOVQ_STASH_LINES
+    # Admit r14-probe scalar insns by line number (xorq/cmpq/setnc/negq/andq).
+    if lineno in SCALAR_ADMIT_LINES:
+        return True
     return first not in SCALAR_DROP
+
+
 
 
 def main(argv):
@@ -159,7 +215,7 @@ def main(argv):
         out.append(f"        // --- region {kind} : source lines {start}-{end} ---")
         for lineno in range(start, end + 1):
             line = src[lineno - 1]
-            if not is_simd_or_branch_label(line):
+            if not is_simd_or_branch_label(line, lineno):
                 continue
             insn = line.strip()
             if kind == "ciphertext-stores":
