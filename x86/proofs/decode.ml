@@ -388,6 +388,22 @@ let decode_aux = new_definition `!pfxs rex l. decode_aux pfxs rex l =
         let sz = Lower_128 in
         read_ModRM rex l >>= \((reg,rm),l).
         SOME (AESDECLAST (mmreg reg sz) (simd_of_RM sz rm), l)
+      | [0xf0:8] -> if has_unhandled_pfxs pfxs then NONE else
+        // MOVBE r{16,32,64}, m{16,32,64} : load and byte-reverse.
+        // Operand size: REX.W -> 64; 0x66 -> 16; else 32.  The /r
+        // operand must be memory; the reg-form is not encodable.
+        let sz = op_size T (rex_W rex) T pfxs in
+        read_ModRM rex l >>= \((reg,rm),l).
+        if is_memop rm
+        then SOME (MOVBE (%(gpr_adjust reg sz)) (operand_of_RM sz rm),l)
+        else NONE
+      | [0xf1:8] -> if has_unhandled_pfxs pfxs then NONE else
+        // MOVBE m{16,32,64}, r{16,32,64} : byte-reverse and store.
+        let sz = op_size T (rex_W rex) T pfxs in
+        read_ModRM rex l >>= \((reg,rm),l).
+        if is_memop rm
+        then SOME (MOVBE (operand_of_RM sz rm) (%(gpr_adjust reg sz)),l)
+        else NONE
       | [0xf6:8] ->
         let sz = op_size T (rex_W rex) T pfxs in
         read_ModRM_operand rex sz l >>= \((reg,rm),l).
@@ -1504,9 +1520,11 @@ let GPR_thms,GPR_CONV =
                r8;  r9; r10; r11; r12; r13; r14; r15|]
   and c32 = [|eax; ecx; edx; ebx; esp; ebp; esi; edi;
               r8d; r9d;r10d;r11d;r12d;r13d;r14d;r15d|]
-  and c16 = [|ax;cx;dx;bx;sp;bp;si;di|]
+  and c16 = [|ax;cx;dx;bx;sp;bp;si;di;
+              r8w; r9w; r10w; r11w; r12w; r13w; r14w; r15w|]
   and u8  = [|ah;ch;dh;bh|]
-  and c8  = [|al;cl;dl;bl;spl;bpl;sil;dil|] in
+  and c8  = [|al;cl;dl;bl;spl;bpl;sil;dil;
+              r8b; r9b; r10b; r11b; r12b; r13b; r14b; r15b|] in
   flat (map (fun A ->
     let l = Array.to_list A in
     Array.iteri (fun i th -> A.(i) <- SYM th) A; l) [c64;c32;c16;u8;c8]),

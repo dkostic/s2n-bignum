@@ -227,9 +227,18 @@ and BX = define `BX = EBX :> bottom_16`
 and SP = define `SP = ESP :> bottom_16`
 and BP = define `BP = EBP :> bottom_16`
 and SI = define `SI = ESI :> bottom_16`
-and DI = define `DI = EDI :> bottom_16`;;
+and DI = define `DI = EDI :> bottom_16`
+and  R8W = define ` R8W =  R8D :> bottom_16`
+and  R9W = define ` R9W =  R9D :> bottom_16`
+and R10W = define `R10W = R10D :> bottom_16`
+and R11W = define `R11W = R11D :> bottom_16`
+and R12W = define `R12W = R12D :> bottom_16`
+and R13W = define `R13W = R13D :> bottom_16`
+and R14W = define `R14W = R14D :> bottom_16`
+and R15W = define `R15W = R15D :> bottom_16`;;
 
-add_component_alias_thms [AX; CX; DX; BX; SP; BP; SI; DI];;
+add_component_alias_thms [AX; CX; DX; BX; SP; BP; SI; DI;
+  R8W; R9W; R10W; R11W; R12W; R13W; R14W; R15W];;
 
 let AH = define `AH = AX :> top_8`;;
 let AL = define `AL = AX :> bottom_8`;;
@@ -243,9 +252,18 @@ let SPL = define `SPL = SP :> bottom_8`;;
 let BPL = define `BPL = BP :> bottom_8`;;
 let SIL = define `SIL = SI :> bottom_8`;;
 let DIL = define `DIL = DI :> bottom_8`;;
+let  R8B = define ` R8B =  R8W :> bottom_8`;;
+let  R9B = define ` R9B =  R9W :> bottom_8`;;
+let R10B = define `R10B = R10W :> bottom_8`;;
+let R11B = define `R11B = R11W :> bottom_8`;;
+let R12B = define `R12B = R12W :> bottom_8`;;
+let R13B = define `R13B = R13W :> bottom_8`;;
+let R14B = define `R14B = R14W :> bottom_8`;;
+let R15B = define `R15B = R15W :> bottom_8`;;
 
 add_component_alias_thms
-  [AH; AL; BH; BL; CH; CL; DH; DL; SPL; BPL; SIL; DIL];;
+  [AH; AL; BH; BL; CH; CL; DH; DL; SPL; BPL; SIL; DIL;
+   R8B; R9B; R10B; R11B; R12B; R13B; R14B; R15B];;
 
 (* ------------------------------------------------------------------------- *)
 (* Shorthands for the SIMD registers.                                        *)
@@ -1115,6 +1133,17 @@ let x86_LZCNT = new_definition
 let x86_MOV = new_definition
  `x86_MOV dest src s =
         let x = read src s in (dest := x) s`;;
+
+(* MOVBE: load and byte-reverse, or byte-reverse and store.  Identical to
+   a MOV of the source into the destination with a word_bytereverse
+   applied during transit; one operand must be memory and the other must
+   be a GPR (register-to-register and immediate variants do not exist in
+   the ISA).                                                            *)
+let x86_MOVBE = new_definition
+ `x86_MOVBE dest src s =
+        let (x:((((N)tybit0)tybit0)tybit0)word) = read src s in
+        let x' = word_bytereverse x in
+        (dest := x') s`;;
 
 let x86_MOVAPS = new_definition
  `x86_MOVAPS dest src s =
@@ -2916,6 +2945,13 @@ let x86_execute = define
          | 32 -> x86_MOV (OPERAND32 dest s) (OPERAND32 src s)
          | 16 -> x86_MOV (OPERAND16 dest s) (OPERAND16 src s)
          | 8 -> x86_MOV (OPERAND8 dest s) (OPERAND8 src s)) s)) s
+    | MOVBE dest src ->
+        (add_load_event src s ,,
+         add_store_event dest s ,,
+        (\s. (match operand_size dest with
+           64 -> x86_MOVBE (OPERAND64 dest s) (OPERAND64 src s)
+         | 32 -> x86_MOVBE (OPERAND32 dest s) (OPERAND32 src s)
+         | 16 -> x86_MOVBE (OPERAND16 dest s) (OPERAND16 src s)) s)) s
     | MOVAPS dest src ->
         if aligned_OPERAND128 src s /\ aligned_OPERAND128 dest s
         then
@@ -3958,8 +3994,10 @@ let REGISTER_ALIASES =
   r8;   r9;  r10;  r11;  r12;  r13;  r14;  r15;
   eax; ecx; edx; ebx; esp; ebp; esi; edi;
   r8d; r9d; r10d; r11d; r12d; r13d; r14d; r15d;
-  ax; cx; dx; bx; sp; bp; si; di; ah;
+  ax; cx; dx; bx; sp; bp; si; di;
+  r8w; r9w; r10w; r11w; r12w; r13w; r14w; r15w; ah;
   al; ch; cl; dh; dl; bh; bl; spl; bpl; sil; dil;
+  r8b; r9b; r10b; r11b; r12b; r13b; r14b; r15b;
   xmm0; xmm1; xmm2; xmm3; xmm4; xmm5; xmm6; xmm7;
   xmm8; xmm9; xmm10; xmm11; xmm12; xmm13; xmm14; xmm15;
   ymm0; ymm1; ymm2; ymm3; ymm4; ymm5; ymm6; ymm7;
@@ -4192,6 +4230,14 @@ let OPERAND_CLAUSES = prove
    OPERAND8 (%bpl) s = RBP :> bottom_32 :> bottom_16 :> bottom_8 /\
    OPERAND8 (%sil) s = RSI :> bottom_32 :> bottom_16 :> bottom_8 /\
    OPERAND8 (%dil) s = RDI :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (% r8b) s =  R8 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (% r9b) s =  R9 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (%r10b) s = R10 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (%r11b) s = R11 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (%r12b) s = R12 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (%r13b) s = R13 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (%r14b) s = R14 :> bottom_32 :> bottom_16 :> bottom_8 /\
+   OPERAND8 (%r15b) s = R15 :> bottom_32 :> bottom_16 :> bottom_8 /\
    OPERAND8 (%ah) s = RAX :> bottom_32 :> bottom_16 :> top_8 /\
    OPERAND8 (%ch) s = RCX :> bottom_32 :> bottom_16 :> top_8 /\
    OPERAND8 (%dh) s = RDX :> bottom_32 :> bottom_16 :> top_8 /\
@@ -4205,13 +4251,17 @@ let OPERAND_CLAUSES = prove
               R8;   R9;  R10;  R11;  R12;  R13;  R14;  R15;
               eax; ecx; edx; ebx; esp; ebp; esi; edi;
               r8d; r9d; r10d; r11d; r12d; r13d; r14d; r15d;
-              ax; cx; dx; bx; sp; bp; si; di; ah;
+              ax; cx; dx; bx; sp; bp; si; di;
+              r8w; r9w; r10w; r11w; r12w; r13w; r14w; r15w; ah;
               al; ch; cl; dh; dl; bh; bl; spl; bpl; sil; dil;
+              r8b; r9b; r10b; r11b; r12b; r13b; r14b; r15b;
               EAX; ECX; EDX; EBX; ESP; EBP; ESI; EDI;
               R8D; R9D; R10D; R11D; R12D; R13D; R14D; R15D;
               AX; CX; DX; BX; SP; BP; SI; DI;
+              R8W; R9W; R10W; R11W; R12W; R13W; R14W; R15W;
               AH; AL; BH; BL; CH; CL; DH; DL;
               SPL; BPL; SIL; DIL;
+              R8B; R9B; R10B; R11B; R12B; R13B; R14B; R15B;
               xmm0; xmm1; xmm2; xmm3; xmm4; xmm5; xmm6; xmm7;
               xmm8; xmm9; xmm10; xmm11; xmm12; xmm13; xmm14; xmm15;
               XMM0; XMM1; XMM2; XMM3; XMM4; XMM5; XMM6; XMM7; XMM8;
@@ -4557,7 +4607,7 @@ let X86_OPERATION_CLAUSES =
     x86_BSF; x86_BSR; x86_BSWAP; x86_BT; x86_BTC_ALT; x86_BTR_ALT; x86_BTS_ALT;
     x86_CALL_ALT; x86_CLC; x86_CLD; x86_CMC; x86_CMOV; x86_CMP_ALT; x86_DEC;
     x86_ENDBR64; x86_IMUL; x86_IMUL2; x86_IMUL3; x86_INC; x86_LEA; x86_LZCNT;
-    x86_MOV; x86_MOVAPS; x86_MOVDQA; x86_MOVDQU; x86_MOVD; x86_MOVQ; x86_VMOVD; x86_VMOVQ;
+    x86_MOV; x86_MOVBE; x86_MOVAPS; x86_MOVDQA; x86_MOVDQU; x86_MOVD; x86_MOVQ; x86_VMOVD; x86_VMOVQ;
     x86_VMOVHPD; x86_MOVSX; x86_MOVUPS; x86_MOVSB_ALT;
     x86_MOVZX; x86_MUL2; x86_MULX4; x86_NEG; x86_NOP; x86_NOP_N; x86_NOT; x86_OR;
     x86_PADDD_ALT; x86_PADDQ_ALT; x86_PAND; x86_PBLENDW_ALT; x86_PCMPGTD_ALT; x86_PCMPGTW_ALT;
