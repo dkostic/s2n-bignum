@@ -1886,3 +1886,386 @@ let AESNI_GCM_STITCHED_6X_CORRECT_EXT4 = prove
     let lhs,_ = dest_eq w in
     (SPEC_TAC(lhand lhs,`u:int128`) THEN GEN_TAC THEN
      CONV_TAC WORD_BLAST) (asl,w)));;
+
+(* Helper: 6-way split of `k < 6` into k = 0 \/ ... \/ k = 5. *)
+let K_SPLIT_LT_6 = ARITH_RULE
+  `n < 6 ==> n = 0 \/ n = 1 \/ n = 2 \/ n = 3 \/ n = 4 \/ n = 5`;;
+
+let AESNI_GCM_STITCHED_6X_CORRECT_EXT5 = prove
+ (`!optr iptr kptr hptr cbptr cptr sptr
+      p0 p1 p2 p3 p4 p5
+      cb0 cb1 cb2 cb3 cb4 cb5
+      k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+      h0 h1 h3 h4 h6 h7
+      xi4 xi7 xi8
+      sp16 sp32 sp48 sp64 sp80 sp96 sp112
+      red plus
+      (r14_entry:int64) (r15_init:int64)
+      (pre_ct0:int64) (pre_ct1:int64) (pre_ct2:int64) (pre_ct3:int64)
+      (pre_ct4:int64) (pre_ct5:int64) (pre_ct6:int64) (pre_ct7:int64)
+      (pre_ct8:int64) (pre_ct9:int64) (pre_ct10:int64) (pre_ct11:int64)
+      pc.
+      val (r14_entry:int64) + 96 <= val (r15_init:int64) /\
+      ALL (nonoverlapping (word pc,LENGTH aesni_gcm_stitched_6x_mc))
+          [(optr,96); (cbptr,16); (word_add sptr (word 16),16);
+           (word_add sptr (word 32),8); (word_add sptr (word 40),8);
+           (word_add sptr (word 48),8); (word_add sptr (word 56),8);
+           (word_add sptr (word 64),8); (word_add sptr (word 72),8);
+           (word_add sptr (word 80),8); (word_add sptr (word 88),8);
+           (word_add sptr (word 96),8); (word_add sptr (word 104),8);
+           (word_add sptr (word 112),8); (word_add sptr (word 120),8);
+           (word_add r14_entry (word 96),8);
+           (word_add r14_entry (word 104),8);
+           (word_add r14_entry (word 112),8);
+           (word_add r14_entry (word 120),8);
+           (word_add r14_entry (word 128),8);
+           (word_add r14_entry (word 136),8);
+           (word_add r14_entry (word 144),8);
+           (word_add r14_entry (word 152),8);
+           (word_add r14_entry (word 160),8);
+           (word_add r14_entry (word 168),8);
+           (word_add r14_entry (word 176),8);
+           (word_add r14_entry (word 184),8)] /\
+      ALLPAIRS nonoverlapping
+        [(optr,96);
+         (cbptr,16);
+         (word_add sptr (word 16),16)]
+        [(iptr,16); (word_add iptr (word 16),16);
+         (word_add iptr (word 32),16); (word_add iptr (word 48),16);
+         (word_add iptr (word 64),16); (word_add iptr (word 80),16);
+         (word_add kptr (word 18446744073709551488),16);
+         (word_add kptr (word 18446744073709551504),16);
+         (word_add kptr (word 18446744073709551520),16);
+         (word_add kptr (word 18446744073709551536),16);
+         (word_add kptr (word 18446744073709551552),16);
+         (word_add kptr (word 18446744073709551568),16);
+         (word_add kptr (word 18446744073709551584),16);
+         (word_add kptr (word 18446744073709551600),16);
+         (kptr,16);
+         (word_add kptr (word 16),16);
+         (word_add kptr (word 32),16);
+         (word_add hptr (word 18446744073709551584),16);
+         (word_add hptr (word 18446744073709551600),16);
+         (word_add hptr (word 16),16);
+         (word_add hptr (word 32),16);
+         (word_add hptr (word 64),16);
+         (word_add hptr (word 80),16);
+         (word_add cptr (word 16),16);
+         (word_add cptr (word 32),16);
+         (word_add sptr (word 32),8); (word_add sptr (word 40),8);
+         (word_add sptr (word 48),8); (word_add sptr (word 56),8);
+         (word_add sptr (word 64),8); (word_add sptr (word 72),8);
+         (word_add sptr (word 80),8); (word_add sptr (word 88),8);
+         (word_add sptr (word 96),8); (word_add sptr (word 104),8);
+         (word_add sptr (word 112),8); (word_add sptr (word 120),8);
+         (word_add r14_entry (word 96),8);
+         (word_add r14_entry (word 104),8);
+         (word_add r14_entry (word 112),8);
+         (word_add r14_entry (word 120),8);
+         (word_add r14_entry (word 128),8);
+         (word_add r14_entry (word 136),8);
+         (word_add r14_entry (word 144),8);
+         (word_add r14_entry (word 152),8);
+         (word_add r14_entry (word 160),8);
+         (word_add r14_entry (word 168),8);
+         (word_add r14_entry (word 176),8);
+         (word_add r14_entry (word 184),8)] /\
+      ALLPAIRS nonoverlapping
+        [(word_add sptr (word 32),8); (word_add sptr (word 40),8);
+         (word_add sptr (word 48),8); (word_add sptr (word 56),8);
+         (word_add sptr (word 64),8); (word_add sptr (word 72),8);
+         (word_add sptr (word 80),8); (word_add sptr (word 88),8);
+         (word_add sptr (word 96),8); (word_add sptr (word 104),8);
+         (word_add sptr (word 112),8); (word_add sptr (word 120),8)]
+        [(iptr,16); (word_add iptr (word 16),16);
+         (word_add iptr (word 32),16); (word_add iptr (word 48),16);
+         (word_add iptr (word 64),16); (word_add iptr (word 80),16);
+         (word_add kptr (word 18446744073709551488),16);
+         (word_add kptr (word 18446744073709551504),16);
+         (word_add kptr (word 18446744073709551520),16);
+         (word_add kptr (word 18446744073709551536),16);
+         (word_add kptr (word 18446744073709551552),16);
+         (word_add kptr (word 18446744073709551568),16);
+         (word_add kptr (word 18446744073709551584),16);
+         (word_add kptr (word 18446744073709551600),16);
+         (kptr,16);
+         (word_add kptr (word 16),16);
+         (word_add kptr (word 32),16);
+         (word_add hptr (word 18446744073709551584),16);
+         (word_add hptr (word 18446744073709551600),16);
+         (word_add hptr (word 16),16);
+         (word_add hptr (word 32),16);
+         (word_add hptr (word 64),16);
+         (word_add hptr (word 80),16);
+         (word_add cptr (word 16),16);
+         (word_add cptr (word 32),16);
+         (word_add r14_entry (word 96),8);
+         (word_add r14_entry (word 104),8);
+         (word_add r14_entry (word 112),8);
+         (word_add r14_entry (word 120),8);
+         (word_add r14_entry (word 128),8);
+         (word_add r14_entry (word 136),8);
+         (word_add r14_entry (word 144),8);
+         (word_add r14_entry (word 152),8);
+         (word_add r14_entry (word 160),8);
+         (word_add r14_entry (word 168),8);
+         (word_add r14_entry (word 176),8);
+         (word_add r14_entry (word 184),8)] /\
+      ALLPAIRS nonoverlapping
+        [(word_add sptr (word 32),8); (word_add sptr (word 40),8);
+         (word_add sptr (word 48),8); (word_add sptr (word 56),8);
+         (word_add sptr (word 64),8); (word_add sptr (word 72),8);
+         (word_add sptr (word 80),8); (word_add sptr (word 88),8);
+         (word_add sptr (word 96),8); (word_add sptr (word 104),8);
+         (word_add sptr (word 112),8); (word_add sptr (word 120),8)]
+        [(word_add sptr (word 32),8); (word_add sptr (word 40),8);
+         (word_add sptr (word 48),8); (word_add sptr (word 56),8);
+         (word_add sptr (word 64),8); (word_add sptr (word 72),8);
+         (word_add sptr (word 80),8); (word_add sptr (word 88),8);
+         (word_add sptr (word 96),8); (word_add sptr (word 104),8);
+         (word_add sptr (word 112),8); (word_add sptr (word 120),8)] /\
+      nonoverlapping (optr,96) (cbptr,16) /\
+      nonoverlapping (optr,96) (word_add sptr (word 16),16) /\
+      nonoverlapping (cbptr,16) (word_add sptr (word 16),16)
+      ==> ensures x86
+           (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_mc) /\
+                read RIP s = word pc /\
+                read RDI s = iptr /\
+                read RSI s = optr /\
+                read RCX s = kptr /\
+                read R9  s = hptr /\
+                read R8  s = cbptr /\
+                read R11 s = cptr /\
+                read RSP s = sptr /\
+                read R14 s = r14_entry /\
+                read R15 s = r15_init /\
+                read (memory :> bytes128 iptr) s = p0 /\
+                read (memory :> bytes128 (word_add iptr (word 16))) s = p1 /\
+                read (memory :> bytes128 (word_add iptr (word 32))) s = p2 /\
+                read (memory :> bytes128 (word_add iptr (word 48))) s = p3 /\
+                read (memory :> bytes128 (word_add iptr (word 64))) s = p4 /\
+                read (memory :> bytes128 (word_add iptr (word 80))) s = p5 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551488))) s = k0 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551504))) s = k1 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551520))) s = k2 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551536))) s = k3 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551552))) s = k4 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551568))) s = k5 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551584))) s = k6 /\
+                read (memory :> bytes128
+                  (word_add kptr (word 18446744073709551600))) s = k7 /\
+                read (memory :> bytes128 kptr) s = k8 /\
+                read (memory :> bytes128 (word_add kptr (word 16))) s = k9 /\
+                read (memory :> bytes128 (word_add kptr (word 32))) s = k10 /\
+                read (memory :> bytes128
+                  (word_add hptr (word 18446744073709551584))) s = h0 /\
+                read (memory :> bytes128
+                  (word_add hptr (word 18446744073709551600))) s = h1 /\
+                read (memory :> bytes128 (word_add hptr (word 16))) s = h3 /\
+                read (memory :> bytes128 (word_add hptr (word 32))) s = h4 /\
+                read (memory :> bytes128 (word_add hptr (word 64))) s = h6 /\
+                read (memory :> bytes128 (word_add hptr (word 80))) s = h7 /\
+                read (memory :> bytes128 (word_add cptr (word 16))) s = red /\
+                read (memory :> bytes128 (word_add cptr (word 32))) s = plus /\
+                read (memory :> bytes128 cbptr) s = cb0 /\
+                read (memory :> bytes128 (word_add sptr (word 16))) s = sp16 /\
+                read (memory :> bytes128 (word_add sptr (word 32))) s = sp32 /\
+                read (memory :> bytes128 (word_add sptr (word 48))) s = sp48 /\
+                read (memory :> bytes128 (word_add sptr (word 64))) s = sp64 /\
+                read (memory :> bytes128 (word_add sptr (word 80))) s = sp80 /\
+                read (memory :> bytes128 (word_add sptr (word 96))) s = sp96 /\
+                read (memory :> bytes128 (word_add sptr (word 112))) s = sp112 /\
+                read (memory :> bytes64 (word_add r14_entry (word 96))) s = pre_ct0 /\
+                read (memory :> bytes64 (word_add r14_entry (word 104))) s = pre_ct1 /\
+                read (memory :> bytes64 (word_add r14_entry (word 112))) s = pre_ct2 /\
+                read (memory :> bytes64 (word_add r14_entry (word 120))) s = pre_ct3 /\
+                read (memory :> bytes64 (word_add r14_entry (word 128))) s = pre_ct4 /\
+                read (memory :> bytes64 (word_add r14_entry (word 136))) s = pre_ct5 /\
+                read (memory :> bytes64 (word_add r14_entry (word 144))) s = pre_ct6 /\
+                read (memory :> bytes64 (word_add r14_entry (word 152))) s = pre_ct7 /\
+                read (memory :> bytes64 (word_add r14_entry (word 160))) s = pre_ct8 /\
+                read (memory :> bytes64 (word_add r14_entry (word 168))) s = pre_ct9 /\
+                read (memory :> bytes64 (word_add r14_entry (word 176))) s = pre_ct10 /\
+                read (memory :> bytes64 (word_add r14_entry (word 184))) s = pre_ct11 /\
+                read YMM2  s = word_zx (plus:int128) /\
+                read YMM4  s = word_zx (xi4:int128) /\
+                read YMM7  s = word_zx (xi7:int128) /\
+                read YMM8  s = word_zx (xi8:int128) /\
+                read YMM9  s = word_zx (word_xor cb0 k0 : int128) /\
+                read YMM10 s = word_zx (cb1:int128) /\
+                read YMM11 s = word_zx (cb2:int128) /\
+                read YMM12 s = word_zx (cb3:int128) /\
+                read YMM13 s = word_zx (cb4:int128) /\
+                read YMM14 s = word_zx (cb5:int128) /\
+                read YMM15 s = word_zx (k0:int128))
+           (\s. read RIP s = word (pc + 0x3e9) /\
+                read RDI s = word_add iptr (word 96) /\
+                read RSI s = word_add optr (word 96) /\
+                read R14 s = word_add r14_entry (word 96) /\
+                read YMM2  s = word_zx (plus:int128) /\
+                read YMM15 s = word_zx (k0:int128) /\
+                stashed_ct_preserved sptr (word_add r14_entry (word 96)) s /\
+                read (memory :> bytes128 optr) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb0 p0 /\
+                read (memory :> bytes128 (word_add optr (word 16))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb1 p1 /\
+                read (memory :> bytes128 (word_add optr (word 32))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb2 p2 /\
+                read (memory :> bytes128 (word_add optr (word 48))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb3 p3 /\
+                read (memory :> bytes128 (word_add optr (word 64))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb4 p4 /\
+                read (memory :> bytes128 (word_add optr (word 80))) s =
+                  stitched_6x_ct_block
+                    [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] cb5 p5)
+           (MAYCHANGE [RIP; RDI; RSI; R12; R13; R14] ,,
+            MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
+                       ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
+            MAYCHANGE SOME_FLAGS ,,
+            MAYCHANGE [events] ,,
+            MAYCHANGE [memory :> bytes128 optr;
+                       memory :> bytes128 (word_add optr (word 16));
+                       memory :> bytes128 (word_add optr (word 32));
+                       memory :> bytes128 (word_add optr (word 48));
+                       memory :> bytes128 (word_add optr (word 64));
+                       memory :> bytes128 (word_add optr (word 80));
+                       memory :> bytes128 cbptr;
+                       memory :> bytes128 (word_add sptr (word 16))] ,,
+            MAYCHANGE [memory :> bytes64 (word_add sptr (word 32));
+                       memory :> bytes64 (word_add sptr (word 40));
+                       memory :> bytes64 (word_add sptr (word 48));
+                       memory :> bytes64 (word_add sptr (word 56));
+                       memory :> bytes64 (word_add sptr (word 64));
+                       memory :> bytes64 (word_add sptr (word 72));
+                       memory :> bytes64 (word_add sptr (word 80));
+                       memory :> bytes64 (word_add sptr (word 88));
+                       memory :> bytes64 (word_add sptr (word 96));
+                       memory :> bytes64 (word_add sptr (word 104));
+                       memory :> bytes64 (word_add sptr (word 112));
+                       memory :> bytes64 (word_add sptr (word 120))])`,
+  MAP_EVERY X_GEN_TAC
+   [`optr:int64`; `iptr:int64`; `kptr:int64`; `hptr:int64`; `cbptr:int64`;
+    `cptr:int64`; `sptr:int64`;
+    `p0:int128`; `p1:int128`; `p2:int128`;
+    `p3:int128`; `p4:int128`; `p5:int128`;
+    `cb0:int128`; `cb1:int128`; `cb2:int128`;
+    `cb3:int128`; `cb4:int128`; `cb5:int128`;
+    `k0:int128`; `k1:int128`; `k2:int128`; `k3:int128`;
+    `k4:int128`; `k5:int128`; `k6:int128`; `k7:int128`;
+    `k8:int128`; `k9:int128`; `k10:int128`;
+    `h0:int128`; `h1:int128`; `h3:int128`;
+    `h4:int128`; `h6:int128`; `h7:int128`;
+    `xi4:int128`; `xi7:int128`; `xi8:int128`;
+    `sp16:int128`; `sp32:int128`; `sp48:int128`; `sp64:int128`;
+    `sp80:int128`; `sp96:int128`; `sp112:int128`;
+    `red:int128`; `plus:int128`;
+    `r14_entry:int64`; `r15_init:int64`;
+    `pre_ct0:int64`; `pre_ct1:int64`; `pre_ct2:int64`; `pre_ct3:int64`;
+    `pre_ct4:int64`; `pre_ct5:int64`; `pre_ct6:int64`; `pre_ct7:int64`;
+    `pre_ct8:int64`; `pre_ct9:int64`; `pre_ct10:int64`; `pre_ct11:int64`;
+    `pc:num`] THEN
+  REWRITE_TAC[ALL; ALLPAIRS; NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
+                `LENGTH aesni_gcm_stitched_6x_mc`] THEN
+  DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+  ENSURES_INIT_TAC "s0" THEN
+  (* Pre-derive `val r14_entry <= val r15_init` from the precondition,
+     so the post-leaq RULE_ASSUM_TAC can collapse the if-then-else. *)
+  SUBGOAL_THEN `val (r14_entry:int64) <= val (r15_init:int64)`
+    ASSUME_TAC THENL
+   [UNDISCH_TAC `val (r14_entry:int64) + 96 <= val (r15_init:int64)` THEN
+    ARITH_TAC; ALL_TAC] THEN
+  (* Steps 1..34 — through the leaq.  Same per-step pattern as EXT4. *)
+  MAP_EVERY (fun n ->
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    X86_STEPS_TAC AESNI_GCM_STITCHED_6X_EXEC [n] THEN
+    SIMD_SIMPLIFY_TAC[] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    GHASH_ABBREV_STEP_TAC)
+   (1--34) THEN
+  (* R14 canon block.  After the leaq at insn 34, R14's hyp is
+       read R14 s34 = word_add r14_entry
+         (word (1 * val (word_and (word_neg (word_join (word 0)
+            (if val r14_entry <= val r15_init then word 1 else word 0)))
+          (word 96))))
+     With `val r14_entry <= val r15_init` in asl, ASM_REWRITE_TAC[]
+     simultaneously substitutes the R14 hyp's RHS and collapses the
+     if-then-else; CONV_TAC WORD_BLAST then folds the inner arithmetic. *)
+  SUBGOAL_THEN
+    `read R14 s34 = word_add (r14_entry:int64) (word 96)`
+    ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  (* Steps 35..198 — the rest of the body. *)
+  MAP_EVERY (fun n ->
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    X86_STEPS_TAC AESNI_GCM_STITCHED_6X_EXEC [n] THEN
+    SIMD_SIMPLIFY_TAC[] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE
+     [VPSHUFB_BYTEREV_128;
+      VPALIGNR_8_SWAP_128_VIA_ZX_256;
+      WORD_ZX_ZX_128]) THEN
+    GHASH_ABBREV_STEP_TAC)
+   (35--198) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE
+    [SIMD16_WORD_ADD_TREE; SIMD16_WORD_ADD_TREE_256]) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  (* Closure: stash conjunct (6 bytes128 conjuncts via
+     STASHED_BYTES128_FROM_BYTES64) + 6 ciphertext outputs (EXT4 pattern). *)
+  CONJ_TAC THENL [
+    (* stashed_ct_preserved.  Unfold, intro k + k<6, apply
+       STASHED_BYTES128_FROM_BYTES64 (yields k<6 + 2 bytes64 conjuncts),
+       discharge k<6, case-split k = 0..5, fold word arithmetic, then
+       ASM_REWRITE pulls in the surviving bytes64 sp+M and r14_entry+M
+       facts. *)
+    REWRITE_TAC[stashed_ct_preserved] THEN
+    GEN_TAC THEN DISCH_TAC THEN
+    MATCH_MP_TAC STASHED_BYTES128_FROM_BYTES64 THEN
+    CONJ_TAC THENL [FIRST_X_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    FIRST_X_ASSUM (REPEAT_TCL DISJ_CASES_THEN ASSUME_TAC o
+                   MATCH_MP K_SPLIT_LT_6) THEN
+    ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[WORD_RULE
+      `word_add (word_add (a:int64) (word b)) (word c) =
+       word_add a (word (b + c))`] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC
+  ] THEN
+  REWRITE_TAC[stitched_6x_ct_block; aes128_ctr_lane_m7] THEN
+  REWRITE_TAC[AESENC_FIPS197_BRIDGE_ALT; AESENCLAST_FIPS197_BRIDGE_ALT] THEN
+  REWRITE_TAC[aes128_cipher; MAP] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  CONV_TAC(TOP_DEPTH_CONV EL_CONV) THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256;
+           ARITH_LE; ARITH_LT; ARITH;
+           WORD_REVERSEFIELDS_REVERSEFIELDS; WORD_XOR_0;
+           WORD_REVERSEFIELDS_XOR_128] THEN
+  REWRITE_TAC[fips197_final_round; WORD_REVERSEFIELDS_XOR_128;
+              WORD_REVERSEFIELDS_REVERSEFIELDS] THEN
+  REPEAT CONJ_TAC THEN
+  (fun (asl,w) ->
+    let lhs,_ = dest_eq w in
+    (SPEC_TAC(lhand lhs,`u:int128`) THEN GEN_TAC THEN
+     CONV_TAC WORD_BLAST) (asl,w)));;
