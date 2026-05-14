@@ -967,6 +967,53 @@ let CT_PRESERVED_LIFT = prove
     ASM_REWRITE_TAC[]
   ]);;
 
+(* Loop-level stash invariant.  Off-by-TWO mapping: at .Loop6x iter i's
+   ENTRY the 6 sp+32+16k stash slots hold bswap16 of the 6 ciphertext
+   blocks produced by iter (i-2).  M7 EXT5's per-iter post pins the
+   POST-iter stash via the per-iter `stashed_ct_preserved sptr r14_new s`
+   predicate (with r14_new = r14_entry + 96); when M8 composes EXT5 across
+   `iter_count` iters, iter i ENTERS with the stash-state EXT5 left at iter
+   (i-1)'s exit.  Because iter (i-1)'s movbeq reads addresses
+   `r14_at_iter(i-1)+{0..95} = optr+96(i-2)..` (i.e. iter (i-2)'s CT
+   stores), the stash slots resolve to bswap16 of stitched_6x_ct_block at
+   block indices 6*(i-2)..6*(i-2)+5.
+
+   The predicate is gated by `2 <= i`: for i = 0, 1 the entry stash comes
+   from the warmup-0/warmup-1 outputs (external to M8) and is supplied by
+   the outer wrapper as initial conditions.
+
+   See `feedback_stash_offset_trace.md` for the address-arithmetic trace
+   showing iter i's GHASH absorb consumes iter (i-2)'s CT.  At loop EXIT
+   (i = iter_count, requires iter_count >= 2), this predicate pins
+   sp+32..sp+112 to bswap16 of M8-CT blocks 6*(iter_count-2)..
+   6*(iter_count-2)+5, which is exactly what M9's tail's first six GHASH
+   folds consume. *)
+let stashed_ct_preserved_loop = new_definition
+ `stashed_ct_preserved_loop (i:num) (sptr:int64) (s:x86state)
+                            (ks:int128 list) (counter_fn:num->int128)
+                            (p_fn:num->int128) <=>
+    2 <= i
+    ==> !k. k < 6
+            ==> read (memory :> bytes128
+                        (word_add sptr (word (32 + 16 * k)))) s =
+                word_bytereverse
+                  (stitched_6x_ct_block ks
+                    (counter_fn (6 * (i - 2) + (5 - k)))
+                    (p_fn (6 * (i - 2) + (5 - k))))`;;
+
+(* For i < 2 the predicate is vacuous (its body is `2 <= i ==> ...`).  This
+   sanity lemma exposes that fact so the loopinv base case (i = 0) and the
+   first inductive step (i = 0 -> 1) can discharge their
+   stashed_ct_preserved_loop conjuncts without unfolding the predicate. *)
+let STASHED_CT_PRESERVED_LOOP_TRIVIAL = prove
+ (`!(i:num) (sptr:int64) (s:x86state) (ks:int128 list)
+     (counter_fn:num->int128) (p_fn:num->int128).
+     i < 2
+     ==> stashed_ct_preserved_loop i sptr s ks counter_fn p_fn`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[stashed_ct_preserved_loop] THEN
+  ARITH_TAC);;
+
 let loopinv_common = new_definition
  `loopinv_common
     (iptr_base:int64) (optr_base:int64) (kptr:int64) (hptr:int64)
