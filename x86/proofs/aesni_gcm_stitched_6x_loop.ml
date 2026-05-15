@@ -1029,6 +1029,41 @@ let STASHED_CT_PRESERVED_LOOP_TRIVIAL = prove
   REWRITE_TAC[stashed_ct_preserved_loop] THEN
   ARITH_TAC);;
 
+(* Bytes64-halves bridge for ct_preserved.  Given the bytes128 invariant at
+   block index j < 6*i and the address-arithmetic offset 8, derive the two
+   bytes64 reads (low half at optr+16*j, high half at optr+16*j+8) as
+   word_subword projections of the ciphertext block.  Used at M8's EXT5
+   SPECL site (B3b-2-c) to discharge the 12 pre_ct bytes64 read
+   preconditions of EXT5 from loopinv_common's ct_preserved fact: at iter I
+   with I >= 1, the 12 pre_ct addresses `r14_orig + 96*I + K` for
+   K in {96..184} resolve via the geometric tie `r14_orig + 192 = optr` to
+   `optr + 96*(I-1) + K'` for K' in {0,8,...,88}, i.e. the bytes64 halves
+   of the 6 bytes128 ciphertext blocks at j in {6(I-1)..6(I-1)+5}, all of
+   which satisfy j < 6*I.                                                  *)
+let CT_PRESERVED_BYTES64_HALVES = prove
+ (`!(i:num) (optr_base:int64) (s:x86state) (ks:int128 list)
+      (counter_fn:num->int128) (p_fn:num->int128) (j:num).
+     ct_preserved i optr_base s ks counter_fn p_fn /\ j < 6 * i
+     ==> read (memory :> bytes64
+                 (word_add optr_base (word (16 * j)))) s =
+           word_subword
+             (stitched_6x_ct_block ks (counter_fn j) (p_fn j))
+             (0,64) /\
+         read (memory :> bytes64
+                 (word_add (word_add optr_base (word (16 * j)))
+                           (word 8))) s =
+           word_subword
+             (stitched_6x_ct_block ks (counter_fn j) (p_fn j))
+             (64,64)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ct_preserved] THEN
+  STRIP_TAC THEN
+  FIRST_X_ASSUM (MP_TAC o SPEC `j:num`) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN (MP_TAC o
+    REWRITE_RULE[el 1 (CONJUNCTS READ_MEMORY_BYTESIZED_UNSPLIT)]) THEN
+  SIMP_TAC[]);;
+
 let loopinv_common = new_definition
  `loopinv_common
     (iptr_base:int64) (optr_base:int64) (kptr:int64) (hptr:int64)
