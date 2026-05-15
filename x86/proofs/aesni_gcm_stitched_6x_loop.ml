@@ -1153,6 +1153,9 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       (red:int128) (plus:int128)
       (counter_fn:num->int128) (p_fn:num->int128)
       (r14_orig:int64) (r15_orig:int64)
+      (pre_ct0:int64) (pre_ct1:int64) (pre_ct2:int64) (pre_ct3:int64)
+      (pre_ct4:int64) (pre_ct5:int64) (pre_ct6:int64) (pre_ct7:int64)
+      (pre_ct8:int64) (pre_ct9:int64) (pre_ct10:int64) (pre_ct11:int64)
       (iter_count:num) (pc:num).
       1 <= iter_count /\
       16 * 6 * iter_count < 2 EXP 64 /\
@@ -1270,6 +1273,18 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       ==> ensures x86
            (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc) /\
                 read RIP s = word pc /\
+                read (memory :> bytes64 (word_add r14_orig (word 96))) s = pre_ct0 /\
+                read (memory :> bytes64 (word_add r14_orig (word 104))) s = pre_ct1 /\
+                read (memory :> bytes64 (word_add r14_orig (word 112))) s = pre_ct2 /\
+                read (memory :> bytes64 (word_add r14_orig (word 120))) s = pre_ct3 /\
+                read (memory :> bytes64 (word_add r14_orig (word 128))) s = pre_ct4 /\
+                read (memory :> bytes64 (word_add r14_orig (word 136))) s = pre_ct5 /\
+                read (memory :> bytes64 (word_add r14_orig (word 144))) s = pre_ct6 /\
+                read (memory :> bytes64 (word_add r14_orig (word 152))) s = pre_ct7 /\
+                read (memory :> bytes64 (word_add r14_orig (word 160))) s = pre_ct8 /\
+                read (memory :> bytes64 (word_add r14_orig (word 168))) s = pre_ct9 /\
+                read (memory :> bytes64 (word_add r14_orig (word 176))) s = pre_ct10 /\
+                read (memory :> bytes64 (word_add r14_orig (word 184))) s = pre_ct11 /\
                 loopinv iptr optr kptr hptr cbptr cptr sptr
                         k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
                         h0 h1 h3 h4 h6 h7
