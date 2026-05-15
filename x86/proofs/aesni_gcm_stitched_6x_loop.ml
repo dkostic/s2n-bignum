@@ -767,6 +767,8 @@ let CT_PRESERVED_LIFT = prove
      nonoverlapping (optr:int64, 16 * 6 * iter_count) (cbptr:int64, 16) /\
      nonoverlapping (optr:int64, 16 * 6 * iter_count)
                     (word_add sptr (word 16):int64, 16) /\
+     nonoverlapping (optr:int64, 16 * 6 * iter_count)
+                    (word_add sptr (word 32):int64, 96) /\
      ct_preserved i optr s0 [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10]
                   counter_fn p_fn /\
      pt_preserved iter_count iptr s0 p_fn /\
@@ -806,7 +808,7 @@ let CT_PRESERVED_LIFT = prove
              (word_add (word_add optr (word (96 * i))) (word 80))) s_end =
        stitched_6x_ct_block [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10]
                             (counter_fn (6 * i + 5)) p5 /\
-     (MAYCHANGE [RIP; RDI; RSI; RDX] ,,
+     (MAYCHANGE [RIP; RDI; RSI; RDX; R12; R13; R14] ,,
       MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                  ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
       MAYCHANGE SOME_FLAGS ,,
@@ -823,7 +825,8 @@ let CT_PRESERVED_LIFT = prove
                  memory :> bytes128
                    (word_add (word_add optr (word (96 * i))) (word 80));
                  memory :> bytes128 cbptr;
-                 memory :> bytes128 (word_add sptr (word 16))]) s0 s_end
+                 memory :> bytes128 (word_add sptr (word 16))] ,,
+      MAYCHANGE [memory :> bytes (word_add sptr (word 32), 96)]) s0 s_end
      ==> ct_preserved (i + 1) optr s_end
                       [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10]
                       counter_fn p_fn`,
@@ -857,6 +860,18 @@ let CT_PRESERVED_LIFT = prove
      [MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`;
                      `16 * jj:num`; `16:num`;
                      `word_add sptr (word 16):int64`; `16:num`]
+                    NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+       [UNDISCH_TAC `jj < 6 * i` THEN
+        UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+        SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN
+      `nonoverlapping (word_add optr (word (16 * jj)):int64, 16)
+                      (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL
+     [MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`;
+                     `16 * jj:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`]
                     NONOVERLAPPING_SUBREGION_LEFT) THEN
       ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
        [UNDISCH_TAC `jj < 6 * i` THEN
@@ -1066,12 +1081,6 @@ let loopinv_common = new_definition
       read (memory :> bytes128 (word_add hptr (word 80))) s = h7 /\
       read (memory :> bytes128 (word_add cptr (word 16))) s = red /\
       read (memory :> bytes128 (word_add cptr (word 32))) s = plus /\
-      read (memory :> bytes128 (word_add sptr (word 32))) s = sp32 /\
-      read (memory :> bytes128 (word_add sptr (word 48))) s = sp48 /\
-      read (memory :> bytes128 (word_add sptr (word 64))) s = sp64 /\
-      read (memory :> bytes128 (word_add sptr (word 80))) s = sp80 /\
-      read (memory :> bytes128 (word_add sptr (word 96))) s = sp96 /\
-      read (memory :> bytes128 (word_add sptr (word 112))) s = sp112 /\
       read YMM2  s = (word_zx (plus:int128) : int256) /\
       read YMM15 s = (word_zx (k0:int128) : int256)`;;
 
@@ -1231,7 +1240,31 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       nonoverlapping (word_add sptr (word 16), 16) (word_add sptr (word 112), 16) /\
       nonoverlapping (optr, 16 * 6 * iter_count) ((cbptr:int64), 16) /\
       nonoverlapping (optr, 16 * 6 * iter_count) (word_add sptr (word 16), 16) /\
-      nonoverlapping ((cbptr:int64), 16) (word_add sptr (word 16), 16)
+      nonoverlapping ((cbptr:int64), 16) (word_add sptr (word 16), 16) /\
+      nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc) (word_add sptr (word 32), 96) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add sptr (word 32), 96) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (iptr, 16 * 6 * iter_count) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551488), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551504), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551520), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551536), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551552), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551568), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551584), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551600), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (kptr, 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 32), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 18446744073709551584), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 18446744073709551600), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 32), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 64), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 80), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add cptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add cptr (word 32), 16) (word_add sptr (word 32), 96)
       ==> ensures x86
            (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc) /\
                 read RIP s = word pc /\
@@ -1250,14 +1283,15 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                         red plus
                         counter_fn p_fn
                         iter_count iter_count s)
-           (MAYCHANGE [RIP; RDI; RSI; RDX] ,,
+           (MAYCHANGE [RIP; RDI; RSI; RDX; R12; R13; R14] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
                        ZMM8; ZMM9; ZMM10; ZMM11; ZMM12; ZMM13; ZMM14; ZMM15] ,,
             MAYCHANGE SOME_FLAGS ,,
             MAYCHANGE [events] ,,
             MAYCHANGE [memory :> bytes (optr,16 * 6 * iter_count);
                        memory :> bytes ((cbptr:int64),16);
-                       memory :> bytes (word_add sptr (word 16),16)])`,
+                       memory :> bytes (word_add sptr (word 16),16);
+                       memory :> bytes (word_add sptr (word 32),96)])`,
   REPEAT STRIP_TAC THEN REWRITE_TAC[SOME_FLAGS] THEN
   ENSURES_WHILE_UP2_TAC `iter_count:num` `pc + 0x0` `pc + 0x413`
    `\(i:num) (s:x86state).
@@ -1675,6 +1709,70 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
     SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 0):int64, 16)` ASSUME_TAC THENL [
       REWRITE_TAC[WORD_ADD_0] THEN ASM_REWRITE_TAC[];
       ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_iptr:int64, 96) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 16):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 16:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 32):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 32:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 48):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 48:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 64):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 64:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 80):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 80:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, LENGTH aesni_gcm_stitched_6x_mc) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
+                    `LENGTH aesni_gcm_stitched_6x_mc`] THEN
+      MP_TAC(ISPECL [`word pc:int64`; `1044:num`; `0:num`; `1002:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      REWRITE_TAC[WORD_ADD_0] THEN ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+      DISCH_THEN MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
     MP_TAC (SPECL
       [`iter_optr:int64`;
        `iter_iptr:int64`;
@@ -1693,11 +1791,16 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
        `h0:int128`; `h1:int128`; `h3:int128`;
        `h4:int128`; `h6:int128`; `h7:int128`;
        `xi4:int128`; `xi7:int128`; `xi8:int128`;
-       `sp16:int128`; `sp32:int128`; `sp48:int128`; `sp64:int128`;
-       `sp80:int128`; `sp96:int128`; `sp112:int128`;
+       `sp16:int128`;
+       `read (memory :> bytes128 (word_add sptr (word 32))) s0 :int128`;
+       `read (memory :> bytes128 (word_add sptr (word 48))) s0 :int128`;
+       `read (memory :> bytes128 (word_add sptr (word 64))) s0 :int128`;
+       `read (memory :> bytes128 (word_add sptr (word 80))) s0 :int128`;
+       `read (memory :> bytes128 (word_add sptr (word 96))) s0 :int128`;
+       `read (memory :> bytes128 (word_add sptr (word 112))) s0 :int128`;
        `red:int128`; `plus:int128`;
        `pc:num`] AESNI_GCM_STITCHED_6X_CORRECT_EXT4) THEN
-    REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+    REWRITE_TAC[NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
     REWRITE_TAC[(REWRITE_CONV[aesni_gcm_stitched_6x_mc] THENC LENGTH_CONV)
                   `LENGTH aesni_gcm_stitched_6x_mc`] THEN
     RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES]) THEN
@@ -1995,7 +2098,9 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
         REWRITE_TAC[CASEB_PTR_EQ];
         REWRITE_TAC[LOOP_RDX_STEP_MID];
         MAP_EVERY EXISTS_TAC
-          [`xi4_out:int128`; `sp32:int128`; `xi8_out:int128`;
+          [`xi4_out:int128`;
+           `read (memory :> bytes128 (word_add sptr (word 32))) s11 :int128`;
+           `xi8_out:int128`;
            `read (memory :> bytes128 (word_add sptr (word 16))) s11 :int128`] THEN
         REWRITE_TAC[ADD_CLAUSES] THEN
         (* Expand the counter_fn(6*(i+1)+k) indices via the counter_fn
