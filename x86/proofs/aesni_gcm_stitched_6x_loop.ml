@@ -1040,6 +1040,7 @@ let loopinv_common = new_definition
     (sp96:int128) (sp112:int128)
     (red:int128) (plus:int128)
     (counter_fn:num->int128) (p_fn:num->int128)
+    (r15_orig:int64)
     (iter_count:num) (i:num) (s:x86state) <=>
       pt_preserved iter_count iptr_base s p_fn /\
       ct_preserved i optr_base s
@@ -1051,6 +1052,7 @@ let loopinv_common = new_definition
       read R9  s = hptr /\
       read R8  s = cbptr /\
       read R11 s = cptr /\
+      read R15 s = r15_orig /\
       read RSP s = sptr /\
       read (memory :> bytes128
         (word_add kptr (word 18446744073709551488))) s = k0 /\
@@ -1095,6 +1097,7 @@ let loopinv = new_definition
     (sp96:int128) (sp112:int128)
     (red:int128) (plus:int128)
     (counter_fn:num->int128) (p_fn:num->int128)
+    (r15_orig:int64)
     (iter_count:num) (i:num) (s:x86state) <=>
       loopinv_common iptr_base optr_base kptr hptr cbptr cptr sptr
                      k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
@@ -1102,6 +1105,7 @@ let loopinv = new_definition
                      sp32 sp48 sp64 sp80 sp96 sp112
                      red plus
                      counter_fn p_fn
+                     r15_orig
                      iter_count i s /\
       (i < iter_count
        ==> (?(xi4:int128) (xi7:int128) (xi8:int128) (sp16:int128).
@@ -1292,6 +1296,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                         sp32 sp48 sp64 sp80 sp96 sp112
                         red plus
                         counter_fn p_fn
+                        r15_orig
                         iter_count 0 s)
            (\s. read RIP s = word (pc + 0x413) /\
                 loopinv iptr optr kptr hptr cbptr cptr sptr
@@ -1300,6 +1305,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                         sp32 sp48 sp64 sp80 sp96 sp112
                         red plus
                         counter_fn p_fn
+                        r15_orig
                         iter_count iter_count s)
            (MAYCHANGE [RIP; RDI; RSI; RDX; R12; R13; R14] ,,
             MAYCHANGE [ZMM0; ZMM1; ZMM2; ZMM3; ZMM4; ZMM5; ZMM6; ZMM7;
@@ -1319,6 +1325,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
                sp32 sp48 sp64 sp80 sp96 sp112
                red plus
                counter_fn p_fn
+               r15_orig
                iter_count i s /\
        bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_loop_mc)` THEN
   REPEAT CONJ_TAC THENL
