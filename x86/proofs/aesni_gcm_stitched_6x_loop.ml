@@ -1978,6 +1978,20 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
         ALL_TAC
       ] THEN
       RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `~(i + 1 = iter_count)`]) THEN
+      (* Reify `read sp+32 s3` as `sp32_post` BEFORE stepping the 8 tail
+         insns.  Steps 4..9 (vpxor + 5 vmovdqa's) only write registers, so
+         ASSUMPTION_STATE_UPDATE_TAC propagates `read sp+32 sN = sp32_post`
+         orthogonally to every intermediate state.  At step 10
+         (`vmovdqu 0x20(%rsp),%xmm7`) the stepper produces
+         `read XMM7 s10 = read sp+32 s9`; ASSEMBLER_SIMPLIFY's ASM_REWRITE
+         then folds RHS via the propagated `read sp+32 s9 = sp32_post`,
+         giving `read XMM7 s10 = sp32_post` (and hence
+         `read YMM7 s10 = word_zx sp32_post`).  Without this ABBREV, the
+         stepper-produced fact references s9, which DISCARD_OLDSTATE_TAC
+         erases — leaving the xi7 existential witness unprovable. *)
+      ABBREV_TAC
+        `sp32_post:int128 =
+           read (memory :> bytes128 (word_add sptr (word 32))) s3` THEN
       X86_STEPS_TAC AESNI_GCM_STITCHED_6X_LOOP_EXEC (4--11) THEN
       FIRST_X_ASSUM (fun th ->
         if string_of_term (concl th) =
