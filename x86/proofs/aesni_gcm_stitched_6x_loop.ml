@@ -1160,6 +1160,7 @@ let AESNI_GCM_STITCHED_6X_LOOP_CORRECT = prove
       1 <= iter_count /\
       16 * 6 * iter_count < 2 EXP 64 /\
       val r14_orig + 96 * iter_count <= val r15_orig /\
+      word_add r14_orig (word 192) = optr /\
       (!j. counter_fn (j + 1) =
            simd16 word_add ((counter_fn j):int128) (plus:int128)) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_6x_loop_mc) (optr, 16 * 6 * iter_count) /\
