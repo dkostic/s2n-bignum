@@ -1371,8 +1371,44 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         VPALIGNR_8_SWAP_128_VIA_ZX_256;
         WORD_ZX_ZX_128]) THEN
       GHASH_ABBREV_STEP_TAC)
-     (1--168) THEN
-    CHEAT_TAC;
+     (1--198) THEN
+    (* ---------------------------------------------------------------- *)
+    (* Subq + jc.  The body's tail does `subq $6, %rdx; jc .Ldone_exit`. *)
+    (* Without the SIMD recipe (these are GPR ops), we step them         *)
+    (* directly.  After step 200 RIP is symbolically                     *)
+    (*   read RIP s200 =                                                 *)
+    (*     if val(rdx) < 6 then pc+0x413 else pc+0x3ef.                  *)
+    (* LOOP_CF_EQUIV folds val(rdx) < 6 into i+1 = iter_count.            *)
+    (* ---------------------------------------------------------------- *)
+    X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC [199; 200] THEN
+    MP_TAC(SPECL [`i:num`; `iter_count:num`] LOOP_CF_EQUIV) THEN
+    ANTS_TAC THENL [
+      CONJ_TAC THENL [
+        FIRST_ASSUM ACCEPT_TAC;
+        UNDISCH_TAC `16 * 6 * iter_count < 2 EXP 64` THEN ARITH_TAC
+      ];
+      ALL_TAC
+    ] THEN
+    DISCH_TAC THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[ASSUME
+      `val (word_sub (word (6 * iter_count)) (word (6 + 6 * i)):int64) < 6 <=>
+       i + 1 = iter_count`]) THEN
+    ASM_CASES_TAC `i + 1 = iter_count` THENL [
+      (* Case A: last iter (jc taken, exit at pc+0x413).  Close
+         loopinv_v2 iter_count; only loopinv_common_v2 conjuncts apply
+         since i+1 = iter_count makes the `i + 1 < iter_count` guard
+         false, dropping the 4-tuple existential. *)
+      CHEAT_TAC;
+
+      (* Case B: middle iter (jc not taken, fall through to
+         register-copy tail at pc+0x3ef + jmp back to pc+0).  Step the
+         remaining 7 SIMD register copies + jmp, then reconstitute
+         loopinv_v2 (i+1) by picking 4-tuple existential witnesses
+         (xi4_asm, xi7_asm, xi8_asm, sp16_asm) directly from asm
+         post-state.  The ghash_combine = ghash_at (i+1) conjunct
+         closes via GHASH_COMBINE_STEP + the asm-side ring-algebra
+         equation. *)
+      CHEAT_TAC];
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
        discharge since the postcondition asserts loopinv_v2 iter_count at
