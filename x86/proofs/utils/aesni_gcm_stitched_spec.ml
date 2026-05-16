@@ -151,6 +151,20 @@ let h_power_4 = new_definition
 let h_power_5 = new_definition
  `h_power_5 (h:int128) : int128 = polyval_dot (h_power_4 h) h`;;
 
+(* Bridge to common/polyval_ghash.ml's `h_power`.  Useful when a downstream
+   proof has a goal in terms of one form and a hypothesis in the other.    *)
+
+let H_POWER_K_EQ_H_POWER = prove
+ (`(!h. h_power_1 h = h_power h 0) /\
+   (!h. h_power_2 h = h_power h 1) /\
+   (!h. h_power_3 h = h_power h 2) /\
+   (!h. h_power_4 h = h_power h 3) /\
+   (!h. h_power_5 h = h_power h 4)`,
+  REWRITE_TAC[h_power_1; h_power_2; h_power_3; h_power_4; h_power_5;
+              h_power;
+              ARITH_RULE `4 = SUC 3`; ARITH_RULE `3 = SUC 2`;
+              ARITH_RULE `2 = SUC 1`; ARITH_RULE `1 = SUC 0`]);;
+
 (* ========================================================================= *)
 (* 5. Karatsuba batch over 6 blocks.                                         *)
 (*                                                                           *)
