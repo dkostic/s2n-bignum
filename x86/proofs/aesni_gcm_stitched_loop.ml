@@ -1406,8 +1406,50 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
       REPEAT CONJ_TAC THENL [
-        (* pt_preserved_v2 iter_count — hold for next pass *)
-        CHEAT_TAC;
+        (* pt_preserved_v2 iter_count — frame from s0 via memory orthogonality
+           (the asm body writes to (optr,16*6*iter_count), cbptr, sp+16,
+           sp+32..120 — none overlap iptr's region).  Same recipe as v1's
+           PT_FRAME_TAC (line 625 of aesni_gcm_stitched_6x_loop.ml). *)
+        REWRITE_TAC[pt_preserved_v2] THEN
+        REPEAT STRIP_TAC THEN
+        MP_TAC (REWRITE_RULE[pt_preserved_v2]
+                  (ASSUME `pt_preserved_v2 iter_count iptr s0 pt_in`)) THEN
+        DISCH_THEN (MP_TAC o SPEC `j:num`) THEN
+        ASM_REWRITE_TAC[] THEN
+        DISCH_THEN (SUBST1_TAC o SYM) THEN
+        FIRST_X_ASSUM (fun th ->
+          let c = concl th in
+          try
+            let _, args = strip_comb c in
+            let n = List.length args in
+            if n >= 2 &&
+               is_var (List.nth args (n-2)) &&
+               fst(dest_var (List.nth args (n-2))) = "s0" &&
+               is_var (List.nth args (n-1)) &&
+               fst(dest_var (List.nth args (n-1))) = "s200"
+            then MP_TAC th else NO_TAC
+          with _ -> NO_TAC) THEN
+        REWRITE_TAC[MAYCHANGE; SEQ_ID; seq; ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN
+        REPEAT STRIP_TAC THEN
+        REPEAT (FIRST_X_ASSUM (fun th ->
+          try
+            let c = concl th in
+            if not (is_eq c) then NO_TAC else
+            let lhs, rhs = dest_eq c in
+            let is_write_term t =
+              try name_of (fst (strip_comb t)) = "write" with _ -> false in
+            let is_fresh_state t =
+              is_var t &&
+              (let n = fst (dest_var t) in
+               String.length n >= 2 &&
+               String.get n 0 = 's' &&
+               String.get n 1 <> '0') in
+            if (is_write_term lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_write_term rhs)
+            then SUBST_ALL_TAC (SYM th) else NO_TAC
+          with _ -> NO_TAC)) THEN
+        READ_OVER_WRITE_ORTHOGONAL_TAC;
         (* ct_preserved_v2 iter_count — hold for next pass *)
         CHEAT_TAC;
         (* stashed_ct_preserved_v2 iter_count — hold for next pass *)
