@@ -1605,6 +1605,13 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
          post-state.  The ghash_combine = ghash_at (i+1) conjunct
          closes via GHASH_COMBINE_STEP + the asm-side ring-algebra
          equation. *)
+      RULE_ASSUM_TAC (REWRITE_RULE
+        [COND_RAND;
+         COND_RATOR;
+         ASSUME `~((i:num) + 1 = iter_count)`]) THEN
+      X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC
+        [201; 202; 203; 204; 205; 206; 207; 208] THEN
+      (* Case B body: rest of closure (witnesses + ghash equation) — TODO. *)
       CHEAT_TAC];
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
