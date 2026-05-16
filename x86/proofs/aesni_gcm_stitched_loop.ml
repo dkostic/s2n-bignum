@@ -1405,27 +1405,20 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
       ENSURES_FINAL_STATE_TAC THEN
       ASM_REWRITE_TAC[] THEN
-      CONJ_TAC THENL [
-        (* The big spec/ptr conjunction. *)
-        REPEAT CONJ_TAC THENL [
-          (* pt_preserved_v2 iter_count — hold for next pass *)
-          CHEAT_TAC;
-          (* ct_preserved_v2 iter_count — hold for next pass *)
-          CHEAT_TAC;
-          (* stashed_ct_preserved_v2 iter_count — hold for next pass *)
-          CHEAT_TAC;
-          (* RDI advance: word_add iter_iptr (word 96) =
-                          word_add iptr (word (96 * iter_count)) *)
-          MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
-          (* RSI advance: same pattern for optr *)
-          MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
-          (* RDX update via LOOP_RDX_STEP_LAST *)
-          MATCH_MP_TAC LOOP_RDX_STEP_LAST THEN ASM_REWRITE_TAC[]
-        ];
-        (* The MAYCHANGE residual — should close via MONOTONE_MAYCHANGE
-           against the asm post-state's MAYCHANGE frame.  Hold for next
-           pass once the post-iter SUBSTs are validated. *)
-        CHEAT_TAC
+      REPEAT CONJ_TAC THENL [
+        (* pt_preserved_v2 iter_count — hold for next pass *)
+        CHEAT_TAC;
+        (* ct_preserved_v2 iter_count — hold for next pass *)
+        CHEAT_TAC;
+        (* stashed_ct_preserved_v2 iter_count — hold for next pass *)
+        CHEAT_TAC;
+        (* RDI advance: word_add iter_iptr (word 96) =
+                        word_add iptr (word (96 * iter_count)) *)
+        MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
+        (* RSI advance: same pattern for optr *)
+        MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
+        (* RDX update via LOOP_RDX_STEP_LAST *)
+        MATCH_MP_TAC LOOP_RDX_STEP_LAST THEN ASM_REWRITE_TAC[]
       ];
 
       (* Case B: middle iter (jc not taken, fall through to
