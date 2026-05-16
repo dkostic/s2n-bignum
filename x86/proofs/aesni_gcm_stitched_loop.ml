@@ -744,20 +744,103 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       val r14_orig + 96 * iter_count <= val r15_orig /\
       word_add r14_orig (word 192) = optr /\
       LENGTH pt_in = 16 * 6 * iter_count /\
+      (* Code-vs-writable nonoverlap (4 clauses) *)
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) (optr, 16 * 6 * iter_count) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) ((cbptr:int64), 16) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) (word_add sptr (word 16), 16) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) (word_add sptr (word 32), 96) /\
+      (* Writable-vs-iptr nonoverlap (4 clauses) *)
       nonoverlapping (optr, 16 * 6 * iter_count) (iptr, 16 * 6 * iter_count) /\
+      nonoverlapping ((cbptr:int64), 16) (iptr, 16 * 6 * iter_count) /\
+      nonoverlapping (word_add sptr (word 16), 16) (iptr, 16 * 6 * iter_count) /\
+      nonoverlapping (iptr, 16 * 6 * iter_count) (word_add sptr (word 32), 96) /\
+      (* Writable-vs-writable nonoverlap (3 clauses) *)
       nonoverlapping (optr, 16 * 6 * iter_count) ((cbptr:int64), 16) /\
       nonoverlapping (optr, 16 * 6 * iter_count) (word_add sptr (word 16), 16) /\
       nonoverlapping (optr, 16 * 6 * iter_count) (word_add sptr (word 32), 96) /\
       nonoverlapping ((cbptr:int64), 16) (word_add sptr (word 16), 16) /\
       nonoverlapping ((cbptr:int64), 16) (word_add sptr (word 32), 96) /\
       nonoverlapping (word_add sptr (word 16), 16) (word_add sptr (word 32), 96) /\
-      nonoverlapping ((cbptr:int64), 16) (iptr, 16 * 6 * iter_count) /\
-      nonoverlapping (word_add sptr (word 16), 16) (iptr, 16 * 6 * iter_count) /\
-      nonoverlapping (word_add sptr (word 32), 96) (iptr, 16 * 6 * iter_count)
+      (* (optr, 16*6*iter_count) vs fixed-readables (22 clauses) *)
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551488), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551504), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551520), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551536), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551552), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551568), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551584), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 18446744073709551600), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (kptr, 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 16), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add kptr (word 32), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add hptr (word 18446744073709551584), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add hptr (word 18446744073709551600), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add hptr (word 16), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add hptr (word 32), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add hptr (word 64), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add hptr (word 80), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add cptr (word 16), 16) /\
+      nonoverlapping (optr, 16 * 6 * iter_count) (word_add cptr (word 32), 16) /\
+      (* (cbptr, 16) vs fixed-readables (20 clauses) *)
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551488), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551504), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551520), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551536), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551552), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551568), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551584), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 18446744073709551600), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (kptr, 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 16), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add kptr (word 32), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add hptr (word 18446744073709551584), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add hptr (word 18446744073709551600), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add hptr (word 16), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add hptr (word 32), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add hptr (word 64), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add hptr (word 80), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add cptr (word 16), 16) /\
+      nonoverlapping ((cbptr:int64), 16) (word_add cptr (word 32), 16) /\
+      (* (sp+16, 16) vs fixed-readables (20 clauses) *)
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551488), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551504), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551520), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551536), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551552), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551568), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551584), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 18446744073709551600), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (kptr, 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 16), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add kptr (word 32), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add hptr (word 18446744073709551584), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add hptr (word 18446744073709551600), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add hptr (word 16), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add hptr (word 32), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add hptr (word 64), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add hptr (word 80), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add cptr (word 16), 16) /\
+      nonoverlapping (word_add sptr (word 16), 16) (word_add cptr (word 32), 16) /\
+      (* (sp+32, 96) vs fixed-readables (20 clauses) *)
+      nonoverlapping (word_add kptr (word 18446744073709551488), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551504), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551520), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551536), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551552), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551568), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551584), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 18446744073709551600), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (kptr, 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add kptr (word 32), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 18446744073709551584), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 18446744073709551600), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 32), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 64), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add hptr (word 80), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add cptr (word 16), 16) (word_add sptr (word 32), 96) /\
+      nonoverlapping (word_add cptr (word 32), 16) (word_add sptr (word 32), 96)
       ==> ensures x86
            (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_loop_mc) /\
                 read RIP s = word pc /\
