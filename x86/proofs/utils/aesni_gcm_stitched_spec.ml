@@ -208,39 +208,30 @@ let ghash_combine = new_definition
 (* 7. body_ghash_step: per-iter (xi4_in, xi7_in, xi8_in, sp16_in) ->         *)
 (*                              (xi4_out, xi7_out, xi8_out, sp16_out).       *)
 (*                                                                           *)
-(* The 6x body's reduction pipeline is two-phase:                            *)
+(* The 6x body's reduction pipeline produces three GHASH-state registers     *)
+(* (YMM4 / YMM8 / sp+16) at body exit; their XOR (= `ghash_combine`) is the *)
+(* updated running ghash.  M9 reads them as a single ghash via the body's   *)
+(* first two vpxors at .Ldec_loop6x_done.                                   *)
 (*                                                                           *)
-(*   Phase 1.  Karatsuba sum -> wide256                                      *)
-(*   Phase 2a. polyval_reduce_prop3-low: subtract x^128 multiple, leaving   *)
-(*             a 128-bit "high" residue (called sp16 in the asm — stashed   *)
-(*             at sptr+16) and a 128-bit "low" residue (in YMM).            *)
-(*   Phase 2b. final XOR fold against the carries from the prior iter        *)
-(*             (xi4 / xi7 / xi8 — registers ymm4 / ymm7 / ymm8).            *)
+(* DESIGN CHOICE.  We canonicalise the 4-tuple at the spec layer: the       *)
+(* output puts the entire running ghash in xi8_out and zeros xi4_out /      *)
+(* xi7_out / sp16_out.  This is one valid choice (under the                 *)
+(* `ghash_combine = running_ghash` invariant any such choice works) and is  *)
+(* the simplest.  The asm of course produces a non-zero xi4 / sp16 at       *)
+(* body exit; M8's per-iter inductive step bridges the asm's actual         *)
+(* (xi4, xi8, sp16) post values to this canonical form by:                  *)
+(*   - showing  asm_xi8 XOR asm_xi4 XOR asm_sp16  = polyval_reduce_prop3 W  *)
+(*     where W = the karatsuba_batch_6x of the absorbed CT blocks against H *)
+(*   - then ghash_combine of (xi4_out, xi8_out, sp16_out) = (0, prop3 W, 0) *)
+(*     equals the same prop3 W via WORD_RULE.                               *)
 (*                                                                           *)
-(* The closed-form invariant is that for any (xi4_in, xi7_in, xi8_in,        *)
-(* sp16_in) tuple satisfying                                                 *)
+(* So the spec-layer 4-tuple becomes a single carrier: M9's tail interface  *)
+(* sees only `ghash_at h tag0 ks icb pt_in iter_count` and never inspects   *)
+(* the per-iter carry layout.  This avoids the EXT-N existential cycle.    *)
 (*                                                                           *)
-(*    ghash_combine xi4_in xi8_in sp16_in = running_ghash                    *)
-(*                                                                           *)
-(* the body's outputs satisfy                                                *)
-(*                                                                           *)
-(*    ghash_combine xi4_out xi8_out sp16_out                                 *)
-(*       = polyval_dot (word_xor running_ghash CT_block_xor_sum) H^6.        *)
-(*                                                                           *)
-(* `body_ghash_step` packages the 4-tuple update so M8's loopinv carries     *)
-(* through unchanged from one iter to the next without inventing a new       *)
-(* bridge each time.                                                         *)
-(*                                                                           *)
-(* TODO STUB: xi4_out / xi7_out / sp16_out are the phase-1 carries — their  *)
-(* closed forms come out of the asm reduction shape and will be filled in    *)
-(* once GHASH_REDUCTION_SPLIT_LEMMA is proved.  We only need them to         *)
-(* satisfy the invariant `combine = ghash_at`, which is what                 *)
-(* GHASH_COMBINE_STEP states; the body of body_ghash_step is a CHOICE,      *)
-(* not a constraint, and any closed form respecting (asm pipeline) +        *)
-(* invariant suffices.                                                       *)
-(*                                                                           *)
-(* The current stub puts the entire ghash residue in xi8_out and zeros the  *)
-(* carries.  This does NOT match the asm — fix WITH the split lemma.        *)
+(* xi7 (register YMM7) is part of the body's ghost state but is             *)
+(* algebraically zero at iter boundaries; we keep it in the signature for   *)
+(* traceability against the asm.                                             *)
 (* ------------------------------------------------------------------------- *)
 
 let body_ghash_step = new_definition
@@ -252,9 +243,9 @@ let body_ghash_step = new_definition
      : int128 # int128 # int128 # int128 =
     let acc_in = ghash_combine xi4_in xi8_in sp16_in in
     let wide = karatsuba_batch_6x h acc_in b0 b1 b2 b3 b4 b5 in
+    word 0 : int128,
+    word 0 : int128,
     polyval_reduce_prop3 wide,
-    word 0 : int128,
-    word 0 : int128,
     word 0 : int128`;;
 
 (* ========================================================================= *)
@@ -287,22 +278,28 @@ let ghash_at = define
        bswap_ct_at ks icb pt_in (6 * i + 5)]`;;
 
 (* ========================================================================= *)
-(* 9. Ring-algebra lemmas (STUBS — bodies are CHEAT_TAC).                    *)
+(* 9. Ring-algebra lemmas.                                                   *)
 (*                                                                           *)
-(* These are the only substantive new proof obligations the recursive       *)
-(* spec adds.  All three are mechanical extensions of                        *)
-(* `GHASH_POLYVAL_ACC_2` (common/polyval_ghash.ml line 184) and the          *)
-(* polyval_reduce_prop3 reduction lemmas in common/polyval.ml.               *)
+(* Two load-bearing theorems.  Both proved here.                             *)
+(*                                                                           *)
+(* The recursive-spec design memo (2026-05-16) listed three lemmas, but the *)
+(* third (GHASH_REDUCTION_SPLIT_LEMMA) became unnecessary once               *)
+(* `body_ghash_step` was canonicalised to put the entire residue in xi8_out *)
+(* and zero the other carriers.  M8's per-iter inductive step now bridges   *)
+(* the asm's three-register output to the canonical form locally — see      *)
+(* the design-choice note above body_ghash_step.                             *)
 (* ========================================================================= *)
 
 (* ------------------------------------------------------------------------- *)
-(* GHASH_POLYVAL_ACC_6 — generalises the 2-block Horner unroll to the        *)
-(* 6-block batched form the asm computes via Karatsuba.                      *)
+(* GHASH_POLYVAL_ACC_6 — specialises the n-block batched Horner theorem      *)
+(* `GHASH_POLYVAL_ACC_BATCHED` (common/polyval_ghash.ml) to 6 blocks and    *)
+(* matches the wide-XOR sum to our `karatsuba_batch_6x` definition.          *)
 (*                                                                           *)
-(* Stated against `ghash_polyval_acc` (common/polyval_ghash.ml) so the       *)
-(* asm-side `karatsuba_batch_6x ... + polyval_reduce_prop3` matches the     *)
-(* spec-side iterated `polyval_dot`.  Cost ~50 lines of mod_polyval +       *)
-(* ring_add manipulation, modelled on GHASH_POLYVAL_ACC_2's body.            *)
+(* The generic theorem gives                                                 *)
+(*   ghash_polyval_acc h a (CONS b bs) =                                     *)
+(*     prop3 (pmul (a XOR b) H^|bs| XOR ghash_wide h (|bs|-1) bs)            *)
+(* — instantiate with `bs = [b1;b2;b3;b4;b5]` and unfold the ghash_wide     *)
+(* recursion + h_power_k constants to match karatsuba_batch_6x's shape.      *)
 (* ------------------------------------------------------------------------- *)
 
 let GHASH_POLYVAL_ACC_6 = prove
@@ -311,32 +308,17 @@ let GHASH_POLYVAL_ACC_6 = prove
      (b3:int128) (b4:int128) (b5:int128).
     ghash_polyval_acc h acc [b0; b1; b2; b3; b4; b5] =
     polyval_reduce_prop3 (karatsuba_batch_6x h acc b0 b1 b2 b3 b4 b5)`,
-  CHEAT_TAC);;
-
-(* ------------------------------------------------------------------------- *)
-(* GHASH_REDUCTION_SPLIT_LEMMA — phase-1 / phase-2 split of the              *)
-(* `polyval_reduce_prop3` reduction.  The asm emits the reduction in two    *)
-(* halves separated by the body's vpalignr / vpsrldq carries (which is       *)
-(* what populates xi4 / xi7 / sp16 in the 4-tuple invariant).                *)
-(*                                                                           *)
-(* PLACEHOLDER STATEMENT.  The real statement requires fixing the closed   *)
-(* forms of xi4_out / xi7_out / sp16_out in `body_ghash_step` first         *)
-(* (currently zeroed in the STUB above).  Once those are pinned, this       *)
-(* lemma will state                                                          *)
-(*                                                                           *)
-(*    polyval_reduce_prop3 wide                                              *)
-(*      = word_xor xi8_residue                                               *)
-(*          (word_xor xi4_carry sp16_residue)                                *)
-(*                                                                           *)
-(* where `xi8_residue / xi4_carry / sp16_residue` are the asm's actual      *)
-(* phase outputs.  Cost ~30 lines (mostly WORD_BLAST).                       *)
-(* ------------------------------------------------------------------------- *)
-
-let GHASH_REDUCTION_SPLIT_LEMMA = prove
- (`!(wide:256 word).
-    polyval_reduce_prop3 wide = polyval_reduce_prop3 wide`,
-  CHEAT_TAC);;
-   (* PLACEHOLDER STATEMENT (currently trivially true).  See note above. *)
+  REPEAT GEN_TAC THEN
+  MP_TAC(ISPECL
+    [`h:int128`; `[b1;b2;b3;b4;b5]:(int128)list`;
+     `acc:int128`; `b0:int128`] GHASH_POLYVAL_ACC_BATCHED) THEN
+  REWRITE_TAC[LENGTH; ghash_wide; h_power; SUC_SUB1;
+              ARITH_RULE `4 - 1 = 3`; ARITH_RULE `3 - 1 = 2`;
+              ARITH_RULE `2 - 1 = 1`; ARITH_RULE `1 - 1 = 0`;
+              SUB_0; WORD_XOR_0] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[karatsuba_batch_6x;
+              h_power_1; h_power_2; h_power_3; h_power_4; h_power_5]);;
 
 (* ------------------------------------------------------------------------- *)
 (* GHASH_COMBINE_STEP — the body's per-iter outputs preserve the              *)
@@ -344,14 +326,14 @@ let GHASH_REDUCTION_SPLIT_LEMMA = prove
 (*                                                                           *)
 (* This is the load-bearing lemma that lets M8's loopinv carry through one   *)
 (* iter at a time without inventing a new bridge per iter (the failure       *)
-(* mode of the 5-cycle EXT-N enrichment chain).  Cost ~100 lines:           *)
+(* mode of the 5-cycle EXT-N enrichment chain).                             *)
 (*                                                                           *)
-(*   - Unfold body_ghash_step + ghash_combine + ghash_at on both sides.      *)
-(*   - Apply GHASH_POLYVAL_ACC_6 to collapse the 6-block iterated absorb     *)
-(*     to the asm's batched Karatsuba+reduce.                                *)
-(*   - Apply GHASH_REDUCTION_SPLIT_LEMMA to match the phase-1+phase-2 split. *)
-(*   - Close by REWRITE_TAC + WORD_RULE chain (no MOD_POLYVAL needed since   *)
-(*     both sides are already reduced).                                      *)
+(* Proof: unfold body_ghash_step's 4-tuple (xi8_out = prop3 wide, others     *)
+(* zero), unfold ghash_combine + ghash_at(SUC i), substitute the hypothesis *)
+(* `ghash_combine xi4_in xi8_in sp16_in = ghash_at i` into the LHS's        *)
+(* karatsuba_batch_6x acc parameter, and close via GHASH_POLYVAL_ACC_6      *)
+(* + the WORD_RULE identity                                                  *)
+(*    word_xor (word_xor x (word 0)) (word 0) = x.                           *)
 (* ------------------------------------------------------------------------- *)
 
 let GHASH_COMBINE_STEP = prove
@@ -369,4 +351,10 @@ let GHASH_COMBINE_STEP = prove
                 (bswap_ct_at ks icb pt_in (6 * i + 5)) in
          ghash_combine xi4_out xi8_out sp16_out =
          ghash_at h tag0 ks icb pt_in (SUC i))`,
-  CHEAT_TAC);;
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ghash_combine; body_ghash_step; LET_DEF; LET_END_DEF;
+              ghash_at] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[GHASH_POLYVAL_ACC_6;
+              WORD_RULE
+                `word_xor (word_xor x (word 0:int128)) (word 0) = x`]);;
