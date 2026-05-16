@@ -1340,6 +1340,38 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
       SIMP_TAC[];
       ALL_TAC] THEN
+    (* ---------------------------------------------------------------- *)
+    (* Pre-step PC normalisation.  ENSURES_WHILE_UP2_TAC stamps          *)
+    (* `read RIP s0 = word (pc + 0)` into asl; the stepper's X86_CONV    *)
+    (* needs the reduced form `read RIP s0 = word pc` to match the EXEC *)
+    (* rule's `pc + i` antecedent at i = 0.  ADD_CLAUSES collapses       *)
+    (* `pc + 0` to `pc` in asl so step 1 fires.  Subsequent steps emit  *)
+    (* clean PC arithmetic and need no further normalisation.            *)
+    (* ---------------------------------------------------------------- *)
+    RULE_ASSUM_TAC(REWRITE_RULE[ADD_CLAUSES]) THEN
+    (* ---------------------------------------------------------------- *)
+    (* Body simulation 1..168.  Same per-step recipe as M7 EXT4 (lines  *)
+    (* 1793-1804 of aesni_gcm_stitched_6x.ml): RULE_ASSUM_TAC the SIMD  *)
+    (* fold lemmas, X86_STEPS_TAC the single instruction n,             *)
+    (* SIMD_SIMPLIFY_TAC, fold again, then GHASH_ABBREV_STEP_TAC names  *)
+    (* the ghash-state register's new value.  The same machine code as  *)
+    (* M7 EXT4 (these are bytes 0..839 of aesni_gcm_stitched_loop_mc =  *)
+    (* BUTLAST aesni_gcm_stitched_6x_mc), so the per-step pattern        *)
+    (* transfers verbatim.  168 steps complete in ~80s wall-clock.       *)
+    (* ---------------------------------------------------------------- *)
+    MAP_EVERY (fun n ->
+      RULE_ASSUM_TAC(REWRITE_RULE
+       [VPSHUFB_BYTEREV_128;
+        VPALIGNR_8_SWAP_128_VIA_ZX_256;
+        WORD_ZX_ZX_128]) THEN
+      X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC [n] THEN
+      SIMD_SIMPLIFY_TAC[] THEN
+      RULE_ASSUM_TAC(REWRITE_RULE
+       [VPSHUFB_BYTEREV_128;
+        VPALIGNR_8_SWAP_128_VIA_ZX_256;
+        WORD_ZX_ZX_128]) THEN
+      GHASH_ABBREV_STEP_TAC)
+     (1--168) THEN
     CHEAT_TAC;
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
