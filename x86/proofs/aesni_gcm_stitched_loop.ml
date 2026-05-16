@@ -1274,6 +1274,23 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
          SIMP_TAC[]];
       ALL_TAC] THEN
     (* ---------------------------------------------------------------- *)
+    (* Stash ABBREVs.  Bind cstash0..cstash5 = read sp+(32+16k) s0 for   *)
+    (* k=0..5 — 6 ghost int128 values for the body's pre-MOVBE-write     *)
+    (* read of the previous-iter's stash slots.  These are absolute       *)
+    (* (no spec link required during simulation): the stepper propagates *)
+    (* them through register-only steps via ASSUMPTION_STATE_UPDATE so   *)
+    (* the early-body VPSHUFB / VMOVDQU stash reads see named values.    *)
+    (* The spec-side bridge to stashed_ct_preserved_v2 (gated by 2 <= i) *)
+    (* is derived locally at iter close where ct_preserved_v2 (i+1)      *)
+    (* closure consumes the bswap_ct_at form.                            *)
+    (* ---------------------------------------------------------------- *)
+    ABBREV_TAC `cstash0:int128 = read (memory :> bytes128 (word_add sptr (word 32))) s0` THEN
+    ABBREV_TAC `cstash1:int128 = read (memory :> bytes128 (word_add sptr (word 48))) s0` THEN
+    ABBREV_TAC `cstash2:int128 = read (memory :> bytes128 (word_add sptr (word 64))) s0` THEN
+    ABBREV_TAC `cstash3:int128 = read (memory :> bytes128 (word_add sptr (word 80))) s0` THEN
+    ABBREV_TAC `cstash4:int128 = read (memory :> bytes128 (word_add sptr (word 96))) s0` THEN
+    ABBREV_TAC `cstash5:int128 = read (memory :> bytes128 (word_add sptr (word 112))) s0` THEN
+    (* ---------------------------------------------------------------- *)
     (* Plaintext ABBREVs.  Bind p0..p5 = pt_at pt_in (6*i+k) for k=0..5  *)
     (* and pre-derive the corresponding bytes128 reads at iter_iptr+16k  *)
     (* via pt_preserved_v2.  This gives ASSUMPTION_STATE_UPDATE named    *)
