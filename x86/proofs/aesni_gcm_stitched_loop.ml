@@ -1398,7 +1398,42 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
          loopinv_v2 iter_count; only loopinv_common_v2 conjuncts apply
          since i+1 = iter_count makes the `i + 1 < iter_count` guard
          false, dropping the 4-tuple existential. *)
-      CHEAT_TAC;
+      ASM_REWRITE_TAC[LT_REFL] THEN
+      (* Substitute iter_iptr/iter_optr back to word_add iptr/optr (word
+         (96*i)) form so MONOTONE_MAYCHANGE matches its automated
+         pattern. *)
+      FIRST_X_ASSUM (fun th ->
+        if string_of_term (concl th) =
+             "word_add optr (word (96 * i)) = iter_optr"
+        then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      FIRST_X_ASSUM (fun th ->
+        if string_of_term (concl th) =
+             "word_add iptr (word (96 * i)) = iter_iptr"
+        then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      CONJ_TAC THENL [
+        (* The big spec/ptr conjunction. *)
+        REPEAT CONJ_TAC THENL [
+          (* pt_preserved_v2 iter_count — hold for next pass *)
+          CHEAT_TAC;
+          (* ct_preserved_v2 iter_count — hold for next pass *)
+          CHEAT_TAC;
+          (* stashed_ct_preserved_v2 iter_count — hold for next pass *)
+          CHEAT_TAC;
+          (* RDI advance: word_add iter_iptr (word 96) =
+                          word_add iptr (word (96 * iter_count)) *)
+          MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
+          (* RSI advance: same pattern for optr *)
+          MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
+          (* RDX update via LOOP_RDX_STEP_LAST *)
+          MATCH_MP_TAC LOOP_RDX_STEP_LAST THEN ASM_REWRITE_TAC[]
+        ];
+        (* The MAYCHANGE residual — should close via MONOTONE_MAYCHANGE
+           against the asm post-state's MAYCHANGE frame.  Hold for next
+           pass once the post-iter SUBSTs are validated. *)
+        CHEAT_TAC
+      ];
 
       (* Case B: middle iter (jc not taken, fall through to
          register-copy tail at pc+0x3ef + jmp back to pc+0).  Step the
