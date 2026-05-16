@@ -1273,6 +1273,56 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
          SIMP_TAC[]];
       ALL_TAC] THEN
+    (* ---------------------------------------------------------------- *)
+    (* Plaintext ABBREVs.  Bind p0..p5 = pt_at pt_in (6*i+k) for k=0..5  *)
+    (* and pre-derive the corresponding bytes128 reads at iter_iptr+16k  *)
+    (* via pt_preserved_v2.  This gives ASSUMPTION_STATE_UPDATE named    *)
+    (* values to fold during body simulation, and supplies the spec-side *)
+    (* link `pt_at pt_in (6*i+k) = p_k` that the body's ct_preserved_v2  *)
+    (* discharge needs at iter close.                                    *)
+    (* ---------------------------------------------------------------- *)
+    ABBREV_TAC `p0:int128 = pt_at pt_in (6 * i + 0)` THEN
+    ABBREV_TAC `p1:int128 = pt_at pt_in (6 * i + 1)` THEN
+    ABBREV_TAC `p2:int128 = pt_at pt_in (6 * i + 2)` THEN
+    ABBREV_TAC `p3:int128 = pt_at pt_in (6 * i + 3)` THEN
+    ABBREV_TAC `p4:int128 = pt_at pt_in (6 * i + 4)` THEN
+    ABBREV_TAC `p5:int128 = pt_at pt_in (6 * i + 5)` THEN
+    SUBGOAL_THEN
+      `read (memory :> bytes128 (word_add iter_iptr (word 0))) s0 = (p0:int128) /\
+       read (memory :> bytes128 (word_add iter_iptr (word 16))) s0 = (p1:int128) /\
+       read (memory :> bytes128 (word_add iter_iptr (word 32))) s0 = (p2:int128) /\
+       read (memory :> bytes128 (word_add iter_iptr (word 48))) s0 = (p3:int128) /\
+       read (memory :> bytes128 (word_add iter_iptr (word 64))) s0 = (p4:int128) /\
+       read (memory :> bytes128 (word_add iter_iptr (word 80))) s0 = (p5:int128)`
+      STRIP_ASSUME_TAC THENL [
+      SUBGOAL_THEN
+        `6 * i + 0 < 6 * iter_count /\ 6 * i + 1 < 6 * iter_count /\
+         6 * i + 2 < 6 * iter_count /\ 6 * i + 3 < 6 * iter_count /\
+         6 * i + 4 < 6 * iter_count /\ 6 * i + 5 < 6 * iter_count`
+        STRIP_ASSUME_TAC THENL
+       [ASM_ARITH_TAC; ALL_TAC] THEN
+      MP_TAC (REWRITE_RULE[pt_preserved_v2]
+                (ASSUME `pt_preserved_v2 iter_count iptr s0 pt_in`)) THEN
+      DISCH_THEN (fun th ->
+        let s0 = SPEC `6 * i + 0` th in
+        let s1 = SPEC `6 * i + 1` th in
+        let s2 = SPEC `6 * i + 2` th in
+        let s3 = SPEC `6 * i + 3` th in
+        let s4 = SPEC `6 * i + 4` th in
+        let s5 = SPEC `6 * i + 5` th in
+        MP_TAC s5 THEN MP_TAC s4 THEN MP_TAC s3 THEN
+        MP_TAC s2 THEN MP_TAC s1 THEN MP_TAC s0) THEN
+      ASM_REWRITE_TAC[] THEN
+      REWRITE_TAC[ARITH_RULE `16 * (6 * i + 0) = 96 * i + 0`;
+                  ARITH_RULE `16 * (6 * i + 1) = 96 * i + 16`;
+                  ARITH_RULE `16 * (6 * i + 2) = 96 * i + 32`;
+                  ARITH_RULE `16 * (6 * i + 3) = 96 * i + 48`;
+                  ARITH_RULE `16 * (6 * i + 4) = 96 * i + 64`;
+                  ARITH_RULE `16 * (6 * i + 5) = 96 * i + 80`] THEN
+      EXPAND_TAC "iter_iptr" THEN
+      REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      SIMP_TAC[];
+      ALL_TAC] THEN
     CHEAT_TAC;
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
