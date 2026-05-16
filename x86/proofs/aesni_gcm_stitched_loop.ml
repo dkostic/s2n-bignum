@@ -1611,6 +1611,18 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
          ASSUME `~((i:num) + 1 = iter_count)`]) THEN
       X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC
         [201; 202; 203; 204; 205; 206; 207; 208] THEN
+      (* Re-introduce `~(i+1 = iter_count)` and `i+1 < iter_count` so they
+         survive into the post-step asl (X86_STEPS_TAC's
+         DISCARD_NONMATCHING_ASSUMPTIONS would otherwise drop bool hyps). *)
+      SUBGOAL_THEN `~((i:num) + 1 = iter_count)` ASSUME_TAC THENL [
+        FIRST_X_ASSUM ACCEPT_TAC ORELSE
+        (UNDISCH_TAC `(i:num) < iter_count` THEN ARITH_TAC);
+        ALL_TAC] THEN
+      SUBGOAL_THEN `(i:num) + 1 < iter_count` ASSUME_TAC THENL [
+        UNDISCH_TAC `(i:num) < iter_count` THEN
+        UNDISCH_TAC `~((i:num) + 1 = iter_count)` THEN
+        ARITH_TAC;
+        ALL_TAC] THEN
       (* Case B body: rest of closure (witnesses + ghash equation) — TODO. *)
       CHEAT_TAC];
 
