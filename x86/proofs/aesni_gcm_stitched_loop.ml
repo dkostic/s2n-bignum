@@ -957,6 +957,322 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
     RULE_ASSUM_TAC(REWRITE_RULE
        [(REWRITE_CONV[aesni_gcm_stitched_loop_mc] THENC LENGTH_CONV)
           `LENGTH aesni_gcm_stitched_loop_mc`]) THEN
+    (* ---------------------------------------------------------------- *)
+    (* Per-iter nonoverlapping clauses.  Standard set lifted from legacy *)
+    (* v1 M8 wrapper (aesni_gcm_stitched_6x_loop.ml ~lines 1466-1834).   *)
+    (* Drives X86_STEPS_TAC's NONOVERLAPPING_DRIVERS during body         *)
+    (* simulation, plus MAYCHANGE subsumption at Case A/B closure.       *)
+    (* Each clause discharges via the corresponding outer-bulk hyp +     *)
+    (* NONOVERLAPPING_SUBREGION_{LEFT,RIGHT,BOTH} + the per-iter         *)
+    (* `96 * i + 96 <= 16 * 6 * iter_count` bound established just       *)
+    (* above.                                                            *)
+    (* ---------------------------------------------------------------- *)
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551488):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551488):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551504):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551504):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551520):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551520):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551536):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551536):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551552):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551552):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551568):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551568):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551584):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551584):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 18446744073709551600):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 18446744073709551600):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (kptr:int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `kptr:int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 16):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 16):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add kptr (word 32):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add kptr (word 32):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add hptr (word 18446744073709551584):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add hptr (word 18446744073709551584):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add hptr (word 18446744073709551600):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add hptr (word 18446744073709551600):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add hptr (word 16):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add hptr (word 16):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add hptr (word 32):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add hptr (word 32):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add hptr (word 64):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add hptr (word 64):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add hptr (word 80):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add hptr (word 80):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add cptr (word 16):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add cptr (word 16):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add cptr (word 32):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add cptr (word 32):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (cbptr:int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `cbptr:int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add sptr (word 16):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add sptr (word 16):int64`; `16:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (cbptr:int64, 16) (iter_iptr:int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `cbptr:int64`; `16:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add sptr (word 16):int64, 16) (iter_iptr:int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add sptr (word 16):int64`; `16:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (iter_iptr:int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN EXPAND_TAC "iter_iptr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `iptr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`]
+                    NONOVERLAPPING_SUBREGION_BOTH) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (iter_optr:int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 16):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i + 16:num`; `16:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 32):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i + 32:num`; `16:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 48):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i + 48:num`; `16:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 64):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i + 64:num`; `16:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 80):int64, 16)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i + 80:num`; `16:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (iter_optr:int64, 16)` ASSUME_TAC THENL [
+      MP_TAC(ISPECL [`iter_optr:int64`; `96:num`; `0:num`; `16:num`;
+                     `word pc:int64`; `1044:num`] NONOVERLAPPING_SUBREGION_RIGHT) THEN
+      REWRITE_TAC[WORD_ADD_0] THEN ANTS_TAC THENL [ARITH_TAC; ALL_TAC] THEN
+      DISCH_THEN MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word pc:int64, 1044) (word_add iter_optr (word 0):int64, 16)` ASSUME_TAC THENL [
+      REWRITE_TAC[WORD_ADD_0] THEN ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_optr:int64, 96) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_optr" THEN
+      MP_TAC(ISPECL [`optr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (iter_iptr:int64, 96) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i:num`; `96:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 16):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 16:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 32):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 32:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 48):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 48:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 64):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 64:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `nonoverlapping (word_add iter_iptr (word 80):int64, 16) (word_add sptr (word 32):int64, 96)` ASSUME_TAC THENL [
+      EXPAND_TAC "iter_iptr" THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+      MP_TAC(ISPECL [`iptr:int64`; `16 * 6 * iter_count:num`; `96 * i + 80:num`; `16:num`;
+                     `word_add sptr (word 32):int64`; `96:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[] THEN ANTS_TAC THENL
+        [UNDISCH_TAC `96 * i + 96 <= 16 * 6 * iter_count` THEN ARITH_TAC;
+         SIMP_TAC[]];
+      ALL_TAC] THEN
     CHEAT_TAC;
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
