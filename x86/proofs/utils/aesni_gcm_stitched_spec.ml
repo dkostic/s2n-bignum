@@ -372,3 +372,44 @@ let GHASH_COMBINE_STEP = prove
   REWRITE_TAC[GHASH_POLYVAL_ACC_6;
               WORD_RULE
                 `word_xor (word_xor x (word 0:int128)) (word 0) = x`]);;
+
+(* ========================================================================= *)
+(* 10. Consumer-facing helpers.                                              *)
+(*                                                                           *)
+(* These don't add any new content; they package common unfoldings that      *)
+(* downstream M8/M9 proofs would otherwise reprove inline.                   *)
+(* ========================================================================= *)
+
+(* Closed-form components of `body_ghash_step`'s 4-tuple output: xi4 / xi7 / *)
+(* sp16 are zero, xi8 is the reduced Karatsuba batch.  Used by M8 to extract *)
+(* individual components without let-binding gymnastics.                     *)
+
+let BODY_GHASH_STEP_COMPONENTS = prove
+ (`!(h:int128)
+     (xi4:int128) (xi7:int128) (xi8:int128) (sp16:int128)
+     (b0:int128) (b1:int128) (b2:int128)
+     (b3:int128) (b4:int128) (b5:int128).
+    let (xi4_out,xi7_out,xi8_out,sp16_out) =
+        body_ghash_step h xi4 xi7 xi8 sp16 b0 b1 b2 b3 b4 b5 in
+    xi4_out = word 0 /\
+    xi7_out = word 0 /\
+    sp16_out = word 0 /\
+    xi8_out =
+      polyval_reduce_prop3
+        (karatsuba_batch_6x h (ghash_combine xi4 xi8 sp16)
+                              b0 b1 b2 b3 b4 b5)`,
+  REWRITE_TAC[body_ghash_step; LET_DEF; LET_END_DEF]);;
+
+(* Concrete unfolding of `ghash_at` at i = 1 — the first 6-block batch       *)
+(* absorbs blocks 0..5 starting from the prologue tag tag0.  Useful at the   *)
+(* base case of M8's induction (iter_count >= 1 minimum).                    *)
+
+let GHASH_AT_1 = prove
+ (`!(h:int128) (tag0:int128) (ks:int128 list) (icb:int128)
+     (pt_in:byte list).
+    ghash_at h tag0 ks icb pt_in 1 =
+    ghash_polyval_acc h tag0
+      [bswap_ct_at ks icb pt_in 0; bswap_ct_at ks icb pt_in 1;
+       bswap_ct_at ks icb pt_in 2; bswap_ct_at ks icb pt_in 3;
+       bswap_ct_at ks icb pt_in 4; bswap_ct_at ks icb pt_in 5]`,
+  REWRITE_TAC[ARITH_RULE `1 = SUC 0`; ghash_at; MULT_CLAUSES; ADD_CLAUSES]);;
