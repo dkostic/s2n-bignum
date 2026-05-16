@@ -567,4 +567,38 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
                        memory :> bytes ((cbptr:int64),16);
                        memory :> bytes (word_add sptr (word 16),16);
                        memory :> bytes (word_add sptr (word 32),96)])`,
-  CHEAT_TAC);;
+  REPEAT STRIP_TAC THEN REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_WHILE_UP2_TAC `iter_count:num` `pc + 0x0` `pc + 0x413`
+   `\(i:num) (s:x86state).
+       loopinv_v2 iptr optr kptr hptr cbptr cptr sptr
+                  k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10
+                  h0 h1 h3 h4 h6 h7
+                  red plus
+                  h tag0
+                  icb pt_in
+                  r14_orig r15_orig
+                  iter_count i s /\
+       bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_loop_mc)` THEN
+  REPEAT CONJ_TAC THENL
+   [(* iter_count is non-zero *)
+    ASM_ARITH_TAC;
+
+    (* Base case — entry state IS loopinv_v2 ... 0; postcond at pc+0 also
+       requires the BUTLAST bytes_loaded fact (already in asl).  After
+       reducing `word (96 * 0) = word 0`, the entry-time `loopinv_v2 ... 0`
+       discharges directly. *)
+    ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[ADD_CLAUSES; MULT_CLAUSES; WORD_ADD_0];
+
+    (* Inductive step — pending discharge.  Will simulate the 168-instruction
+       body inline against the recursive spec via X86_BIGSTEP_TAC +
+       GHASH_COMBINE_STEP per the next-step memo. *)
+    CHEAT_TAC;
+
+    (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
+       discharge since the postcondition asserts loopinv_v2 iter_count at
+       pc+0x413. *)
+    ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[]]);;
