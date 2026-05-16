@@ -339,6 +339,226 @@ let LENGTH_AESNI_GCM_STITCHED_LOOP_MC = prove
                 `LENGTH aesni_gcm_stitched_loop_mc`]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Prefix relation between M7's body bytes and the v2 loop bytes.            *)
+(*                                                                           *)
+(* The first 840 bytes of `aesni_gcm_stitched_loop_mc` are byte-for-byte     *)
+(* identical to `BUTLAST aesni_gcm_stitched_6x_mc` (M7's body minus its     *)
+(* trailing `ret`).  Exhibiting the decomposition as an APPEND equality      *)
+(* lets the inductive step's stepper machinery discharge the                 *)
+(* `bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_6x_mc)`            *)
+(* side-condition the M7 EXEC rule needs.                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AESNI_GCM_STITCHED_LOOP_MC_APPEND = prove
+ (`aesni_gcm_stitched_loop_mc =
+   APPEND (BUTLAST aesni_gcm_stitched_6x_mc)
+          [word 0x48; word 0x83; word 0xea; word 0x06;
+           word 0x72; word 0x24; word 0xc4; word 0x41;
+           word 0x71; word 0xef; word 0xcf; word 0xc5;
+           word 0x79; word 0x6f; word 0xd0; word 0xc5;
+           word 0x79; word 0x6f; word 0xdd; word 0xc5;
+           word 0x79; word 0x6f; word 0xe6; word 0xc5;
+           word 0x79; word 0x6f; word 0xef; word 0xc5;
+           word 0x79; word 0x6f; word 0xf3; word 0xc5;
+           word 0xfa; word 0x6f; word 0x7c; word 0x24;
+           word 0x20; word 0xe9; word 0xed; word 0xfb;
+           word 0xff; word 0xff; word 0xc3]`,
+  REWRITE_TAC[aesni_gcm_stitched_loop_mc; aesni_gcm_stitched_6x_mc;
+              BUTLAST_CLAUSES; APPEND; NOT_CONS_NIL]);;
+
+let BYTES_LOADED_LOOP_IMPLIES_M7_BUTLAST = prove
+ (`!s pc.
+     bytes_loaded s (word pc) aesni_gcm_stitched_loop_mc
+     ==> bytes_loaded s (word pc)
+           (BUTLAST aesni_gcm_stitched_6x_mc)`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o REWRITE_RULE[AESNI_GCM_STITCHED_LOOP_MC_APPEND]) THEN
+  SIMP_TAC[bytes_loaded_append]);;
+
+(* Companion: `BUTLAST loop_mc` also extends over M7's body.  This is the    *)
+(* form X86_BIGSTEP_TAC needs inside the inductive-step proof, since the     *)
+(* outer CORRECT statement uses BUTLAST-of-loop-mc (X86_MK_CORE_EXEC_RULE    *)
+(* strips the trailing ret).                                                 *)
+
+let BUTLAST_LOOP_MC_APPEND = prove
+ (`BUTLAST aesni_gcm_stitched_loop_mc =
+   APPEND (BUTLAST aesni_gcm_stitched_6x_mc)
+          [word 0x48; word 0x83; word 0xea; word 0x06;
+           word 0x72; word 0x24; word 0xc4; word 0x41;
+           word 0x71; word 0xef; word 0xcf; word 0xc5;
+           word 0x79; word 0x6f; word 0xd0; word 0xc5;
+           word 0x79; word 0x6f; word 0xdd; word 0xc5;
+           word 0x79; word 0x6f; word 0xe6; word 0xc5;
+           word 0x79; word 0x6f; word 0xef; word 0xc5;
+           word 0x79; word 0x6f; word 0xf3; word 0xc5;
+           word 0xfa; word 0x6f; word 0x7c; word 0x24;
+           word 0x20; word 0xe9; word 0xed; word 0xfb;
+           word 0xff; word 0xff]`,
+  REWRITE_TAC[aesni_gcm_stitched_loop_mc; aesni_gcm_stitched_6x_mc;
+              BUTLAST_CLAUSES; APPEND; NOT_CONS_NIL]);;
+
+let BYTES_LOADED_LOOP_BUTLAST_IMPLIES_M7_BUTLAST = prove
+ (`!s pc.
+     bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_loop_mc)
+     ==> bytes_loaded s (word pc)
+           (BUTLAST aesni_gcm_stitched_6x_mc)`,
+  REPEAT STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o REWRITE_RULE[BUTLAST_LOOP_MC_APPEND]) THEN
+  SIMP_TAC[bytes_loaded_append]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Loop-control arithmetic.                                                  *)
+(*                                                                           *)
+(* At loop-top iteration i, RDX holds                                         *)
+(*   word_sub (word (6 * iter_count)) (word (6 + 6 * i))                     *)
+(* and the body's tail does `subq $6, %rdx; jc .Ldone_exit`.  These three    *)
+(* lemmas — RDX advance for mid/last iter, and the CF-vs-iter-count          *)
+(* equivalence — are the arithmetic backbone of the                          *)
+(* ENSURES_WHILE_UP2-generated case split on `i + 1 = iter_count`.           *)
+(* ------------------------------------------------------------------------- *)
+
+let LOOP_RDX_STEP_MID = prove
+ (`!(i:num) (iter_count:num).
+     word_sub (word_sub (word (6 * iter_count)) (word (6 + 6 * i))) (word 6)
+       = (word_sub (word (6 * iter_count)) (word (6 + 6 * (i + 1))):int64)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[WORD_RULE
+    `!a b c:int64. word_sub (word_sub a b) c = word_sub a (word_add b c)`] THEN
+  AP_TERM_TAC THEN REWRITE_TAC[GSYM WORD_ADD] THEN AP_TERM_TAC THEN
+  ARITH_TAC);;
+
+let LOOP_RDX_STEP_LAST = prove
+ (`!(i:num) (iter_count:num).
+     i + 1 = iter_count
+     ==> word_sub (word_sub (word (6 * iter_count)) (word (6 + 6 * i))) (word 6)
+       = (word_sub (word (6 * iter_count)) (word (6 + 6 * iter_count)):int64)`,
+  REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[LOOP_RDX_STEP_MID]);;
+
+let LOOP_CF_EQUIV = prove
+ (`!(i:num) (iter_count:num).
+     i < iter_count /\ 6 * iter_count < 2 EXP 64
+     ==> (val (word_sub (word (6 * iter_count)) (word (6 + 6 * i)):int64) < 6
+          <=> i + 1 = iter_count)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[VAL_WORD_SUB; VAL_WORD; DIMINDEX_64] THEN
+  SUBGOAL_THEN `(6 * iter_count) MOD 2 EXP 64 = 6 * iter_count`
+   SUBST1_TAC THENL [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(6 + 6 * i) MOD 2 EXP 64 = 6 + 6 * i`
+   SUBST1_TAC THENL [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `6 * iter_count + 2 EXP 64 - (6 + 6 * i) =
+                (6 * iter_count - (6 + 6 * i)) + 2 EXP 64`
+   SUBST1_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  ONCE_REWRITE_TAC[GSYM MOD_ADD_MOD] THEN
+  REWRITE_TAC[MOD_REFL; ADD_CLAUSES; MOD_MOD_REFL] THEN
+  SUBGOAL_THEN `(6 * iter_count - (6 + 6 * i)) MOD 2 EXP 64 =
+                6 * iter_count - (6 + 6 * i)`
+   SUBST1_TAC THENL [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_ARITH_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Per-iter sub-region nonoverlap.  The outer precondition gives             *)
+(*   `nonoverlapping (optr, 16*6*iter_count) X`                              *)
+(* for each readable X; the inductive step needs                              *)
+(*   `nonoverlapping (word_add optr (word (96*i)), 96) X`                    *)
+(* for `i < iter_count`.  These five helpers cover the standard cases.       *)
+(* ------------------------------------------------------------------------- *)
+
+let NONOVERLAPPING_SUBREGION_LEFT = prove
+ (`!(base:int64) (n:num) (off:num) (len:num) (x:int64) (lx:num).
+      off + len <= n
+      ==> nonoverlapping (base, n) (x, lx)
+      ==> nonoverlapping (word_add base (word off), len) (x, lx)`,
+  REPEAT GEN_TAC THEN REPEAT DISCH_TAC THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+  MATCH_MP_TAC NONOVERLAPPING_MODULO_SUBREGIONS THEN
+  EXISTS_TAC `val (base:int64):num` THEN EXISTS_TAC `n:num` THEN
+  EXISTS_TAC `val (x:int64):num` THEN EXISTS_TAC `lx:num` THEN
+  REPEAT CONJ_TAC THENL [
+    MP_TAC(ASSUME `nonoverlapping (base:int64, n) (x, lx)`) THEN
+    REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN SIMP_TAC[];
+    REWRITE_TAC[contained_modulo] THEN REPEAT STRIP_TAC THEN
+    EXISTS_TAC `off + i:num` THEN CONJ_TAC THENL [
+      ASM_ARITH_TAC;
+      REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64; CONG] THEN
+      CONV_TAC MOD_DOWN_CONV THEN REWRITE_TAC[ADD_ASSOC]];
+    REWRITE_TAC[contained_modulo] THEN REPEAT STRIP_TAC THEN
+    EXISTS_TAC `i:num` THEN ASM_REWRITE_TAC[CONG_REFL]
+  ]);;
+
+let NONOVERLAPPING_SUBREGION_RIGHT = prove
+ (`!(base:int64) (n:num) (off:num) (len:num) (x:int64) (lx:num).
+      off + len <= n
+      ==> nonoverlapping (x, lx) (base, n)
+      ==> nonoverlapping (x, lx) (word_add base (word off), len)`,
+  MESON_TAC[NONOVERLAPPING_SUBREGION_LEFT; NONOVERLAPPING_SYM]);;
+
+let NONOVERLAPPING_SUBREGION_BOTH = prove
+ (`!(base1:int64) (n1:num) (off1:num) (len1:num)
+     (base2:int64) (n2:num) (off2:num) (len2:num).
+      off1 + len1 <= n1 /\ off2 + len2 <= n2 /\
+      nonoverlapping (base1, n1) (base2, n2)
+      ==> nonoverlapping (word_add base1 (word off1), len1)
+                         (word_add base2 (word off2), len2)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC (ISPECL [`base2:int64`; `n2:num`; `off2:num`; `len2:num`;
+                  `word_add (base1:int64) (word off1)`; `len1:num`]
+                 NONOVERLAPPING_SUBREGION_RIGHT) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  MP_TAC (ISPECL [`base1:int64`; `n1:num`; `off1:num`; `len1:num`;
+                  `base2:int64`; `n2:num`] NONOVERLAPPING_SUBREGION_LEFT) THEN
+  ASM_REWRITE_TAC[]);;
+
+let NONOVERLAPPING_SUBREGION_SAME_BASE = prove
+ (`!(base:int64) (n:num) (off1:num) (len1:num) (off2:num) (len2:num).
+      off1 + len1 <= off2 /\ off2 + len2 <= n /\ n <= 2 EXP 64
+      ==> nonoverlapping (word_add base (word off1):int64, len1)
+                         (word_add base (word off2):int64, len2)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; nonoverlapping_modulo;
+              NOT_EXISTS_THM] THEN
+  REPEAT STRIP_TAC THEN POP_ASSUM MP_TAC THEN
+  REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64; CONG] THEN
+  CONV_TAC MOD_DOWN_CONV THEN
+  REWRITE_TAC[GSYM CONG] THEN DISCH_TAC THEN
+  RULE_ASSUM_TAC (REWRITE_RULE[GSYM ADD_ASSOC; CONG_ADD_LCANCEL_EQ]) THEN
+  SUBGOAL_THEN `off1 + i = off2 + j` MP_TAC THENL
+   [MATCH_MP_TAC CONG_IMP_EQ THEN EXISTS_TAC `2 EXP 64` THEN
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+    ASM_ARITH_TAC]);;
+
+let NONOVERLAPPING_SUBREGION_SAME_BASE_SYM = prove
+ (`!(base:int64) (n:num) (off1:num) (len1:num) (off2:num) (len2:num).
+      off2 + len2 <= off1 /\ off1 + len1 <= n /\ n <= 2 EXP 64
+      ==> nonoverlapping (word_add base (word off1):int64, len1)
+                         (word_add base (word off2):int64, len2)`,
+  REPEAT STRIP_TAC THEN
+  ONCE_REWRITE_TAC[NONOVERLAPPING_SYM] THEN
+  MATCH_MP_TAC NONOVERLAPPING_SUBREGION_SAME_BASE THEN
+  EXISTS_TAC `n:num` THEN ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Pointer-equality identities used for loopinv_v2 closure in Case A/B of    *)
+(* the inductive step.  Both reduce `word_add (iter_ptr) (word 96)` (where  *)
+(* iter_ptr = word_add x (word (96*i))) to the target form.                  *)
+(* ------------------------------------------------------------------------- *)
+
+let CASEA_PTR_EQ = prove
+ (`!(x:int64) (i:num) (iter_count:num).
+     i + 1 = iter_count
+     ==> word_add (word_add x (word (96 * i))) (word 96) =
+         word_add x (word (96 * iter_count))`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+  AP_TERM_TAC THEN AP_TERM_TAC THEN ASM_ARITH_TAC);;
+
+let CASEB_PTR_EQ = prove
+ (`!(x:int64) (i:num).
+     word_add (word_add x (word (96 * i))) (word 96) =
+     word_add x (word (96 * (i + 1)))`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[WORD_ADD_ASSOC_CONSTS] THEN
+  AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Loop invariant — recursive-spec edition.                                   *)
 (*                                                                           *)
 (* At iteration i (0..iter_count), the invariant pins register/memory state  *)
