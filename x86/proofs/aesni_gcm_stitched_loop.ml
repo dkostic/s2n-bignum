@@ -811,9 +811,69 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[ADD_CLAUSES; MULT_CLAUSES; WORD_ADD_0];
 
-    (* Inductive step — pending discharge.  Will simulate the 168-instruction
-       body inline against the recursive spec via X86_BIGSTEP_TAC +
-       GHASH_COMBINE_STEP per the next-step memo. *)
+    (* Inductive step — preamble for body simulation.
+
+       Strategy: simulate the 168-instruction body inline against the
+       recursive spec.  The legacy M8 wrapper composes M7's EXT4 theorem;
+       this v2 wrapper does the simulation locally so the loopinv carries
+       closed-form GHASH state via `ghash_combine xi4 xi8 sp16 = ghash_at
+       h tag0 ks icb pt_in i` rather than per-iter existential ghosts.
+
+       The preamble below stages the per-iter scaffolding: a 96*i+96 <=
+       16*6*iter_count bound, ABBREV's for `iter_iptr` and `iter_optr`,
+       ABBREV's for the 6 plaintext blocks `p0..p5` (= `pt_at pt_in
+       (6*i+k)` via pt_preserved_v2), 6 cb_at counters renamed `cb0..cb5`,
+       and the standard ~50 per-iter nonoverlapping clauses derived from
+       the outer bulk via NONOVERLAPPING_SUBREGION_{LEFT,RIGHT,BOTH}.
+
+       Body simulation follows the M7-EXT4 recipe (lines 1793--1810 of
+       aesni_gcm_stitched_6x.ml): per-step
+         RULE_ASSUM_TAC(REWRITE_RULE[VPSHUFB_BYTEREV_128;
+                                     VPALIGNR_8_SWAP_128_VIA_ZX_256;
+                                     WORD_ZX_ZX_128]) THEN
+         X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC [n] THEN
+         SIMD_SIMPLIFY_TAC[] THEN ... THEN GHASH_ABBREV_STEP_TAC
+       for n = 1..168, with abbrev-then-step for the YMM7 stash propagation
+       per [[m8-caseB-ymm7-drop]].  Use BYTES_LOADED_LOOP_BUTLAST_IMPLIES_
+       M7_BUTLAST to bridge the M7 stepper exec rule's bytes_loaded
+       precondition to the v2 loop mc.
+
+       After body simulation, step subq+jc (steps 169--170 against the v2
+       loop mc), apply LOOP_CF_EQUIV, ASM_CASES_TAC `i + 1 = iter_count`
+       and split into Case A (jc taken, exit) and Case B (jc not taken,
+       middle-iter tail).  In Case B reconstruct `loopinv_v2 (i + 1)` by
+       picking 4-tuple existential witnesses (xi4_asm, xi7_asm, xi8_asm,
+       sp16_asm) directly from the asm post-state and discharging the
+       `ghash_combine xi4_asm xi8_asm sp16_asm = ghash_at ... (i+1)`
+       conjunct via GHASH_COMBINE_STEP + the asm-side ring-algebra
+       equation `xi4_asm XOR xi8_asm XOR sp16_asm = polyval_reduce_prop3
+       (karatsuba_batch_6x ...)` (proved locally from the asm reduction
+       shape — the load-bearing fragment that the prior 5 EXT-N
+       enrichments each re-proved). *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[loopinv_v2; loopinv_common_v2] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    (* Pull the 4-tuple existential block (gated by i < iter_count) into
+       scope as named variables xi4 / xi7 / xi8 / sp16. *)
+    FIRST_X_ASSUM (fun th ->
+      let c = concl th in
+      if is_imp c && is_exists (snd (dest_imp c))
+      then STRIP_ASSUME_TAC (MATCH_MP th (ASSUME `i < iter_count`))
+      else NO_TAC) THEN
+    (* Per-iter pointer abbreviations.  Match the legacy v1 names so the
+       NONOVERLAPPING_SUBREGION_* helpers can fire by EXPAND. *)
+    ABBREV_TAC `iter_iptr:int64 = word_add iptr (word (96 * i))` THEN
+    ABBREV_TAC `iter_optr:int64 = word_add optr (word (96 * i))` THEN
+    (* Per-iter geometric bound — drives every NONOVERLAPPING_SUBREGION
+       discharge below. *)
+    SUBGOAL_THEN `96 * i + 96 <= 16 * 6 * iter_count` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    (* Reduce LENGTH aesni_gcm_stitched_loop_mc to 1044 in asl so that
+       NONOVERLAPPING_TAC and NONOVERLAPPING_SUBREGION* see a numeric
+       bound. *)
+    RULE_ASSUM_TAC(REWRITE_RULE
+       [(REWRITE_CONV[aesni_gcm_stitched_loop_mc] THENC LENGTH_CONV)
+          `LENGTH aesni_gcm_stitched_loop_mc`]) THEN
     CHEAT_TAC;
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
