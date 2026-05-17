@@ -858,15 +858,6 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       nonoverlapping (word_add hptr (word 80), 16) (word_add sptr (word 32), 96) /\
       nonoverlapping (word_add cptr (word 16), 16) (word_add sptr (word 32), 96) /\
       nonoverlapping (word_add cptr (word 32), 16) (word_add sptr (word 32), 96) /\
-      (* Warmup-source region disjoint from all body writables.  The body's    *)
-      (* MOVBE+movq stash chain reads from r14_canon+[0, 96) where             *)
-      (* r14_canon = r14_orig + 96*(i+1) for i < iter_count.  This range is    *)
-      (* contained in r14_orig+[96, 96*(iter_count+1)) which we cover with     *)
-      (* the looser bound r14_orig+[0, 96*(iter_count+1)).  The bulk-region    *)
-      (* nonoverlap clauses above only cover r14_orig+[192, ...) (= optr+[0,  *)
-      (* 16*6*iter_count)); we need explicit clauses for the warmup prefix     *)
-      (* r14_orig+[0, 192) too, since the body's MOVBE source for i ∈ {0, 1}  *)
-      (* lives there.                                                          *)
       nonoverlapping (r14_orig, 96 * (iter_count + 1)) (word_add sptr (word 16), 16) /\
       nonoverlapping (r14_orig, 96 * (iter_count + 1)) (word_add sptr (word 32), 96) /\
       nonoverlapping (r14_orig, 96 * (iter_count + 1)) ((cbptr:int64), 16)
