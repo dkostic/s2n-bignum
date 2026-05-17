@@ -857,7 +857,19 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       nonoverlapping (word_add hptr (word 64), 16) (word_add sptr (word 32), 96) /\
       nonoverlapping (word_add hptr (word 80), 16) (word_add sptr (word 32), 96) /\
       nonoverlapping (word_add cptr (word 16), 16) (word_add sptr (word 32), 96) /\
-      nonoverlapping (word_add cptr (word 32), 16) (word_add sptr (word 32), 96)
+      nonoverlapping (word_add cptr (word 32), 16) (word_add sptr (word 32), 96) /\
+      (* Warmup-source region disjoint from all body writables.  The body's    *)
+      (* MOVBE+movq stash chain reads from r14_canon+[0, 96) where             *)
+      (* r14_canon = r14_orig + 96*(i+1) for i < iter_count.  This range is    *)
+      (* contained in r14_orig+[96, 96*(iter_count+1)) which we cover with     *)
+      (* the looser bound r14_orig+[0, 96*(iter_count+1)).  The bulk-region    *)
+      (* nonoverlap clauses above only cover r14_orig+[192, ...) (= optr+[0,  *)
+      (* 16*6*iter_count)); we need explicit clauses for the warmup prefix     *)
+      (* r14_orig+[0, 192) too, since the body's MOVBE source for i ∈ {0, 1}  *)
+      (* lives there.                                                          *)
+      nonoverlapping (r14_orig, 96 * (iter_count + 1)) (word_add sptr (word 16), 16) /\
+      nonoverlapping (r14_orig, 96 * (iter_count + 1)) (word_add sptr (word 32), 96) /\
+      nonoverlapping (r14_orig, 96 * (iter_count + 1)) ((cbptr:int64), 16)
       ==> ensures x86
            (\s. bytes_loaded s (word pc) (BUTLAST aesni_gcm_stitched_loop_mc) /\
                 read RIP s = word pc /\
@@ -1434,6 +1446,106 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         with Not_found -> false in
       if is_r14_at_s34 lhs && has_word_neg rhs
       then ASSUME_TAC TRUTH else NO_TAC) THEN
+    (* Per-iter nonoverlap clauses for r14_canon = r14_orig + 96*(i+1).      *)
+    (* The body's stepper needs orthogonality of bytes64 reads at            *)
+    (* r14_canon+M (M ∈ {0,8,..,88}) against the body's writable regions    *)
+    (* (iter_optr+96 block, sp+16, sp+32..120, cbptr).  These derive from   *)
+    (* the outer r14_orig+[0, 96*(iter_count+1)) nonoverlap precondition    *)
+    (* via NONOVERLAPPING_SUBREGION_LEFT, plus the per-iter geom bound      *)
+    (* `96*(i+1)+96 ≤ 96*(iter_count+1)` from `i < iter_count`.             *)
+    SUBGOAL_THEN `96 * (i + 1) + 96 <= 96 * (iter_count + 1)` ASSUME_TAC THENL [
+      UNDISCH_TAC `(i:num) < iter_count` THEN ARITH_TAC;
+      ALL_TAC
+    ] THEN
+    SUBGOAL_THEN
+      `nonoverlapping (word_add r14_orig (word (96 * (i + 1))):int64, 96)
+                      (word_add sptr (word 16):int64, 16)`
+      ASSUME_TAC THENL [
+      MP_TAC(ISPECL [`r14_orig:int64`; `96 * (iter_count + 1):num`;
+                     `96 * (i + 1):num`; `96:num`;
+                     `word_add sptr (word 16):int64`; `16:num`]
+                    NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC
+    ] THEN
+    SUBGOAL_THEN
+      `nonoverlapping (word_add r14_orig (word (96 * (i + 1))):int64, 96)
+                      (word_add sptr (word 32):int64, 96)`
+      ASSUME_TAC THENL [
+      MP_TAC(ISPECL [`r14_orig:int64`; `96 * (iter_count + 1):num`;
+                     `96 * (i + 1):num`; `96:num`;
+                     `word_add sptr (word 32):int64`; `96:num`]
+                    NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC
+    ] THEN
+    SUBGOAL_THEN
+      `nonoverlapping (word_add r14_orig (word (96 * (i + 1))):int64, 96)
+                      (cbptr:int64, 16)`
+      ASSUME_TAC THENL [
+      MP_TAC(ISPECL [`r14_orig:int64`; `96 * (iter_count + 1):num`;
+                     `96 * (i + 1):num`; `96:num`;
+                     `cbptr:int64`; `16:num`]
+                    NONOVERLAPPING_SUBREGION_LEFT) THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC
+    ] THEN
+    (* Source-pin ABBREVs for the 12 stash MOVBE inputs.  At s34 we name the *)
+    (* 12 bytes64 reads at r14_canon+{0,8,..,88} so the per-MOVBE stepper    *)
+    (* output `read sp+(32+8j) sN = word_bytereverse pre_ct_J` references    *)
+    (* only `pre_ct_J` (free var) and survives DISCARD_OLDSTATE through      *)
+    (* steps 35..198.  Sources lie at r14_orig+96*(i+1)+M = optr+96*(i-1)+M  *)
+    (* (via the `r14_orig+192=optr` geom tie), which is outside the body's  *)
+    (* MAYCHANGE region — so the abbrev body itself is preserved through    *)
+    (* simulation.  J indexes by 8-byte stride: pre_ct_J is at offset 8*J.  *)
+    ABBREV_TAC `pre_ct0:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 0))) s34` THEN
+    ABBREV_TAC `pre_ct1:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 8))) s34` THEN
+    ABBREV_TAC `pre_ct2:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 16))) s34` THEN
+    ABBREV_TAC `pre_ct3:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 24))) s34` THEN
+    ABBREV_TAC `pre_ct4:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 32))) s34` THEN
+    ABBREV_TAC `pre_ct5:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 40))) s34` THEN
+    ABBREV_TAC `pre_ct6:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 48))) s34` THEN
+    ABBREV_TAC `pre_ct7:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 56))) s34` THEN
+    ABBREV_TAC `pre_ct8:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 64))) s34` THEN
+    ABBREV_TAC `pre_ct9:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 72))) s34` THEN
+    ABBREV_TAC `pre_ct10:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 80))) s34` THEN
+    ABBREV_TAC `pre_ct11:int64 =
+      read (memory :> bytes64
+        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
+                  (word 88))) s34` THEN
     MAP_EVERY (fun n ->
       RULE_ASSUM_TAC(REWRITE_RULE
        [VPSHUFB_BYTEREV_128;
@@ -1662,8 +1774,141 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
             CONV_TAC WORD_BLAST)
            [1; 2; 3; 4; 5]))
         ];
-        (* stashed_ct_preserved_v2 iter_count — hold for next pass *)
-        CHEAT_TAC;
+        (* stashed_ct_preserved_v2 iter_count — bridge via                   *)
+        (* STASHED_BYTES128_FROM_BYTES64 + bswap_ct_at unfold + the 12       *)
+        (* source ABBREVs (pre_ct0..pre_ct11) introduced post-canon.  At      *)
+        (* Case A (i+1 = iter_count) we need, for k < 6:                      *)
+        (*   read bytes128 (sp+(32+16k)) s200 =                              *)
+        (*     bswap_ct_at ks icb pt_in (6*(iter_count-2) + (5-k))           *)
+        (* Strategy:                                                          *)
+        (*  (a) STASHED_BYTES128_FROM_BYTES64 lifts the per-MOVBE bytes64    *)
+        (*      stash writes at sp+(32+16k), sp+(32+16k+8) to a bytes128     *)
+        (*      equation:                                                    *)
+        (*        read bytes128 (sp+(32+16k)) s200 =                         *)
+        (*          word_bytereverse                                         *)
+        (*            (read bytes128 (r14_canon + 16*(5-k)) s200).          *)
+        (*  (b) Unfold bswap_ct_at = word_bytereverse (ct_at ...) so the     *)
+        (*      RHS becomes word_bytereverse (ct_at ...), and AP_TERM_TAC   *)
+        (*      cancels word_bytereverse.                                    *)
+        (*  (c) Bridge `read bytes128 (r14_canon + 16*(5-k)) s200 =         *)
+        (*      ct_at ks icb pt_in (6*(i-1) + (5-k))` via                   *)
+        (*      r14_orig+192=optr (giving optr + 96*(i-1) + 16*(5-k)) +     *)
+        (*      frame from s0 + ct_preserved_v2 i s0 (which covers the      *)
+        (*      [6*(i-1), 6*i-1] range needed).                             *)
+        ASM_CASES_TAC `2 <= iter_count` THENL [
+          ALL_TAC;
+          REWRITE_TAC[stashed_ct_preserved_v2] THEN
+          DISCH_TAC THEN UNDISCH_TAC `~(2 <= iter_count)` THEN
+          ASM_REWRITE_TAC[]
+        ] THEN
+        (* From `2 <= iter_count` and `i + 1 = iter_count`, derive `1 <= i`. *)
+        SUBGOAL_THEN `1 <= i` ASSUME_TAC THENL [
+          UNDISCH_TAC `2 <= iter_count` THEN
+          UNDISCH_TAC `(i:num) + 1 = iter_count` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        SUBGOAL_THEN `iter_count - 2 = i - 1` ASSUME_TAC THENL [
+          UNDISCH_TAC `(i:num) + 1 = iter_count` THEN
+          UNDISCH_TAC `1 <= i` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        REWRITE_TAC[stashed_ct_preserved_v2] THEN
+        DISCH_TAC THEN
+        GEN_TAC THEN DISCH_TAC THEN
+        ASM_REWRITE_TAC[] THEN
+        REWRITE_TAC[bswap_ct_at] THEN
+        (* Stage 1: STASHED bridge.  Substitutes LHS via the 2 surviving    *)
+        (* bytes64 stash writes (per-MOVBE pattern).                        *)
+        SUBGOAL_THEN
+          `read (memory :> bytes128 (word_add sptr (word (32 + 16 * k)))) s200 =
+           word_bytereverse
+             (read (memory :> bytes128
+                      (word_add (word_add r14_orig (word (96 * (i + 1))))
+                                (word (16 * (5 - k))))) s200)`
+          SUBST1_TAC THENL [
+          MATCH_MP_TAC STASHED_BYTES128_FROM_BYTES64 THEN
+          CONJ_TAC THENL [FIRST_X_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+          FIRST_X_ASSUM (REPEAT_TCL DISJ_CASES_THEN ASSUME_TAC o
+                         MATCH_MP K_SPLIT_LT_6) THEN
+          ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[WORD_RULE
+            `word_add (word_add (a:int64) (word b)) (word c) =
+             word_add a (word (b + c))`] THEN
+          CONV_TAC NUM_REDUCE_CONV THEN
+          ASM_REWRITE_TAC[];
+          ALL_TAC
+        ] THEN
+        (* Stage 2: cancel word_bytereverse from both sides. *)
+        AP_TERM_TAC THEN
+        (* Stage 3: bridge bytes128 read at r14_canon to ct_at via the      *)
+        (* geometric tie (r14_orig+192 = optr → r14_orig+96*(i+1) =          *)
+        (* optr+96*(i-1)) + frame from s0 + ct_preserved_v2 i s0.            *)
+        SUBGOAL_THEN
+          `word_add (word_add r14_orig (word (96 * (i + 1))))
+                    (word (16 * (5 - k))):int64 =
+           word_add optr (word (16 * (6 * (i - 1) + (5 - k))))`
+          SUBST1_TAC THENL [
+          UNDISCH_TAC `word_add r14_orig (word 192) = (optr:int64)` THEN
+          DISCH_THEN (SUBST1_TAC o SYM) THEN
+          REWRITE_TAC[WORD_RULE
+            `word_add (word_add (a:int64) (word b)) (word c) =
+             word_add a (word (b + c))`] THEN
+          AP_TERM_TAC THEN AP_TERM_TAC THEN
+          UNDISCH_TAC `1 <= i` THEN
+          UNDISCH_TAC `(k:num) < 6` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        (* Now bridge `read bytes128 (optr + 16*(6*(i-1) + (5-k))) s200 =    *)
+        (* ct_at ks icb pt_in (6*(i-1) + (5-k))`.  Use ct_preserved_v2 i s0  *)
+        (* (the predicate at iter i, holds in asl) at index 6*(i-1)+(5-k),   *)
+        (* which is < 6*i.  Then frame s0 -> s200 via memory orthogonality:  *)
+        (* the body's MAYCHANGE on (optr,16*6*iter_count) only writes blocks *)
+        (* j >= 6*i = 6*(iter_count-1); our index 6*(i-1)+(5-k) < 6*i.       *)
+        SUBGOAL_THEN `6 * (i - 1) + (5 - k) < 6 * i` ASSUME_TAC THENL [
+          UNDISCH_TAC `1 <= i` THEN
+          UNDISCH_TAC `(k:num) < 6` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        MP_TAC (REWRITE_RULE[ct_preserved_v2]
+                  (ASSUME `ct_preserved_v2 i optr s0
+                             [k0; k1; k2; k3; k4; k5; k6; k7; k8; k9; k10]
+                             icb pt_in`)) THEN
+        DISCH_THEN (MP_TAC o SPEC `6 * (i - 1) + (5 - k):num`) THEN
+        ASM_REWRITE_TAC[] THEN
+        DISCH_THEN (SUBST1_TAC o SYM) THEN
+        FIRST_X_ASSUM (fun th ->
+          let c = concl th in
+          try
+            let _, args = strip_comb c in
+            let n = List.length args in
+            if n >= 2 &&
+               is_var (List.nth args (n-2)) &&
+               fst(dest_var (List.nth args (n-2))) = "s0" &&
+               is_var (List.nth args (n-1)) &&
+               fst(dest_var (List.nth args (n-1))) = "s200"
+            then MP_TAC th else NO_TAC
+          with _ -> NO_TAC) THEN
+        REWRITE_TAC[MAYCHANGE; SEQ_ID; seq; ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN
+        REPEAT STRIP_TAC THEN
+        REPEAT (FIRST_X_ASSUM (fun th ->
+          try
+            let c = concl th in
+            if not (is_eq c) then NO_TAC else
+            let lhs, rhs = dest_eq c in
+            let is_write_term t =
+              try name_of (fst (strip_comb t)) = "write" with _ -> false in
+            let is_fresh_state t =
+              is_var t &&
+              (let n = fst (dest_var t) in
+               String.length n >= 2 &&
+               String.get n 0 = 's' &&
+               String.get n 1 <> '0') in
+            if (is_write_term lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_write_term rhs)
+            then SUBST_ALL_TAC (SYM th) else NO_TAC
+          with _ -> NO_TAC)) THEN
+        READ_OVER_WRITE_ORTHOGONAL_TAC;
         (* RDI advance: word_add iter_iptr (word 96) =
                         word_add iptr (word (96 * iter_count)) *)
         MATCH_MP_TAC CASEA_PTR_EQ THEN ASM_REWRITE_TAC[];
