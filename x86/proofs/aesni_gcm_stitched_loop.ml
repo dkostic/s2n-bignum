@@ -559,6 +559,29 @@ let CASEB_PTR_EQ = prove
   AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* R14 bound lemma for the ind-step canon block.  Pre-stated so the per-iter *)
+(* bound proof discharges via MATCH_MP_TAC + ASM_REWRITE without an inline   *)
+(* ARITH_TAC chain at body-sim time (inline ARITH on the post-step asl is    *)
+(* prohibitively slow).                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let R14_ITER_BOUND = prove
+ (`!(r14_orig:int64) (r15_orig:int64) (i:num) (iter_count:num).
+     val r14_orig + 96 * iter_count <= val r15_orig /\
+     i < iter_count
+     ==> val (word_add r14_orig (word (96 * i)):int64) <= val r15_orig`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `val (word_add r14_orig (word (96 * i)):int64) =
+     val (r14_orig:int64) + 96 * i`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64; ADD_MOD_MOD_REFL] THEN
+    MATCH_MP_TAC MOD_LT THEN
+    MP_TAC (SPEC `r15_orig:int64` VAL_BOUND_64) THEN
+    REWRITE_TAC[DIMINDEX_64] THEN ASM_ARITH_TAC;
+    ASM_ARITH_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Loop invariant — recursive-spec edition.                                   *)
 (*                                                                           *)
 (* At iteration i (0..iter_count), the invariant pins register/memory state  *)
@@ -635,6 +658,7 @@ let loopinv_common_v2 = new_definition
       read R9  s = hptr /\
       read R8  s = cbptr /\
       read R11 s = cptr /\
+      read R14 s = word_add r14_orig (word (96 * i)) /\
       read R15 s = r15_orig /\
       read RSP s = sptr /\
       read (memory :> bytes128
@@ -1364,7 +1388,65 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         VPALIGNR_8_SWAP_128_VIA_ZX_256;
         WORD_ZX_ZX_128]) THEN
       GHASH_ABBREV_STEP_TAC)
-     (1--198) THEN
+     (1--34) THEN
+    (* R14 canon block.  After step 34 (the leaq advancing R14 by 96), the
+       stepper emits a non-canonical RHS involving word_neg/word_join/word_and
+       gated by `val R14_pre_leaq <= val r15_orig`.  Pre-derive that bound
+       from the loopinv R14 hyp + outer precondition + i<iter_count via the
+       pre-stated R14_ITER_BOUND lemma (avoiding an inline ARITH_TAC chain
+       on the post-step asl, which is prohibitively slow), then fold the
+       post-leaq RHS to canonical `r14_orig + 96*(i+1)` form via WORD_BLAST.
+       Mirrors M7 EXT5 lines 2204-2215 of aesni_gcm_stitched_6x.ml. *)
+    SUBGOAL_THEN
+      `val (word_add r14_orig (word (96 * i)):int64) <= val (r15_orig:int64)`
+      ASSUME_TAC THENL
+     [MP_TAC(SPECL [`r14_orig:int64`; `r15_orig:int64`; `i:num`;
+                     `iter_count:num`] R14_ITER_BOUND) THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
+    SUBGOAL_THEN
+      `read R14 s34 = word_add (r14_orig:int64) (word (96 * (i + 1)))`
+      ASSUME_TAC THENL
+     [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST;
+      ALL_TAC] THEN
+    (* Remove the pre-canon R14 hyp (whose RHS contains word_neg/word_join
+       gated on the leaq's flag-conditional R12) so the stepper's
+       STATE_UPDATE_RULE propagates the canonical form (just inserted by
+       the SUBGOAL_THEN above) forward through steps 35..198, not the
+       messy pre-canon RHS.  Without this purge, ASM_REWRITE at the Case A
+       closure would prefer the pre-canon-form rewrite for `read R14 s_post`
+       (since it appears first in asl), leaving a non-canonical R14
+       conjunct that doesn't auto-discharge. *)
+    FIRST_X_ASSUM (fun th ->
+      let c = concl th in
+      if not (is_eq c) then NO_TAC else
+      let lhs, rhs = dest_eq c in
+      let is_r14_at_s34 t =
+        try
+          let f, args = strip_comb t in
+          fst (dest_const f) = "read" && List.length args = 2 &&
+          (try fst (dest_const (List.hd args)) = "R14" with _ -> false) &&
+          (try fst (dest_var (List.nth args 1)) = "s34" with _ -> false)
+        with _ -> false in
+      let has_word_neg t =
+        try ignore (find_term (fun u ->
+          try fst (dest_const u) = "word_neg" with _ -> false) t); true
+        with Not_found -> false in
+      if is_r14_at_s34 lhs && has_word_neg rhs
+      then ASSUME_TAC TRUTH else NO_TAC) THEN
+    MAP_EVERY (fun n ->
+      RULE_ASSUM_TAC(REWRITE_RULE
+       [VPSHUFB_BYTEREV_128;
+        VPALIGNR_8_SWAP_128_VIA_ZX_256;
+        WORD_ZX_ZX_128]) THEN
+      X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC [n] THEN
+      SIMD_SIMPLIFY_TAC[] THEN
+      RULE_ASSUM_TAC(REWRITE_RULE
+       [VPSHUFB_BYTEREV_128;
+        VPALIGNR_8_SWAP_128_VIA_ZX_256;
+        WORD_ZX_ZX_128]) THEN
+      GHASH_ABBREV_STEP_TAC)
+     (35--198) THEN
     (* ---------------------------------------------------------------- *)
     (* Subq + jc.  The body's tail does `subq $6, %rdx; jc .Ldone_exit`. *)
     (* Without the SIMD recipe (these are GPR ops), we step them         *)
@@ -1450,12 +1532,7 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
             then SUBST_ALL_TAC (SYM th) else NO_TAC
           with _ -> NO_TAC)) THEN
         READ_OVER_WRITE_ORTHOGONAL_TAC;
-        (* ct_preserved_v2 iter_count — combine ct_preserved_v2 i optr s0
-           framing for j<6*i (memory orthogonality) with the asm body's 6
-           per-block writes for j ∈ {6*i..6*i+5} (decoded via the FIPS-197
-           bridge to ct_at).  Same recipe as M7 EXT4's per-iter ct closure
-           (lines 1873-1888 of aesni_gcm_stitched_6x.ml), specialised to
-           the v2 spec form. *)
+        (* ct_preserved_v2 iter_count *)
         REWRITE_TAC[ct_preserved_v2] THEN
         REPEAT STRIP_TAC THEN
         ASM_CASES_TAC `j < 6 * i` THENL [
