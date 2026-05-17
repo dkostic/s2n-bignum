@@ -1512,12 +1512,11 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
             `j = 6 * i \/ j = 6 * i + 1 \/ j = 6 * i + 2 \/
              j = 6 * i + 3 \/ j = 6 * i + 4 \/ j = 6 * i + 5`
             STRIP_ASSUME_TAC THENL
-           [UNDISCH_TAC `~(j < 6 * i)` THEN
+          ([UNDISCH_TAC `~(j < 6 * i)` THEN
             UNDISCH_TAC `j < 6 * iter_count` THEN
             UNDISCH_TAC `(i:num) + 1 = iter_count` THEN
             ARITH_TAC;
-            ALL_TAC] THENL
-          [(* k = 0: the SUBST_ALL produces `j = 6 * i`, so
+            (* k = 0: the SUBST_ALL produces `j = 6 * i`, so
               `16 * j` becomes `16 * 6 * i` (no `+ 0` after HOL reduction).
               Match ABBREV `pt_at pt_in (6 * i) = p0` similarly. *)
             POP_ASSUM (fun th -> ASSUME_TAC th THEN SUBST_ALL_TAC th) THEN
@@ -1584,7 +1583,7 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
               SPEC_TAC(lhand lhs, `u:int128`) (asl, w)) THEN
             GEN_TAC THEN
             CONV_TAC WORD_BLAST)
-           [1; 2; 3; 4; 5])
+           [1; 2; 3; 4; 5]))
         ];
         (* stashed_ct_preserved_v2 iter_count — hold for next pass *)
         CHEAT_TAC;
@@ -1605,6 +1604,16 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
          post-state.  The ghash_combine = ghash_at (i+1) conjunct
          closes via GHASH_COMBINE_STEP + the asm-side ring-algebra
          equation. *)
+      (* Pre-derive `i + 1 < iter_count` BEFORE the RULE_ASSUM_TAC
+         rewrites the `i + 1 = iter_count` hyp to F (which then folds
+         the `~(i+1 = iter_count)` ASM_CASES hyp to T and drops it,
+         losing the only basis from which we can derive i+1 < iter_count
+         post-step). *)
+      SUBGOAL_THEN `(i:num) + 1 < iter_count` ASSUME_TAC THENL [
+        UNDISCH_TAC `(i:num) < iter_count` THEN
+        UNDISCH_TAC `~((i:num) + 1 = iter_count)` THEN
+        ARITH_TAC;
+        ALL_TAC] THEN
       RULE_ASSUM_TAC (REWRITE_RULE
         [COND_RAND;
          COND_RATOR;
@@ -1614,14 +1623,11 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       (* Re-introduce `~(i+1 = iter_count)` and `i+1 < iter_count` so they
          survive into the post-step asl (X86_STEPS_TAC's
          DISCARD_NONMATCHING_ASSUMPTIONS would otherwise drop bool hyps). *)
-      SUBGOAL_THEN `~((i:num) + 1 = iter_count)` ASSUME_TAC THENL [
-        FIRST_X_ASSUM ACCEPT_TAC ORELSE
-        (UNDISCH_TAC `(i:num) < iter_count` THEN ARITH_TAC);
-        ALL_TAC] THEN
       SUBGOAL_THEN `(i:num) + 1 < iter_count` ASSUME_TAC THENL [
-        UNDISCH_TAC `(i:num) < iter_count` THEN
-        UNDISCH_TAC `~((i:num) + 1 = iter_count)` THEN
-        ARITH_TAC;
+        FIRST_X_ASSUM ACCEPT_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN `~((i:num) + 1 = iter_count)` ASSUME_TAC THENL [
+        UNDISCH_TAC `(i:num) + 1 < iter_count` THEN ARITH_TAC;
         ALL_TAC] THEN
       (* Case B body: rest of closure (witnesses + ghash equation) — TODO. *)
       CHEAT_TAC];
