@@ -1514,7 +1514,10 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         `word_add (word_add r14_orig (word (96 * (i + 1)))) (word 96):int64 =
          iter_optr`
         SUBST1_TAC THENL [
-        EXPAND_TAC "iter_optr" THEN
+        FIRST_ASSUM (fun th ->
+          if string_of_term (concl th) =
+               "word_add optr (word (96 * i)) = iter_optr"
+          then SUBST1_TAC (SYM th) else NO_TAC) THEN
         UNDISCH_TAC `word_add r14_orig (word 192) = (optr:int64)` THEN
         DISCH_THEN (SUBST1_TAC o SYM) THEN
         REWRITE_TAC[WORD_RULE
