@@ -751,6 +751,38 @@ let loopinv_v2 = new_definition
 (* incrementally.                                                             *)
 (* ========================================================================= *)
 
+(* Pairwise sp+Mi vs sp+Mj nonoverlap clauses for the 12 stash slots.        *)
+(* Required by the stepper: each MOVQ stash write to sp+Mj erases prior     *)
+(* `read sp+Mi sN = ...` facts unless `nonoverlapping (sp+Mi, 8) (sp+Mj, 8)` *)
+(* is in asl.  The outer `bytes(sp+32, 96)` umbrella does NOT bridge to     *)
+(* per-slot 8-byte regions through NONOVERLAPPING_DRIVERS, so without these *)
+(* the bytes64 sp+M MOVBE/MOVQ outputs never survive the next stash write.  *)
+(* See [[stepper-drops-reads-without-pairwise-nonoverlap]].                  *)
+(*                                                                           *)
+(* Derived via NONOVERLAPPING_SUBREGION_SAME_BASE with base=sptr, n=128.    *)
+(* Pure word arithmetic; no input nonoverlap precondition required.          *)
+let stash_pairs =
+  let offsets = [32; 40; 48; 56; 64; 72; 80; 88; 96; 104; 112; 120] in
+  let rec build acc = function
+    | [] -> acc
+    | x :: xs ->
+        let acc' = List.fold_left (fun a y -> (x, y) :: a) acc xs in
+        build acc' xs
+  in
+  List.rev (build [] offsets);;
+
+let STASH_PAIRWISE_NONOVERLAP_TAC : tactic =
+  MAP_EVERY (fun (m1, m2) ->
+    let goal = parse_term (Printf.sprintf
+      "nonoverlapping (word_add sptr (word %d):int64, 8) (word_add sptr (word %d):int64, 8)"
+      m1 m2) in
+    SUBGOAL_THEN goal ASSUME_TAC THENL [
+      MATCH_MP_TAC NONOVERLAPPING_SUBREGION_SAME_BASE THEN
+      EXISTS_TAC `128:num` THEN ARITH_TAC;
+      ALL_TAC
+    ])
+  stash_pairs;;
+
 let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
  (`!(optr:int64) (iptr:int64) (kptr:int64) (hptr:int64)
       (cbptr:int64) (cptr:int64) (sptr:int64)
@@ -1529,6 +1561,11 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       SIMP_TAC[];
       ALL_TAC
     ] THEN
+    (* 66 pairwise sp+Mi vs sp+Mj nonoverlaps for the 12 stash slots.        *)
+    (* Without these, each MOVQ stash write erases prior MOVQ output asl    *)
+    (* entries (the umbrella `bytes(sp+32, 96)` doesn't bridge to per-slot  *)
+    (* 8-byte regions through NONOVERLAPPING_DRIVERS).                       *)
+    STASH_PAIRWISE_NONOVERLAP_TAC THEN
     (* Source-pin ABBREVs for the 12 stash MOVBE inputs.  At s34 we name the *)
     (* 12 bytes64 reads at r14_canon+{0,8,..,88} so the per-MOVBE stepper    *)
     (* output `read sp+(32+8j) sN = word_bytereverse pre_ct_J` references    *)
@@ -1539,52 +1576,40 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
     (* simulation.  J indexes by 8-byte stride: pre_ct_J is at offset 8*J.  *)
     ABBREV_TAC `pre_ct0:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 0))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1))))) s34` THEN
     ABBREV_TAC `pre_ct1:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 8))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 8)))) s34` THEN
     ABBREV_TAC `pre_ct2:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 16))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 16)))) s34` THEN
     ABBREV_TAC `pre_ct3:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 24))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 24)))) s34` THEN
     ABBREV_TAC `pre_ct4:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 32))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 32)))) s34` THEN
     ABBREV_TAC `pre_ct5:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 40))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 40)))) s34` THEN
     ABBREV_TAC `pre_ct6:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 48))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 48)))) s34` THEN
     ABBREV_TAC `pre_ct7:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 56))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 56)))) s34` THEN
     ABBREV_TAC `pre_ct8:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 64))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 64)))) s34` THEN
     ABBREV_TAC `pre_ct9:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 72))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 72)))) s34` THEN
     ABBREV_TAC `pre_ct10:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 80))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 80)))) s34` THEN
     ABBREV_TAC `pre_ct11:int64 =
       read (memory :> bytes64
-        (word_add (word_add (r14_orig:int64) (word (96 * (i + 1))))
-                  (word 88))) s34` THEN
+        (word_add (r14_orig:int64) (word (96 * (i + 1) + 88)))) s34` THEN
     MAP_EVERY (fun n ->
       RULE_ASSUM_TAC(REWRITE_RULE
        [VPSHUFB_BYTEREV_128;
@@ -1625,6 +1650,18 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
          since i+1 = iter_count makes the `i + 1 < iter_count` guard
          false, dropping the 4-tuple existential. *)
       ASM_REWRITE_TAC[LT_REFL] THEN
+      (* Normalize asl entries' i+1 to iter_count.  Without this, the asl
+         pre_ct ABBREVs stay in `word_add r14_orig (word (96*(i+1)+M))`
+         form while the post-ENSURES_FINAL_STATE goal (and Stage 1 closure)
+         use `word_add r14_orig (word (96*iter_count+M))` form.
+         The `check (not o is_eq o concl)` filter on each asm protects
+         the `i + 1 = iter_count` asm itself from collapsing to T. *)
+      RULE_ASSUM_TAC(fun th ->
+        let c = concl th in
+        if is_eq c &&
+           (try string_of_term (lhs c) = "i + 1" with _ -> false)
+        then th
+        else REWRITE_RULE [ASSUME `(i:num) + 1 = iter_count`] th) THEN
       (* Substitute iter_iptr/iter_optr back to word_add iptr/optr (word
          (96*i)) form so MONOTONE_MAYCHANGE matches its automated
          pattern. *)
@@ -1874,6 +1911,11 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
             `word_add (word_add (a:int64) (word b)) (word c) =
              word_add a (word (b + c))`] THEN
           CONV_TAC NUM_REDUCE_CONV THEN
+          (* Drop the `+ 0` introduced by WORD_RULE for k=5 (offset 0) so the
+             collapsed-form asl pre_ct0 ABBREV `word_add r14_orig
+             (word (96*iter_count))` matches.  Also normalize `5-k` to a
+             concrete number per the case branch (k=N from DISJ_CASES). *)
+          REWRITE_TAC[ADD_CLAUSES] THEN
           ASM_REWRITE_TAC[];
           ALL_TAC
         ] THEN
