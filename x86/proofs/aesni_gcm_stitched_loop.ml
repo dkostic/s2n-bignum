@@ -1481,6 +1481,51 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       ASM_REWRITE_TAC[];
       ALL_TAC
     ] THEN
+    (* Per-iter r14_canon-vs-iter_optr nonoverlap.  Adjacent 96-byte blocks  *)
+    (* via the geometric tie `r14_orig + 192 = optr`: at iter i,             *)
+    (* r14_canon = r14_orig + 96*(i+1), iter_optr = optr + 96*i =             *)
+    (* r14_orig + 96*(i+2).  Required to propagate the 12 source ABBREVs    *)
+    (* (introduced just below) through the 6 vmovdqu writes to iter_optr+M  *)
+    (* during steps 35..198.                                                 *)
+    (*                                                                       *)
+    (* Derivation: with base = r14_orig + 96*(i+1) (i.e., r14_canon),       *)
+    (* r14_canon corresponds to offset 0 and iter_optr corresponds to       *)
+    (* offset 96.  Apply NONOVERLAPPING_SUBREGION_SAME_BASE with n=192      *)
+    (* (unconditional ≤ 2^64).                                                *)
+    SUBGOAL_THEN
+      `nonoverlapping (word_add r14_orig (word (96 * (i + 1))):int64, 96)
+                      (iter_optr:int64, 96)`
+      ASSUME_TAC THENL [
+      (* iter_optr = optr + 96*i = r14_orig + 192 + 96*i = r14_orig +         *)
+      (* 96*(i+2) = (r14_orig + 96*(i+1)) + 96.  Express both regions as      *)
+      (* offsets 0 and 96 from base = r14_orig + 96*(i+1) and apply           *)
+      (* SAME_BASE with n=192, an unconditional ≤ 2^64.                       *)
+      SUBGOAL_THEN
+        `nonoverlapping
+           (word_add (word_add r14_orig (word (96 * (i + 1)))) (word 0):int64, 96)
+           (word_add (word_add r14_orig (word (96 * (i + 1)))) (word 96):int64, 96)`
+        MP_TAC THENL [
+        MATCH_MP_TAC NONOVERLAPPING_SUBREGION_SAME_BASE THEN
+        EXISTS_TAC `192:num` THEN ARITH_TAC;
+        ALL_TAC
+      ] THEN
+      REWRITE_TAC[WORD_ADD_0] THEN
+      SUBGOAL_THEN
+        `word_add (word_add r14_orig (word (96 * (i + 1)))) (word 96):int64 =
+         iter_optr`
+        SUBST1_TAC THENL [
+        EXPAND_TAC "iter_optr" THEN
+        UNDISCH_TAC `word_add r14_orig (word 192) = (optr:int64)` THEN
+        DISCH_THEN (SUBST1_TAC o SYM) THEN
+        REWRITE_TAC[WORD_RULE
+          `word_add (word_add (a:int64) (word b)) (word c) =
+           word_add a (word (b + c))`] THEN
+        AP_TERM_TAC THEN AP_TERM_TAC THEN ARITH_TAC;
+        ALL_TAC
+      ] THEN
+      SIMP_TAC[];
+      ALL_TAC
+    ] THEN
     (* Source-pin ABBREVs for the 12 stash MOVBE inputs.  At s34 we name the *)
     (* 12 bytes64 reads at r14_canon+{0,8,..,88} so the per-MOVBE stepper    *)
     (* output `read sp+(32+8j) sN = word_bytereverse pre_ct_J` references    *)
