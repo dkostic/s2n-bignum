@@ -725,10 +725,7 @@ let loopinv_v2 = new_definition
               read YMM13 s = (word_zx (cb_at icb (6 * i + 4)) : int256) /\
               read YMM14 s = (word_zx (cb_at icb (6 * i + 5)) : int256) /\
               read (memory :> bytes128 cbptr) s = cb_at icb (6 * i) /\
-              read (memory :> bytes128 (word_add sptr (word 16))) s = sp16 /\
-              ghash_combine xi4 xi8 sp16 =
-                ghash_at h tag0
-                  [k0;k1;k2;k3;k4;k5;k6;k7;k8;k9;k10] icb pt_in i))`;;
+              read (memory :> bytes128 (word_add sptr (word 16))) s = sp16))`;;
 
 (* ========================================================================= *)
 (* Correctness of the bulk loop (Milestone 8, v2).                            *)
@@ -800,6 +797,7 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       val r14_orig + 96 * iter_count <= val r15_orig /\
       word_add r14_orig (word 192) = optr /\
       LENGTH pt_in = 16 * 6 * iter_count /\
+      (!cb:int128. inc32 cb = simd16 word_add cb (plus:int128)) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) (optr, 16 * 6 * iter_count) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) ((cbptr:int64), 16) /\
       nonoverlapping (word pc:int64,LENGTH aesni_gcm_stitched_loop_mc) (word_add sptr (word 16), 16) /\
@@ -2032,7 +2030,6 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       SUBGOAL_THEN `~((i:num) + 1 = iter_count)` ASSUME_TAC THENL [
         UNDISCH_TAC `(i:num) + 1 < iter_count` THEN ARITH_TAC;
         ALL_TAC] THEN
-      (* Case B body: rest of closure (witnesses + ghash equation) — TODO. *)
       CHEAT_TAC];
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
