@@ -25,11 +25,9 @@
 (* via `X86_BIGSTEP_TAC` in this file, with the closed-form spec advancing   *)
 (* the loop invariant via `GHASH_COMBINE_STEP` + `BODY_GHASH_STEP_COMPONENTS`.*)
 (*                                                                           *)
-(* M8-v2 status: the byte list, EXEC rule, helper lemmas, and loop           *)
-(* invariant are committed.  The correctness theorem                          *)
-(* `AESNI_GCM_STITCHED_LOOP_CORRECT_V2` is currently CHEAT-stubbed; the       *)
-(* per-iter inductive step (~2k lines) lands incrementally.  See the         *)
-(* matching memo `next-step-m8-rewrite-2026-05-16`.                           *)
+(* M8-v2 status: PROVED end-to-end with no CHEATs.  The byte list, EXEC      *)
+(* rule, helper lemmas, loop invariant, and correctness theorem               *)
+(* `AESNI_GCM_STITCHED_LOOP_CORRECT_V2` are all committed.                    *)
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
@@ -744,8 +742,10 @@ let loopinv_v2 = new_definition
 (* R12-R14 + ZMM0..15 + flags + events + bytes(optr,16*6*iter_count) +       *)
 (* bytes(cbptr,16) + bytes(sp+16,16) + bytes(sp+32,96)).                      *)
 (*                                                                           *)
-(* Currently CHEAT-stubbed; the per-iter inductive step (~2k lines) lands    *)
-(* incrementally.                                                             *)
+(* The per-iter inductive step is fully discharged: body simulation against  *)
+(* the recursive spec + Case A (last-iter) and Case B (middle-iter) closure  *)
+(* with WORD_SUBWORD_ZX_EQ for GHASH-carry witnesses and SIMD16_WORD_ADD_TREE *)
+(* for the counter chain.                                                     *)
 (* ========================================================================= *)
 
 (* Pairwise sp+Mi vs sp+Mj nonoverlap clauses for the 12 stash slots.        *)
@@ -2019,6 +2019,21 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
         [COND_RAND;
          COND_RATOR;
          ASSUME `~((i:num) + 1 = iter_count)`]) THEN
+      (* Reify `read sp+32 s200` as `sp32_post` BEFORE stepping the 8 tail
+         insns.  Steps 201..206 (vpxor + 5 vmovdqa's) only write registers, so
+         the abbreviated value `read sp+32 sN = sp32_post` propagates
+         orthogonally to every intermediate state.  At step 207
+         (`vmovdqu 0x20(%rsp),%xmm7`) the stepper produces
+         `read XMM7 s207 = read sp+32 s206`; ASSEMBLER_SIMPLIFY's ASM_REWRITE
+         then folds RHS via the propagated `read sp+32 s206 = sp32_post`,
+         giving `read XMM7 s207 = sp32_post` (and hence
+         `read YMM7 s208 = word_zx sp32_post`).  Without this ABBREV the
+         stepper-produced fact references s206, which DISCARD_OLDSTATE_TAC
+         erases — leaving the xi7 existential witness unprovable.  Mirrors
+         v1 line 2052 of aesni_gcm_stitched_6x_loop.ml. *)
+      ABBREV_TAC
+        `sp32_post:int128 =
+           read (memory :> bytes128 (word_add sptr (word 32))) s200` THEN
       X86_STEPS_TAC AESNI_GCM_STITCHED_LOOP_EXEC
         [201; 202; 203; 204; 205; 206; 207; 208] THEN
       (* Re-introduce `~(i+1 = iter_count)` and `i+1 < iter_count` so they
@@ -2030,7 +2045,412 @@ let AESNI_GCM_STITCHED_LOOP_CORRECT_V2 = prove
       SUBGOAL_THEN `~((i:num) + 1 = iter_count)` ASSUME_TAC THENL [
         UNDISCH_TAC `(i:num) + 1 < iter_count` THEN ARITH_TAC;
         ALL_TAC] THEN
-      CHEAT_TAC];
+      FIRST_X_ASSUM (fun th ->
+        if string_of_term (concl th) =
+             "word_add optr (word (96 * i)) = iter_optr"
+        then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      FIRST_X_ASSUM (fun th ->
+        if string_of_term (concl th) =
+             "word_add iptr (word (96 * i)) = iter_iptr"
+        then SUBST_ALL_TAC (SYM th) else NO_TAC) THEN
+      (* Fold word_join/word_subword tree-form RHS in asl back to
+         `simd16 word_add` so the EXISTS branch's YMM10..14 / cbptr
+         conjuncts can be discharged via the cb_at recurrence + the
+         body-produced asm chain.  Without this fold the asl entries
+         for the 6 counter ghosts are tree-form and ASM_REWRITE on
+         `read YMM10 s208 = word_zx (cb_at icb (6*(i+1)+1))` won't
+         bridge.  Mirrors v1 EXT4 line 1810. *)
+      RULE_ASSUM_TAC(REWRITE_RULE
+        [SIMD16_WORD_ADD_TREE; SIMD16_WORD_ADD_TREE_256]) THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      REPEAT CONJ_TAC THENL [
+        (* RIP advance: pc + 0 = pc *)
+        REWRITE_TAC[ADD_CLAUSES];
+        (* pt_preserved_v2 iter_count — frame from s0 (same as Case A). *)
+        REWRITE_TAC[pt_preserved_v2] THEN
+        REPEAT STRIP_TAC THEN
+        MP_TAC (REWRITE_RULE[pt_preserved_v2]
+                  (ASSUME `pt_preserved_v2 iter_count iptr s0 pt_in`)) THEN
+        DISCH_THEN (MP_TAC o SPEC `j:num`) THEN
+        ASM_REWRITE_TAC[] THEN
+        DISCH_THEN (SUBST1_TAC o SYM) THEN
+        FIRST_X_ASSUM (fun th ->
+          let c = concl th in
+          try
+            let _, args = strip_comb c in
+            let n = List.length args in
+            if n >= 2 &&
+               is_var (List.nth args (n-2)) &&
+               fst(dest_var (List.nth args (n-2))) = "s0" &&
+               is_var (List.nth args (n-1)) &&
+               fst(dest_var (List.nth args (n-1))) = "s208"
+            then MP_TAC th else NO_TAC
+          with _ -> NO_TAC) THEN
+        REWRITE_TAC[MAYCHANGE; SEQ_ID; seq; ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN
+        REPEAT STRIP_TAC THEN
+        REPEAT (FIRST_X_ASSUM (fun th ->
+          try
+            let c = concl th in
+            if not (is_eq c) then NO_TAC else
+            let lhs, rhs = dest_eq c in
+            let is_write_term t =
+              try name_of (fst (strip_comb t)) = "write" with _ -> false in
+            let is_fresh_state t =
+              is_var t &&
+              (let n = fst (dest_var t) in
+               String.length n >= 2 &&
+               String.get n 0 = 's' &&
+               String.get n 1 <> '0') in
+            if (is_write_term lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_write_term rhs)
+            then SUBST_ALL_TAC (SYM th) else NO_TAC
+          with _ -> NO_TAC)) THEN
+        READ_OVER_WRITE_ORTHOGONAL_TAC;
+        (* ct_preserved_v2 (i+1) — for j < 6*i, frame from s0 + ct_preserved_v2 i s0;
+           for j in {6*i..6*i+5}, the body's per-slot writes give ct_at via the
+           FIPS-197 bridge (same recipe as Case A but with bound `j < 6*(i+1)`). *)
+        REWRITE_TAC[ct_preserved_v2] THEN
+        REPEAT STRIP_TAC THEN
+        ASM_CASES_TAC `j < 6 * i` THENL [
+          MP_TAC (REWRITE_RULE[ct_preserved_v2]
+                    (ASSUME `ct_preserved_v2 i optr s0
+                               [k0; k1; k2; k3; k4; k5; k6; k7; k8; k9; k10]
+                               icb pt_in`)) THEN
+          DISCH_THEN (MP_TAC o SPEC `j:num`) THEN
+          ASM_REWRITE_TAC[] THEN
+          DISCH_THEN (SUBST1_TAC o SYM) THEN
+          FIRST_X_ASSUM (fun th ->
+            let c = concl th in
+            try
+              let _, args = strip_comb c in
+              let n = List.length args in
+              if n >= 2 &&
+                 is_var (List.nth args (n-2)) &&
+                 fst(dest_var (List.nth args (n-2))) = "s0" &&
+                 is_var (List.nth args (n-1)) &&
+                 fst(dest_var (List.nth args (n-1))) = "s208"
+              then MP_TAC th else NO_TAC
+            with _ -> NO_TAC) THEN
+          REWRITE_TAC[MAYCHANGE; SEQ_ID; seq; ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN
+          REPEAT STRIP_TAC THEN
+          REPEAT (FIRST_X_ASSUM (fun th ->
+            try
+              let c = concl th in
+              if not (is_eq c) then NO_TAC else
+              let lhs, rhs = dest_eq c in
+              let is_write_term t =
+                try name_of (fst (strip_comb t)) = "write" with _ -> false in
+              let is_fresh_state t =
+                is_var t &&
+                (let n = fst (dest_var t) in
+                 String.length n >= 2 &&
+                 String.get n 0 = 's' &&
+                 String.get n 1 <> '0') in
+              if (is_write_term lhs && is_fresh_state rhs) ||
+                 (is_fresh_state lhs && is_fresh_state rhs) ||
+                 (is_fresh_state lhs && is_write_term rhs)
+              then SUBST_ALL_TAC (SYM th) else NO_TAC
+            with _ -> NO_TAC)) THEN
+          READ_OVER_WRITE_ORTHOGONAL_TAC;
+          (* j in {6*i..6*i+5}: 6-way split (using i+1 < iter_count derives
+             j < 6*(i+1)).  Same FIPS-197 bridge as Case A. *)
+          SUBGOAL_THEN
+            `j = 6 * i \/ j = 6 * i + 1 \/ j = 6 * i + 2 \/
+             j = 6 * i + 3 \/ j = 6 * i + 4 \/ j = 6 * i + 5`
+            STRIP_ASSUME_TAC THENL
+          ([UNDISCH_TAC `~(j < 6 * i)` THEN
+            UNDISCH_TAC `j < 6 * (i + 1)` THEN
+            ARITH_TAC;
+            POP_ASSUM (fun th -> ASSUME_TAC th THEN SUBST_ALL_TAC th) THEN
+            REWRITE_TAC[ARITH_RULE `16 * 6 * i = 96 * i`] THEN
+            ASM_REWRITE_TAC[] THEN
+            REWRITE_TAC[ct_at] THEN
+            REWRITE_TAC[AESENC_FIPS197_BRIDGE_ALT;
+                        AESENCLAST_FIPS197_BRIDGE_ALT] THEN
+            REWRITE_TAC[aes128_cipher; MAP] THEN
+            CONV_TAC(DEPTH_CONV let_CONV) THEN
+            CONV_TAC(TOP_DEPTH_CONV EL_CONV) THEN
+            SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256;
+                     ARITH_LE; ARITH_LT; ARITH;
+                     WORD_REVERSEFIELDS_REVERSEFIELDS; WORD_XOR_0;
+                     WORD_REVERSEFIELDS_XOR_128] THEN
+            REWRITE_TAC[fips197_final_round; WORD_REVERSEFIELDS_XOR_128;
+                        WORD_REVERSEFIELDS_REVERSEFIELDS] THEN
+            FIRST_X_ASSUM (fun th ->
+              if string_of_term (concl th) = "pt_at pt_in (6 * i) = p0"
+              then SUBST1_TAC (SYM th) else NO_TAC) THEN
+            (fun (asl, w) ->
+              let lhs, _ = dest_eq w in
+              SPEC_TAC(lhand lhs, `u:int128`) (asl, w)) THEN
+            GEN_TAC THEN
+            CONV_TAC WORD_BLAST] @
+          (map (fun k ->
+            let off = 16 * k in
+            POP_ASSUM (fun th -> ASSUME_TAC th THEN SUBST_ALL_TAC th) THEN
+            REWRITE_TAC[ARITH_RULE
+              (mk_eq
+                (mk_binop `(*):num->num->num`
+                          (mk_small_numeral 16)
+                          (mk_binop `(+):num->num->num`
+                                    (mk_binop `(*):num->num->num`
+                                              (mk_small_numeral 6)
+                                              `i:num`)
+                                    (mk_small_numeral k)),
+                 mk_binop `(+):num->num->num`
+                          (mk_binop `(*):num->num->num`
+                                    (mk_small_numeral 96)
+                                    `i:num`)
+                          (mk_small_numeral off)))] THEN
+            ASM_REWRITE_TAC[GSYM WORD_ADD_ASSOC_CONSTS] THEN
+            REWRITE_TAC[ct_at] THEN
+            REWRITE_TAC[AESENC_FIPS197_BRIDGE_ALT;
+                        AESENCLAST_FIPS197_BRIDGE_ALT] THEN
+            REWRITE_TAC[aes128_cipher; MAP] THEN
+            CONV_TAC(DEPTH_CONV let_CONV) THEN
+            CONV_TAC(TOP_DEPTH_CONV EL_CONV) THEN
+            SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256;
+                     ARITH_LE; ARITH_LT; ARITH;
+                     WORD_REVERSEFIELDS_REVERSEFIELDS; WORD_XOR_0;
+                     WORD_REVERSEFIELDS_XOR_128] THEN
+            REWRITE_TAC[fips197_final_round; WORD_REVERSEFIELDS_XOR_128;
+                        WORD_REVERSEFIELDS_REVERSEFIELDS] THEN
+            (let pk_eq =
+               "pt_at pt_in (6 * i + " ^ string_of_int k ^ ") = p" ^
+               string_of_int k in
+             FIRST_X_ASSUM (fun th ->
+               if string_of_term (concl th) = pk_eq
+               then SUBST1_TAC (SYM th) else NO_TAC)) THEN
+            (fun (asl, w) ->
+              let lhs, _ = dest_eq w in
+              SPEC_TAC(lhand lhs, `u:int128`) (asl, w)) THEN
+            GEN_TAC THEN
+            CONV_TAC WORD_BLAST)
+           [1; 2; 3; 4; 5]))
+        ];
+        (* stashed_ct_preserved_v2 (i+1) — when 2 <= i+1 (i.e., 1 <= i),
+           the stash holds bswap_ct_at(6*((i+1)-2)+(5-k)) = bswap_ct_at(6*(i-1)+(5-k))
+           for k=0..5.  Use the same STASHED_BYTES128_FROM_BYTES64 +
+           ct_preserved_v2 i recipe as Case A but with iter_count -> i+1
+           and the geometric tie. *)
+        ASM_CASES_TAC `2 <= (i:num) + 1` THENL [
+          ALL_TAC;
+          REWRITE_TAC[stashed_ct_preserved_v2] THEN
+          DISCH_TAC THEN UNDISCH_TAC `~(2 <= (i:num) + 1)` THEN
+          ASM_REWRITE_TAC[]
+        ] THEN
+        SUBGOAL_THEN `1 <= (i:num)` ASSUME_TAC THENL [
+          UNDISCH_TAC `2 <= (i:num) + 1` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        SUBGOAL_THEN `((i:num) + 1) - 2 = i - 1` ASSUME_TAC THENL [
+          UNDISCH_TAC `1 <= (i:num)` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        REWRITE_TAC[stashed_ct_preserved_v2] THEN
+        DISCH_TAC THEN
+        GEN_TAC THEN DISCH_TAC THEN
+        ASM_REWRITE_TAC[] THEN
+        REWRITE_TAC[bswap_ct_at] THEN
+        SUBGOAL_THEN
+          `read (memory :> bytes128 (word_add sptr (word (32 + 16 * k)))) s208 =
+           word_bytereverse
+             (read (memory :> bytes128
+                      (word_add (word_add r14_orig (word (96 * (i + 1))))
+                                (word (16 * (5 - k))))) s208)`
+          SUBST1_TAC THENL [
+          MATCH_MP_TAC STASHED_BYTES128_FROM_BYTES64 THEN
+          CONJ_TAC THENL [FIRST_X_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+          FIRST_X_ASSUM (REPEAT_TCL DISJ_CASES_THEN ASSUME_TAC o
+                         MATCH_MP K_SPLIT_LT_6) THEN
+          ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[WORD_RULE
+            `word_add (word_add (a:int64) (word b)) (word c) =
+             word_add a (word (b + c))`] THEN
+          CONV_TAC NUM_REDUCE_CONV THEN
+          REWRITE_TAC[ADD_CLAUSES] THEN
+          ASM_REWRITE_TAC[];
+          ALL_TAC
+        ] THEN
+        AP_TERM_TAC THEN
+        SUBGOAL_THEN
+          `word_add (word_add r14_orig (word (96 * (i + 1))))
+                    (word (16 * (5 - k))):int64 =
+           word_add optr (word (16 * (6 * (i - 1) + (5 - k))))`
+          SUBST1_TAC THENL [
+          UNDISCH_TAC `word_add r14_orig (word 192) = (optr:int64)` THEN
+          DISCH_THEN (SUBST1_TAC o SYM) THEN
+          REWRITE_TAC[WORD_RULE
+            `word_add (word_add (a:int64) (word b)) (word c) =
+             word_add a (word (b + c))`] THEN
+          AP_TERM_TAC THEN AP_TERM_TAC THEN
+          UNDISCH_TAC `1 <= (i:num)` THEN
+          UNDISCH_TAC `(k:num) < 6` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        SUBGOAL_THEN `6 * (i - 1) + (5 - k) < 6 * i` ASSUME_TAC THENL [
+          UNDISCH_TAC `1 <= (i:num)` THEN
+          UNDISCH_TAC `(k:num) < 6` THEN ARITH_TAC;
+          ALL_TAC
+        ] THEN
+        MP_TAC (REWRITE_RULE[ct_preserved_v2]
+                  (ASSUME `ct_preserved_v2 i optr s0
+                             [k0; k1; k2; k3; k4; k5; k6; k7; k8; k9; k10]
+                             icb pt_in`)) THEN
+        DISCH_THEN (MP_TAC o SPEC `6 * (i - 1) + (5 - k):num`) THEN
+        ASM_REWRITE_TAC[] THEN
+        DISCH_THEN (SUBST1_TAC o SYM) THEN
+        FIRST_X_ASSUM (fun th ->
+          let c = concl th in
+          try
+            let _, args = strip_comb c in
+            let n = List.length args in
+            if n >= 2 &&
+               is_var (List.nth args (n-2)) &&
+               fst(dest_var (List.nth args (n-2))) = "s0" &&
+               is_var (List.nth args (n-1)) &&
+               fst(dest_var (List.nth args (n-1))) = "s208"
+            then MP_TAC th else NO_TAC
+          with _ -> NO_TAC) THEN
+        REWRITE_TAC[MAYCHANGE; SEQ_ID; seq; ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN
+        REPEAT STRIP_TAC THEN
+        REPEAT (FIRST_X_ASSUM (fun th ->
+          try
+            let c = concl th in
+            if not (is_eq c) then NO_TAC else
+            let lhs, rhs = dest_eq c in
+            let is_write_term t =
+              try name_of (fst (strip_comb t)) = "write" with _ -> false in
+            let is_fresh_state t =
+              is_var t &&
+              (let n = fst (dest_var t) in
+               String.length n >= 2 &&
+               String.get n 0 = 's' &&
+               String.get n 1 <> '0') in
+            if (is_write_term lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_fresh_state rhs) ||
+               (is_fresh_state lhs && is_write_term rhs)
+            then SUBST_ALL_TAC (SYM th) else NO_TAC
+          with _ -> NO_TAC)) THEN
+        READ_OVER_WRITE_ORTHOGONAL_TAC;
+        (* RDI: word_add iter_iptr (word 96) = word_add iptr (word (96 * (i+1))) *)
+        REWRITE_TAC[CASEB_PTR_EQ];
+        (* RSI: same pattern for optr *)
+        REWRITE_TAC[CASEB_PTR_EQ];
+        (* RDX update via LOOP_RDX_STEP_MID *)
+        REWRITE_TAC[LOOP_RDX_STEP_MID];
+        (* 4-tuple existential: pick xi4=YMM4-low, xi7=YMM7-low, xi8=YMM8-low,
+           sp16=read sp+16.  Discharge YMM9..14 via cb_at recurrence + simd16
+           plus bridge + WORD_ZX_XOR.  ASM_REWRITE earlier folded the
+           `(i+1) < iter_count ==>` gate to T (since `(i+1) < iter_count` is
+           in asl), so no DISCH_TAC needed. *)
+        MAP_EVERY EXISTS_TAC
+          [`word_subword (read YMM4 s208 :int256) (0,128) :int128`;
+           `word_subword (read YMM7 s208 :int256) (0,128) :int128`;
+           `word_subword (read YMM8 s208 :int256) (0,128) :int128`;
+           `read (memory :> bytes128 (word_add sptr (word 16))) s208 :int128`] THEN
+        (* Expand cb_at icb (6*(i+1)+k) via the cb_at SUC recurrence + the
+           inc32-simd16 bridge precondition, so they chain through the
+           body-produced asm chain rooted at cb_at(6*i+5).  ADD_CLAUSES first
+           reduces 6*(i+1)+0 to 6*(i+1). *)
+        REWRITE_TAC[ADD_CLAUSES] THEN
+        SUBGOAL_THEN
+          `(cb_at icb (6 * (i + 1)):int128 =
+              simd16 word_add (cb_at icb (6 * i + 5)) plus) /\
+           (cb_at icb (6 * (i + 1) + 1):int128 =
+              simd16 word_add (cb_at icb (6 * (i + 1))) plus) /\
+           (cb_at icb (6 * (i + 1) + 2):int128 =
+              simd16 word_add (cb_at icb (6 * (i + 1) + 1)) plus) /\
+           (cb_at icb (6 * (i + 1) + 3):int128 =
+              simd16 word_add (cb_at icb (6 * (i + 1) + 2)) plus) /\
+           (cb_at icb (6 * (i + 1) + 4):int128 =
+              simd16 word_add (cb_at icb (6 * (i + 1) + 3)) plus) /\
+           (cb_at icb (6 * (i + 1) + 5):int128 =
+              simd16 word_add (cb_at icb (6 * (i + 1) + 4)) plus)`
+          STRIP_ASSUME_TAC THENL
+         [REWRITE_TAC[ARITH_RULE
+            `6 * (i + 1) = SUC (6 * i + 5) /\
+             6 * (i + 1) + 1 = SUC (6 * (i + 1)) /\
+             6 * (i + 1) + 2 = SUC (6 * (i + 1) + 1) /\
+             6 * (i + 1) + 3 = SUC (6 * (i + 1) + 2) /\
+             6 * (i + 1) + 4 = SUC (6 * (i + 1) + 3) /\
+             6 * (i + 1) + 5 = SUC (6 * (i + 1) + 4)`] THEN
+          REWRITE_TAC[cb_at] THEN
+          ASM_REWRITE_TAC[];
+          ALL_TAC] THEN
+        ASM_REWRITE_TAC[WORD_ZX_XOR; WORD_ZX_ZX_128] THEN
+        REPEAT CONJ_TAC THEN
+        (* Per-conjunct discharge.  After ASM_REWRITE folds asl's
+           `read YMM_X s208 = _abbrev` and the cb_at SUBGOAL_THEN bridges,
+           the 8 residual conjuncts split into 2 shapes:
+            (a) `_abbrev = word_zx (word_subword _abbrev (0,128))` for
+                YMM4/7/8.  Closed by MATCH_MP_TAC WORD_SUBWORD_ZX_EQ then
+                searching asl for an entry `word_zx <inner> = _abbrev`
+                (or symmetric); EXISTS_TAC <inner> + ACCEPT.  For YMM7 the
+                witness is the `sp32_post` ghost; for YMM4/YMM8 it is the
+                large GHASH polynomial expression.
+            (b) `word_zx (word_zx _abbrev) = word_zx (simd16 word_add ...
+                plus)` for YMM9..14 + cbptr.  Each `_abbrev` is bound by
+                an asl entry `word_zx (simd16 ...) = _abbrev`.  SUBST_ALL
+                on the SYM-form (only when inner_lhs is `simd16`) replaces
+                `_abbrev` by `word_zx (simd16 ...)`, then SIMP[WORD_ZX_ZX]
+                collapses the round-trip.  Mirrors v1 EXT4 lines 1853-1869. *)
+        FIRST [
+          MATCH_MP_TAC WORD_SUBWORD_ZX_EQ THEN
+          (* Antecedent goal: `?x. word_zx x = m`. Two witness sources:
+             (i) m itself is syntactically `word_zx Y` — pick x = Y.
+             (ii) asl has `word_zx Y = m` (or the symmetric form) — pick
+                  x = Y from that hyp. *)
+          ((fun (asl, w) ->
+             let body = snd (dest_exists w) in
+             let _, m = dest_eq body in
+             if is_comb m then
+               let f, x = dest_comb m in
+               if is_const f && fst (dest_const f) = "word_zx"
+               then (EXISTS_TAC x THEN REFL_TAC) (asl, w)
+               else fail()
+             else fail()) ORELSE
+           FIRST_X_ASSUM (fun th ->
+            try
+              let c = concl th in
+              if not (is_eq c) then NO_TAC else
+              let lhs, rhs = dest_eq c in
+              let try_extract t =
+                if is_comb t then
+                  let f, x = dest_comb t in
+                  if is_const f && fst (dest_const f) = "word_zx"
+                  then Some x else None
+                else None in
+              match try_extract lhs with
+              | Some x ->
+                  EXISTS_TAC x THEN ACCEPT_TAC th
+              | None ->
+                match try_extract rhs with
+                | Some x ->
+                    EXISTS_TAC x THEN ACCEPT_TAC (SYM th)
+                | None -> NO_TAC
+            with _ -> NO_TAC));
+          REPEAT (FIRST_X_ASSUM (fun th ->
+            try
+              let c = concl th in
+              if not (is_eq c) then NO_TAC else
+              let lhs, _ = dest_eq c in
+              if not (is_comb lhs) then NO_TAC else
+              let outer, inner = dest_comb lhs in
+              if not (is_const outer) then NO_TAC else
+              let (outer_name, _) = dest_const outer in
+              if outer_name <> "word_zx" then NO_TAC else
+              if not (is_comb inner) then NO_TAC else
+              let fn, _ = strip_comb inner in
+              if not (is_const fn) then NO_TAC else
+              let (fn_name, _) = dest_const fn in
+              if fn_name = "simd16" then SUBST_ALL_TAC (SYM th) else NO_TAC
+            with _ -> NO_TAC)) THEN
+          SIMP_TAC[WORD_ZX_ZX; DIMINDEX_128; DIMINDEX_256; LE_REFL;
+                   ARITH_LE; ARITH_LT]
+        ]
+      ]];
 
     (* Exit case — at pc+0x413 we have loopinv_v2 iter_count; simply
        discharge since the postcondition asserts loopinv_v2 iter_count at
