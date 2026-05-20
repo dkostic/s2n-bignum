@@ -750,9 +750,44 @@ let md5_block_asm_data_order_tmc = define_trimmed "md5_block_asm_data_order_tmc"
 let MD5_BLOCK_ASM_DATA_ORDER_EXEC = X86_MK_CORE_EXEC_RULE md5_block_asm_data_order_tmc;;
 
 (* ------------------------------------------------------------------------- *)
+(* LEA truncation helper.                                                    *)
+(*                                                                           *)
+(* The aws-lc asm uses LEA with a sign-extended 32-bit displacement to add   *)
+(* the round constant T[i] to the running accumulator. After the simulator   *)
+(* applies WORD_SX_ZX to peel the sign-extension, the surviving form is      *)
+(*   word_zx (word_add (word_zx a:int64)                                     *)
+(*                     (word (1 * val (word_zx w:int64) + n))) :int32        *)
+(* where n is the int64-encoded immediate (= T[i] for positive immediates,   *)
+(* or 2^64 - |T[i]_signed| for negative ones). This collapses to the natural *)
+(* 32-bit sum word_add a (word_add w (word n:int32)) because the int32       *)
+(* truncation absorbs the high 32 bits of n.                                 *)
+(*                                                                           *)
+(* This generic shape recurs once per round-1..4 step (and hence 64 times in *)
+(* the full block). Proven once, used everywhere via REWRITE_TAC.            *)
+(* ------------------------------------------------------------------------- *)
+
+let LEA_TRUNC_LEMMA = prove
+ (`!(a:int32) (w:int32) (n:num).
+       word_zx ((word_add (word_zx a:int64)
+                          (word (1 * val (word_zx w:int64) + n):int64)):int64) :int32
+       = word_add a (word_add w (word n:int32))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_ZX_GEN; VAL_WORD; VAL_WORD_ADD;
+              DIMINDEX_32; DIMINDEX_64; ARITH_RULE `1 * x = x`] THEN
+  CONV_TAC MOD_DOWN_CONV THEN
+  REWRITE_TAC[MOD_MOD_EXP_MIN] THEN
+  REWRITE_TAC[ARITH_RULE `MIN 64 32 = 32`]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 4: correctness of the first round-1 step (instructions at           *)
 (* offset 52..89 in the trimmed code), computing                             *)
 (*   new_a = b + ROL_7(a + F(b,c,d) + W[0] + T[0]).                          *)
+(*                                                                           *)
+(* Cut-point convention (locked for Phases 5..8): each round-step k's PC     *)
+(* range is [pc + step_k_start, pc + step_(k+1)_start), i.e. the step ends   *)
+(* one byte before the next step's first instruction begins. For step 0 the  *)
+(* range is [pc+52, pc+90); subsequent steps cover 9 instructions each.      *)
+(* This convention composes cleanly under ENSURES_SEQUENCE_TAC.              *)
 (* ------------------------------------------------------------------------- *)
 
 let MD5_1STEP_CORRECT = prove
@@ -794,21 +829,8 @@ let MD5_1STEP_CORRECT = prove
    `word_xor (word_and (word_xor d c) (b:int32)) d =
     word_xor (word_and b (word_xor c d)) d`
    SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
-  SUBGOAL_THEN
-   `!a w0:int32. word_zx
-     ((word_add (word_zx a) (word (1 * val (word_zx w0:int64) + 18446744073028674680))):int64) =
-    (word_add a (word_add w0 (word 3614090360))):int32`
-   (fun th -> REWRITE_TAC[th]) THENL
-   [REPEAT GEN_TAC THEN
-    REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_ZX_GEN; VAL_WORD; VAL_WORD_ADD;
-                DIMINDEX_32; DIMINDEX_64; ARITH_RULE `1 * x = x`] THEN
-    CONV_TAC MOD_DOWN_CONV THEN
-    REWRITE_TAC[MOD_MOD_EXP_MIN] THEN
-    REWRITE_TAC[ARITH_RULE `MIN 64 32 = 32`] THEN
-    REWRITE_TAC[ARITH_RULE `val a + val w0 + 18446744073028674680 =
-                            (val a + val w0 + 3614090360) + 4294967295 * 2 EXP 32`] THEN
-    REWRITE_TAC[MOD_MULT_ADD];
-    ALL_TAC] THEN
+  REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
   AP_TERM_TAC THEN
   GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
   AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
