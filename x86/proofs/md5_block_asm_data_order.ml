@@ -939,3 +939,16 @@ let MD5_2STEP_CORRECT = prove
       word_add (word_add d Xform) (word_add w1 (word 3905402710))`
      SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
     CONV_TAC WORD_RULE]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 5: full round-1 correctness over [pc+52, pc+569).                    *)
+(*                                                                           *)
+(* After 146 instructions of round-1 (steps 0..15, F round) the four         *)
+(* registers hold the entries of (md5_compress 16 W [a;b;c;d]):              *)
+(*   RAX = EL 0 (md5_compress 16 W [a;b;c;d]) = n_12                          *)
+(*   RBX = EL 1 (md5_compress 16 W [a;b;c;d]) = n_15                          *)
+(*   RCX = EL 2 (md5_compress 16 W [a;b;c;d]) = n_14                          *)
+(*   RDX = EL 3 (md5_compress 16 W [a;b;c;d]) = n_13                          *)
+(* where n_k = step k's freshly-computed value; the asm cycles writes among  *)
+(* RAX (steps 0,4,8,12), RDX (1,5,9,13), RCX (2,6,10,14), RBX (3,7,11,15).   *)
+(* ------------------------------------------------------------------------- *)
