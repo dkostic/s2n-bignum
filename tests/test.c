@@ -3122,6 +3122,113 @@ void reference_mldsa_inverse_ntt_spec(int32_t a[256])
     }
 }
 
+// MD5 reference implementation (RFC 1321), used as oracle for the
+// asm KAT below. Inputs the four 32-bit chaining words at state[0..3]
+// and one 64-byte block; updates state in place.
+
+#define MD5_F(x,y,z) (((x) & (y)) | ((~(x)) & (z)))
+#define MD5_G(x,y,z) (((x) & (z)) | ((y) & (~(z))))
+#define MD5_H(x,y,z) ((x) ^ (y) ^ (z))
+#define MD5_I(x,y,z) ((y) ^ ((x) | (~(z))))
+#define MD5_ROL32(x,n) (((x) << (n)) | ((x) >> (32 - (n))))
+
+#define MD5_FF(a,b,c,d,xk,s,ti) \
+  (a) = (b) + MD5_ROL32((a) + MD5_F((b),(c),(d)) + (xk) + (uint32_t)(ti), (s))
+#define MD5_GG(a,b,c,d,xk,s,ti) \
+  (a) = (b) + MD5_ROL32((a) + MD5_G((b),(c),(d)) + (xk) + (uint32_t)(ti), (s))
+#define MD5_HH(a,b,c,d,xk,s,ti) \
+  (a) = (b) + MD5_ROL32((a) + MD5_H((b),(c),(d)) + (xk) + (uint32_t)(ti), (s))
+#define MD5_II(a,b,c,d,xk,s,ti) \
+  (a) = (b) + MD5_ROL32((a) + MD5_I((b),(c),(d)) + (xk) + (uint32_t)(ti), (s))
+
+void reference_md5_block(uint32_t state[4], const uint8_t block[64])
+{ uint32_t x[16];
+  uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+  int i;
+  for (i = 0; i < 16; ++i)
+    x[i] = (uint32_t)block[4*i]
+         | ((uint32_t)block[4*i+1] << 8)
+         | ((uint32_t)block[4*i+2] << 16)
+         | ((uint32_t)block[4*i+3] << 24);
+
+  /* Round 1 */
+  MD5_FF(a,b,c,d, x[ 0], 7, 0xd76aa478);
+  MD5_FF(d,a,b,c, x[ 1],12, 0xe8c7b756);
+  MD5_FF(c,d,a,b, x[ 2],17, 0x242070db);
+  MD5_FF(b,c,d,a, x[ 3],22, 0xc1bdceee);
+  MD5_FF(a,b,c,d, x[ 4], 7, 0xf57c0faf);
+  MD5_FF(d,a,b,c, x[ 5],12, 0x4787c62a);
+  MD5_FF(c,d,a,b, x[ 6],17, 0xa8304613);
+  MD5_FF(b,c,d,a, x[ 7],22, 0xfd469501);
+  MD5_FF(a,b,c,d, x[ 8], 7, 0x698098d8);
+  MD5_FF(d,a,b,c, x[ 9],12, 0x8b44f7af);
+  MD5_FF(c,d,a,b, x[10],17, 0xffff5bb1);
+  MD5_FF(b,c,d,a, x[11],22, 0x895cd7be);
+  MD5_FF(a,b,c,d, x[12], 7, 0x6b901122);
+  MD5_FF(d,a,b,c, x[13],12, 0xfd987193);
+  MD5_FF(c,d,a,b, x[14],17, 0xa679438e);
+  MD5_FF(b,c,d,a, x[15],22, 0x49b40821);
+
+  /* Round 2 */
+  MD5_GG(a,b,c,d, x[ 1], 5, 0xf61e2562);
+  MD5_GG(d,a,b,c, x[ 6], 9, 0xc040b340);
+  MD5_GG(c,d,a,b, x[11],14, 0x265e5a51);
+  MD5_GG(b,c,d,a, x[ 0],20, 0xe9b6c7aa);
+  MD5_GG(a,b,c,d, x[ 5], 5, 0xd62f105d);
+  MD5_GG(d,a,b,c, x[10], 9, 0x02441453);
+  MD5_GG(c,d,a,b, x[15],14, 0xd8a1e681);
+  MD5_GG(b,c,d,a, x[ 4],20, 0xe7d3fbc8);
+  MD5_GG(a,b,c,d, x[ 9], 5, 0x21e1cde6);
+  MD5_GG(d,a,b,c, x[14], 9, 0xc33707d6);
+  MD5_GG(c,d,a,b, x[ 3],14, 0xf4d50d87);
+  MD5_GG(b,c,d,a, x[ 8],20, 0x455a14ed);
+  MD5_GG(a,b,c,d, x[13], 5, 0xa9e3e905);
+  MD5_GG(d,a,b,c, x[ 2], 9, 0xfcefa3f8);
+  MD5_GG(c,d,a,b, x[ 7],14, 0x676f02d9);
+  MD5_GG(b,c,d,a, x[12],20, 0x8d2a4c8a);
+
+  /* Round 3 */
+  MD5_HH(a,b,c,d, x[ 5], 4, 0xfffa3942);
+  MD5_HH(d,a,b,c, x[ 8],11, 0x8771f681);
+  MD5_HH(c,d,a,b, x[11],16, 0x6d9d6122);
+  MD5_HH(b,c,d,a, x[14],23, 0xfde5380c);
+  MD5_HH(a,b,c,d, x[ 1], 4, 0xa4beea44);
+  MD5_HH(d,a,b,c, x[ 4],11, 0x4bdecfa9);
+  MD5_HH(c,d,a,b, x[ 7],16, 0xf6bb4b60);
+  MD5_HH(b,c,d,a, x[10],23, 0xbebfbc70);
+  MD5_HH(a,b,c,d, x[13], 4, 0x289b7ec6);
+  MD5_HH(d,a,b,c, x[ 0],11, 0xeaa127fa);
+  MD5_HH(c,d,a,b, x[ 3],16, 0xd4ef3085);
+  MD5_HH(b,c,d,a, x[ 6],23, 0x04881d05);
+  MD5_HH(a,b,c,d, x[ 9], 4, 0xd9d4d039);
+  MD5_HH(d,a,b,c, x[12],11, 0xe6db99e5);
+  MD5_HH(c,d,a,b, x[15],16, 0x1fa27cf8);
+  MD5_HH(b,c,d,a, x[ 2],23, 0xc4ac5665);
+
+  /* Round 4 */
+  MD5_II(a,b,c,d, x[ 0], 6, 0xf4292244);
+  MD5_II(d,a,b,c, x[ 7],10, 0x432aff97);
+  MD5_II(c,d,a,b, x[14],15, 0xab9423a7);
+  MD5_II(b,c,d,a, x[ 5],21, 0xfc93a039);
+  MD5_II(a,b,c,d, x[12], 6, 0x655b59c3);
+  MD5_II(d,a,b,c, x[ 3],10, 0x8f0ccc92);
+  MD5_II(c,d,a,b, x[10],15, 0xffeff47d);
+  MD5_II(b,c,d,a, x[ 1],21, 0x85845dd1);
+  MD5_II(a,b,c,d, x[ 8], 6, 0x6fa87e4f);
+  MD5_II(d,a,b,c, x[15],10, 0xfe2ce6e0);
+  MD5_II(c,d,a,b, x[ 6],15, 0xa3014314);
+  MD5_II(b,c,d,a, x[13],21, 0x4e0811a1);
+  MD5_II(a,b,c,d, x[ 4], 6, 0xf7537e82);
+  MD5_II(d,a,b,c, x[11],10, 0xbd3af235);
+  MD5_II(c,d,a,b, x[ 2],15, 0x2ad7d2bb);
+  MD5_II(b,c,d,a, x[ 9],21, 0xeb86d391);
+
+  state[0] += a;
+  state[1] += b;
+  state[2] += c;
+  state[3] += d;
+}
+
 // Keccak-f1600 reference.
 // https://keccak.team/files/Keccak-reference-3.0.pdf
 
@@ -14823,6 +14930,133 @@ int test_secp256k1_jmixadd_alt(void)
   return 0;
 }
 
+int test_md5_block_asm_data_order(void)
+{
+#ifndef __x86_64__
+  return 1;
+#else
+  /* RFC 1321 known-answer tests, single-block inputs after padding.
+     Vectors used:
+       - empty string ("")     -> d41d8cd98f00b204e9800998ecf8427e
+       - "abc"                 -> 900150983cd24fb0d6963f7d28e17f72
+     Padding: 0x80, then zeros, then 64-bit little-endian bit length.
+     Initial state (RFC 1321 §3.3): A=0x67452301, B=0xefcdab89,
+     C=0x98badcfe, D=0x10325476.                                       */
+
+  static const uint32_t md5_init[4] =
+    { 0x67452301u, 0xefcdab89u, 0x98badcfeu, 0x10325476u };
+
+  static const uint8_t block_empty[64] =
+    { 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+  static const uint8_t expected_empty[16] =
+    { 0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04,
+      0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8, 0x42, 0x7e };
+
+  /* "abc" = 0x61 0x62 0x63, then 0x80 pad, zeros, then bit length 24 = 0x18 */
+  static const uint8_t block_abc[64] =
+    { 0x61, 0x62, 0x63, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0x18, 0, 0, 0, 0, 0, 0, 0 };
+
+  static const uint8_t expected_abc[16] =
+    { 0x90, 0x01, 0x50, 0x98, 0x3c, 0xd2, 0x4f, 0xb0,
+      0xd6, 0x96, 0x3f, 0x7d, 0x28, 0xe1, 0x7f, 0x72 };
+
+  struct { const char *name; const uint8_t *blk; const uint8_t *exp; } cases[] =
+    { { "empty",  block_empty, expected_empty },
+      { "\"abc\"", block_abc,  expected_abc   } };
+
+  printf("Testing md5_block_asm_data_order with %zu KAT vectors\n",
+         sizeof(cases) / sizeof(cases[0]));
+
+  for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); ++k)
+   { uint32_t state_asm[4], state_ref[4];
+     uint8_t  digest_asm[16];
+     int      i;
+     for (i = 0; i < 4; ++i) state_asm[i] = md5_init[i];
+     for (i = 0; i < 4; ++i) state_ref[i] = md5_init[i];
+
+     md5_block_asm_data_order(state_asm, cases[k].blk, 1);
+     reference_md5_block(state_ref, cases[k].blk);
+
+     for (i = 0; i < 4; ++i)
+      { if (state_asm[i] != state_ref[i])
+         { printf("Error in md5 %s: asm[%d]=0x%08" PRIx32 " "
+                  "ref[%d]=0x%08" PRIx32 "\n",
+                  cases[k].name, i, state_asm[i], i, state_ref[i]);
+           return 1;
+         }
+      }
+
+     for (i = 0; i < 4; ++i)
+      { digest_asm[4*i  ] = (uint8_t)(state_asm[i]      );
+        digest_asm[4*i+1] = (uint8_t)(state_asm[i] >>  8);
+        digest_asm[4*i+2] = (uint8_t)(state_asm[i] >> 16);
+        digest_asm[4*i+3] = (uint8_t)(state_asm[i] >> 24);
+      }
+     for (i = 0; i < 16; ++i)
+      { if (digest_asm[i] != cases[k].exp[i])
+         { printf("Error in md5 %s: digest mismatch at byte %d "
+                  "(asm 0x%02x vs RFC 0x%02x)\n",
+                  cases[k].name, i, digest_asm[i], cases[k].exp[i]);
+           return 1;
+         }
+      }
+     if (VERBOSE)
+      { printf("OK: md5 %s -> ", cases[k].name);
+        for (i = 0; i < 16; ++i) printf("%02x", digest_asm[i]);
+        printf("\n");
+      }
+   }
+
+  /* Multi-block: hash both blocks in a single call and confirm the
+     result matches running the reference twice. Concatenate the two
+     test vectors as a 128-byte buffer.                                 */
+  { uint8_t   two_blocks[128];
+    uint32_t  state_asm[4], state_ref[4];
+    int       i;
+    memcpy(two_blocks,      block_empty, 64);
+    memcpy(two_blocks + 64, block_abc,   64);
+    for (i = 0; i < 4; ++i) state_asm[i] = md5_init[i];
+    for (i = 0; i < 4; ++i) state_ref[i] = md5_init[i];
+
+    md5_block_asm_data_order(state_asm, two_blocks, 2);
+    reference_md5_block(state_ref, two_blocks);
+    reference_md5_block(state_ref, two_blocks + 64);
+    for (i = 0; i < 4; ++i)
+     { if (state_asm[i] != state_ref[i])
+        { printf("Error in md5 multi-block: asm[%d]=0x%08" PRIx32 " "
+                 "ref[%d]=0x%08" PRIx32 "\n",
+                 i, state_asm[i], i, state_ref[i]);
+          return 1;
+        }
+     }
+  }
+
+  /* Zero blocks: confirm the routine is a no-op when num_blocks = 0. */
+  { uint32_t state_asm[4];
+    int      i;
+    for (i = 0; i < 4; ++i) state_asm[i] = md5_init[i];
+    md5_block_asm_data_order(state_asm, block_empty, 0);
+    for (i = 0; i < 4; ++i)
+     { if (state_asm[i] != md5_init[i])
+        { printf("Error in md5 num_blocks=0: state[%d] mutated to "
+                 "0x%08" PRIx32 "\n", i, state_asm[i]);
+          return 1;
+        }
+     }
+  }
+
+  printf("All OK\n");
+  return 0;
+#endif
+}
+
 int test_sha3_keccak_f1600(void)
 { uint64_t t, i;
   uint64_t a[25], b[25], c[25];
@@ -16776,6 +17010,7 @@ int main(int argc, char *argv[])
   functionaltest(all,"edwards25519_scalarmulbase_alt",test_edwards25519_scalarmulbase_alt);
   functionaltest(bmi,"edwards25519_scalarmuldouble",test_edwards25519_scalarmuldouble);
   functionaltest(all,"edwards25519_scalarmuldouble_alt",test_edwards25519_scalarmuldouble_alt);
+  functionaltest(all,"md5_block_asm_data_order",test_md5_block_asm_data_order);
   functionaltest(all,"mldsa_intt",test_mldsa_intt);
   functionaltest(all,"mldsa_ntt",test_mldsa_ntt);
   functionaltest(all,"mldsa_nttunpack",test_mldsa_nttunpack);
