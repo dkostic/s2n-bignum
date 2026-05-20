@@ -952,3 +952,59 @@ let MD5_2STEP_CORRECT = prove
 (* where n_k = step k's freshly-computed value; the asm cycles writes among  *)
 (* RAX (steps 0,4,8,12), RDX (1,5,9,13), RCX (2,6,10,14), RBX (3,7,11,15).   *)
 (* ------------------------------------------------------------------------- *)
+
+(* Linear unfold: md5_compress 16 W [a;b;c;d] as a 16-deep nest of           *)
+(* md5_compress_round applications, no LET expansion (term size linear).     *)
+let MD5_COMPRESS_16_LINEAR_UNFOLD = prove
+ (`!(W:int32 list) (a:int32) b c d.
+       md5_compress 16 W [a;b;c;d] =
+       md5_compress_round 15 W
+        (md5_compress_round 14 W
+         (md5_compress_round 13 W
+          (md5_compress_round 12 W
+           (md5_compress_round 11 W
+            (md5_compress_round 10 W
+             (md5_compress_round 9 W
+              (md5_compress_round 8 W
+               (md5_compress_round 7 W
+                (md5_compress_round 6 W
+                 (md5_compress_round 5 W
+                  (md5_compress_round 4 W
+                   (md5_compress_round 3 W
+                    (md5_compress_round 2 W
+                     (md5_compress_round 1 W
+                      (md5_compress_round 0 W [a;b;c;d])))))))))))))))`,
+  ONCE_REWRITE_TAC[ARITH_RULE `16 = 15 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `15 = 14 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `14 = 13 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `13 = 12 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `12 = 11 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `11 = 10 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `10 = 9 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `9 = 8 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `8 = 7 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `7 = 6 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `6 = 5 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `5 = 4 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `4 = 3 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `3 = 2 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `2 = 1 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `1 = 0 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  REFL_TAC);;
+
+(* Single round-step reduction on a concrete 4-element list. Rewrites       *)
+(* `md5_compress_round k W [a;b;c;d]` to its 4-list cycling form, parametric *)
+(* in k (so `md5_K`/`md5_S`/`md5_round_function` ifs are not unfolded).      *)
+let MD5_COMPRESS_ROUND_4LIST = prove
+ (`!(W:int32 list) (k:num) (a:int32) b c d.
+       md5_compress_round k W [a;b;c;d] =
+       [d;
+        word_add b
+          (word_rol
+             (word_add a
+                (word_add (md5_round_function k b c d)
+                   (word_add (EL (md5_K k) W) (EL k md5_T))))
+             (md5_S k));
+        b; c]`,
+  REWRITE_TAC[md5_compress_round; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN REPEAT GEN_TAC THEN REFL_TAC);;
