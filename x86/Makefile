@@ -385,6 +385,7 @@ BIGNUM_OBJ = curve25519/bignum_add_p25519.o \
              secp256k1/bignum_tomont_p256k1_alt.o \
              secp256k1/bignum_triple_p256k1.o \
              secp256k1/bignum_triple_p256k1_alt.o \
+             md5/md5_block_asm_data_order.o \
              sha3/sha3_keccak_f1600.o \
              sha3/sha3_keccak4_f1600.o \
              sha3/sha3_keccak4_f1600_alt.o \
