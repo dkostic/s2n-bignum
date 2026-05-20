@@ -8,6 +8,8 @@
 (* ========================================================================= *)
 
 needs "x86/proofs/base.ml";;
+needs "x86/proofs/utils/md5_spec.ml";;
+needs "x86/proofs/utils/md5_bridge.ml";;
 
 (**** print_literal_from_elf "x86/md5/md5_block_asm_data_order.o";;
 ****)
@@ -746,3 +748,68 @@ let md5_block_asm_data_order_mc = define_assert_from_elf
 let md5_block_asm_data_order_tmc = define_trimmed "md5_block_asm_data_order_tmc" md5_block_asm_data_order_mc;;
 
 let MD5_BLOCK_ASM_DATA_ORDER_EXEC = X86_MK_CORE_EXEC_RULE md5_block_asm_data_order_tmc;;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 4: correctness of the first round-1 step (instructions at           *)
+(* offset 52..89 in the trimmed code), computing                             *)
+(*   new_a = b + ROL_7(a + F(b,c,d) + W[0] + T[0]).                          *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_1STEP_CORRECT = prove
+ (`!pc data_ptr a b c d w0:int32.
+        nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                       (data_ptr:int64,64)
+        ==> ensures x86
+              (\s. bytes_loaded s (word pc)
+                     (BUTLAST md5_block_asm_data_order_tmc) /\
+                   read RIP s = word(pc + 52) /\
+                   read RSI s = data_ptr /\
+                   read RAX s = word_zx a /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read (memory :> bytes32 data_ptr) s = w0)
+              (\s. read RIP s = word(pc + 90) /\
+                   read RAX s =
+                     word_zx (word_add b (word_rol (word_add (word_add a (md5_F b c d))
+                                                             (word_add w0 (EL 0 md5_T)))
+                                                   7)) /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d)
+              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+               MAYCHANGE [RAX; R10; R11] ,,
+               MAYCHANGE SOME_FLAGS)`,
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--11) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  SIMP_TAC[WORD_SX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  REWRITE_TAC[md5_T] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV [GSYM MD5_F_XOR_AND_FORM] THEN
+  SUBGOAL_THEN
+   `word_xor (word_and (word_xor d c) (b:int32)) d =
+    word_xor (word_and b (word_xor c d)) d`
+   SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `!a w0:int32. word_zx
+     ((word_add (word_zx a) (word (1 * val (word_zx w0:int64) + 18446744073028674680))):int64) =
+    (word_add a (word_add w0 (word 3614090360))):int32`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [REPEAT GEN_TAC THEN
+    REWRITE_TAC[GSYM VAL_EQ; VAL_WORD_ZX_GEN; VAL_WORD; VAL_WORD_ADD;
+                DIMINDEX_32; DIMINDEX_64; ARITH_RULE `1 * x = x`] THEN
+    CONV_TAC MOD_DOWN_CONV THEN
+    REWRITE_TAC[MOD_MOD_EXP_MIN] THEN
+    REWRITE_TAC[ARITH_RULE `MIN 64 32 = 32`] THEN
+    REWRITE_TAC[ARITH_RULE `val a + val w0 + 18446744073028674680 =
+                            (val a + val w0 + 3614090360) + 4294967295 * 2 EXP 32`] THEN
+    REWRITE_TAC[MOD_MULT_ADD];
+    ALL_TAC] THEN
+  AP_TERM_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
+  AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+  CONV_TAC WORD_RULE);;
