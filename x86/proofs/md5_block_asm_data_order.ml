@@ -5044,3 +5044,1270 @@ MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
 REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL];
 REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
 REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN RULE_ASSUM_TAC BETA_RULE THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]]]);;
+let MD5_ROUND2_CORRECT = prove
+ (`!pc data_ptr a b c d w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15:int32.
+       nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                      (data_ptr:int64,64)
+       ==> ensures x86
+             (\s. bytes_loaded s (word pc)
+                    (BUTLAST md5_block_asm_data_order_tmc) /\
+                  read RIP s = word(pc + 569) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx a /\
+                  read RBX s = word_zx b /\
+                  read RCX s = word_zx c /\
+                  read RDX s = word_zx d /\
+                  read R10 s = word_zx w0 /\
+                  read R11 s = word_zx (word_zx d:int32) /\
+                  read (memory :> bytes32 data_ptr) s = w0 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 4))) s = w1 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 20))) s = w5 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 24))) s = w6 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 40))) s = w10 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 44))) s = w11 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 60))) s = w15)
+             (\s. read RIP s = word(pc + 1185) /\
+                  read RSI s = data_ptr /\
+                  read RAX s =
+                    word_zx
+                      (let na16 =
+                           word_add b
+                            (word_rol (word_add (word_add a (md5_G b c d))
+                                                (word_add w1 (EL 16 md5_T)))
+                                      5) in
+                       let nd17 =
+                           word_add na16
+                            (word_rol (word_add (word_add d (md5_G na16 b c))
+                                                (word_add w6 (EL 17 md5_T)))
+                                      9) in
+                       let nc18 =
+                           word_add nd17
+                            (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                                (word_add w11 (EL 18 md5_T)))
+                                      14) in
+                       let nb19 =
+                           word_add nc18
+                            (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                                (word_add w0 (EL 19 md5_T)))
+                                      20) in
+                       let na20 =
+                           word_add nb19
+                            (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                                (word_add w5 (EL 20 md5_T)))
+                                      5) in
+                       let nd21 =
+                           word_add na20
+                            (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                                (word_add w10 (EL 21 md5_T)))
+                                      9) in
+                       let nc22 =
+                           word_add nd21
+                            (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                                (word_add w15 (EL 22 md5_T)))
+                                      14) in
+                       let nb23 =
+                           word_add nc22
+                            (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                                (word_add w4 (EL 23 md5_T)))
+                                      20) in
+                       let na24 =
+                           word_add nb23
+                            (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                                (word_add w9 (EL 24 md5_T)))
+                                      5) in
+                       let nd25 =
+                           word_add na24
+                            (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                                (word_add w14 (EL 25 md5_T)))
+                                      9) in
+                       let nc26 =
+                           word_add nd25
+                            (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                                (word_add w3 (EL 26 md5_T)))
+                                      14) in
+                       let nb27 =
+                           word_add nc26
+                            (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                                (word_add w8 (EL 27 md5_T)))
+                                      20) in
+                       let na28 =
+                           word_add nb27
+                            (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25))
+                                                (word_add w13 (EL 28 md5_T)))
+                                      5) in
+                       na28) /\
+                  read RDX s =
+                    word_zx
+                      (let na16 =
+                           word_add b
+                            (word_rol (word_add (word_add a (md5_G b c d))
+                                                (word_add w1 (EL 16 md5_T)))
+                                      5) in
+                       let nd17 =
+                           word_add na16
+                            (word_rol (word_add (word_add d (md5_G na16 b c))
+                                                (word_add w6 (EL 17 md5_T)))
+                                      9) in
+                       let nc18 =
+                           word_add nd17
+                            (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                                (word_add w11 (EL 18 md5_T)))
+                                      14) in
+                       let nb19 =
+                           word_add nc18
+                            (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                                (word_add w0 (EL 19 md5_T)))
+                                      20) in
+                       let na20 =
+                           word_add nb19
+                            (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                                (word_add w5 (EL 20 md5_T)))
+                                      5) in
+                       let nd21 =
+                           word_add na20
+                            (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                                (word_add w10 (EL 21 md5_T)))
+                                      9) in
+                       let nc22 =
+                           word_add nd21
+                            (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                                (word_add w15 (EL 22 md5_T)))
+                                      14) in
+                       let nb23 =
+                           word_add nc22
+                            (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                                (word_add w4 (EL 23 md5_T)))
+                                      20) in
+                       let na24 =
+                           word_add nb23
+                            (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                                (word_add w9 (EL 24 md5_T)))
+                                      5) in
+                       let nd25 =
+                           word_add na24
+                            (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                                (word_add w14 (EL 25 md5_T)))
+                                      9) in
+                       let nc26 =
+                           word_add nd25
+                            (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                                (word_add w3 (EL 26 md5_T)))
+                                      14) in
+                       let nb27 =
+                           word_add nc26
+                            (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                                (word_add w8 (EL 27 md5_T)))
+                                      20) in
+                       let na28 =
+                           word_add nb27
+                            (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25))
+                                                (word_add w13 (EL 28 md5_T)))
+                                      5) in
+                       let nd29 =
+                           word_add na28
+                            (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26))
+                                                (word_add w2 (EL 29 md5_T)))
+                                      9) in
+                       nd29) /\
+                  read RCX s =
+                    word_zx
+                      (let na16 =
+                           word_add b
+                            (word_rol (word_add (word_add a (md5_G b c d))
+                                                (word_add w1 (EL 16 md5_T)))
+                                      5) in
+                       let nd17 =
+                           word_add na16
+                            (word_rol (word_add (word_add d (md5_G na16 b c))
+                                                (word_add w6 (EL 17 md5_T)))
+                                      9) in
+                       let nc18 =
+                           word_add nd17
+                            (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                                (word_add w11 (EL 18 md5_T)))
+                                      14) in
+                       let nb19 =
+                           word_add nc18
+                            (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                                (word_add w0 (EL 19 md5_T)))
+                                      20) in
+                       let na20 =
+                           word_add nb19
+                            (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                                (word_add w5 (EL 20 md5_T)))
+                                      5) in
+                       let nd21 =
+                           word_add na20
+                            (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                                (word_add w10 (EL 21 md5_T)))
+                                      9) in
+                       let nc22 =
+                           word_add nd21
+                            (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                                (word_add w15 (EL 22 md5_T)))
+                                      14) in
+                       let nb23 =
+                           word_add nc22
+                            (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                                (word_add w4 (EL 23 md5_T)))
+                                      20) in
+                       let na24 =
+                           word_add nb23
+                            (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                                (word_add w9 (EL 24 md5_T)))
+                                      5) in
+                       let nd25 =
+                           word_add na24
+                            (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                                (word_add w14 (EL 25 md5_T)))
+                                      9) in
+                       let nc26 =
+                           word_add nd25
+                            (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                                (word_add w3 (EL 26 md5_T)))
+                                      14) in
+                       let nb27 =
+                           word_add nc26
+                            (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                                (word_add w8 (EL 27 md5_T)))
+                                      20) in
+                       let na28 =
+                           word_add nb27
+                            (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25))
+                                                (word_add w13 (EL 28 md5_T)))
+                                      5) in
+                       let nd29 =
+                           word_add na28
+                            (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26))
+                                                (word_add w2 (EL 29 md5_T)))
+                                      9) in
+                       let nc30 =
+                           word_add nd29
+                            (word_rol (word_add (word_add nc26 (md5_G nd29 na28 nb27))
+                                                (word_add w7 (EL 30 md5_T)))
+                                      14) in
+                       nc30) /\
+                  read RBX s =
+                    word_zx
+                      (let na16 =
+                           word_add b
+                            (word_rol (word_add (word_add a (md5_G b c d))
+                                                (word_add w1 (EL 16 md5_T)))
+                                      5) in
+                       let nd17 =
+                           word_add na16
+                            (word_rol (word_add (word_add d (md5_G na16 b c))
+                                                (word_add w6 (EL 17 md5_T)))
+                                      9) in
+                       let nc18 =
+                           word_add nd17
+                            (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                                (word_add w11 (EL 18 md5_T)))
+                                      14) in
+                       let nb19 =
+                           word_add nc18
+                            (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                                (word_add w0 (EL 19 md5_T)))
+                                      20) in
+                       let na20 =
+                           word_add nb19
+                            (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                                (word_add w5 (EL 20 md5_T)))
+                                      5) in
+                       let nd21 =
+                           word_add na20
+                            (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                                (word_add w10 (EL 21 md5_T)))
+                                      9) in
+                       let nc22 =
+                           word_add nd21
+                            (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                                (word_add w15 (EL 22 md5_T)))
+                                      14) in
+                       let nb23 =
+                           word_add nc22
+                            (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                                (word_add w4 (EL 23 md5_T)))
+                                      20) in
+                       let na24 =
+                           word_add nb23
+                            (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                                (word_add w9 (EL 24 md5_T)))
+                                      5) in
+                       let nd25 =
+                           word_add na24
+                            (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                                (word_add w14 (EL 25 md5_T)))
+                                      9) in
+                       let nc26 =
+                           word_add nd25
+                            (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                                (word_add w3 (EL 26 md5_T)))
+                                      14) in
+                       let nb27 =
+                           word_add nc26
+                            (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                                (word_add w8 (EL 27 md5_T)))
+                                      20) in
+                       let na28 =
+                           word_add nb27
+                            (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25))
+                                                (word_add w13 (EL 28 md5_T)))
+                                      5) in
+                       let nd29 =
+                           word_add na28
+                            (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26))
+                                                (word_add w2 (EL 29 md5_T)))
+                                      9) in
+                       let nc30 =
+                           word_add nd29
+                            (word_rol (word_add (word_add nc26 (md5_G nd29 na28 nb27))
+                                                (word_add w7 (EL 30 md5_T)))
+                                      14) in
+                       let nb31 =
+                           word_add nc30
+                            (word_rol (word_add (word_add nb27 (md5_G nc30 nd29 na28))
+                                                (word_add w12 (EL 31 md5_T)))
+                                      20) in
+                       nb31) /\
+                  read R10 s = (word_zx:int32->int64) (w0:int32) /\
+                  read R11 s = read RDX s /\
+                  read R12 s = read RDX s)
+             (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+              MAYCHANGE [RAX; RBX; RCX; RDX; R10; R11; R12] ,,
+              MAYCHANGE SOME_FLAGS)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+ENSURES_SEQUENCE_TAC `pc + 730`
+   `\s. read RSI s = data_ptr /\
+        read RAX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             na16) /\
+        read RDX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             nd17) /\
+        read RCX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             nc18) /\
+        read RBX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             nb19) /\
+        read R10 s = (word_zx:int32->int64) (w5:int32) /\
+        read R11 s = read RDX s /\
+        read R12 s = read RDX s /\
+        read (memory :> bytes32 data_ptr) s = w0 /\
+        read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+        read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+        read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4 /\
+        read (memory :> bytes32 (word_add data_ptr (word 20))) s = w5 /\
+        read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+        read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+        read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+        read (memory :> bytes32 (word_add data_ptr (word 40))) s = w10 /\
+        read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+        read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+        read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14 /\
+        read (memory :> bytes32 (word_add data_ptr (word 60))) s = w15` THEN
+CONJ_TAC THENL [
+MP_TAC(SPECL
+   [`pc:num`; `data_ptr:int64`;
+    `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+    `w0:int32`; `w1:int32`; `w5:int32`; `w6:int32`; `w11:int32`]
+   MD5_QUARTER5_CORRECT) THEN
+ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL];
+REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN RULE_ASSUM_TAC BETA_RULE THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]];
+ALL_TAC] THEN
+ENSURES_SEQUENCE_TAC `pc + 882`
+   `\s. read RSI s = data_ptr /\
+        read RAX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             na20) /\
+        read RDX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             nd21) /\
+        read RCX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             let nc22 =
+                 word_add nd21
+                  (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                      (word_add w15 (EL 22 md5_T)))
+                            14) in
+             nc22) /\
+        read RBX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             let nc22 =
+                 word_add nd21
+                  (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                      (word_add w15 (EL 22 md5_T)))
+                            14) in
+             let nb23 =
+                 word_add nc22
+                  (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                      (word_add w4 (EL 23 md5_T)))
+                            20) in
+             nb23) /\
+        read R10 s = (word_zx:int32->int64) (w9:int32) /\
+        read R11 s = read RDX s /\
+        read R12 s = read RDX s /\
+        read (memory :> bytes32 data_ptr) s = w0 /\
+        read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+        read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+        read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+        read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+        read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+        read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+        read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+        read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14` THEN
+CONJ_TAC THENL [
+MP_TAC(SPECL
+   [`pc:num`; `data_ptr:int64`;
+    (* a := na16 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      na16):int32`;
+    (* b := nb19 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      nb19):int32`;
+    (* c := nc18 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      nc18):int32`;
+    (* d := nd17 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      nd17):int32`;
+    `w4:int32`; `w5:int32`; `w9:int32`; `w10:int32`; `w15:int32`]
+   MD5_QUARTER6_CORRECT) THEN
+ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL];
+REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN RULE_ASSUM_TAC BETA_RULE THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]];
+ALL_TAC] THEN
+ENSURES_SEQUENCE_TAC `pc + 1034`
+   `\s. read RSI s = data_ptr /\
+        read RAX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             let nc22 =
+                 word_add nd21
+                  (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                      (word_add w15 (EL 22 md5_T)))
+                            14) in
+             let nb23 =
+                 word_add nc22
+                  (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                      (word_add w4 (EL 23 md5_T)))
+                            20) in
+             let na24 =
+                 word_add nb23
+                  (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                      (word_add w9 (EL 24 md5_T)))
+                            5) in
+             na24) /\
+        read RDX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             let nc22 =
+                 word_add nd21
+                  (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                      (word_add w15 (EL 22 md5_T)))
+                            14) in
+             let nb23 =
+                 word_add nc22
+                  (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                      (word_add w4 (EL 23 md5_T)))
+                            20) in
+             let na24 =
+                 word_add nb23
+                  (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                      (word_add w9 (EL 24 md5_T)))
+                            5) in
+             let nd25 =
+                 word_add na24
+                  (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                      (word_add w14 (EL 25 md5_T)))
+                            9) in
+             nd25) /\
+        read RCX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             let nc22 =
+                 word_add nd21
+                  (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                      (word_add w15 (EL 22 md5_T)))
+                            14) in
+             let nb23 =
+                 word_add nc22
+                  (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                      (word_add w4 (EL 23 md5_T)))
+                            20) in
+             let na24 =
+                 word_add nb23
+                  (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                      (word_add w9 (EL 24 md5_T)))
+                            5) in
+             let nd25 =
+                 word_add na24
+                  (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                      (word_add w14 (EL 25 md5_T)))
+                            9) in
+             let nc26 =
+                 word_add nd25
+                  (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                      (word_add w3 (EL 26 md5_T)))
+                            14) in
+             nc26) /\
+        read RBX s =
+          word_zx
+            (let na16 =
+                 word_add b
+                  (word_rol (word_add (word_add a (md5_G b c d))
+                                      (word_add w1 (EL 16 md5_T)))
+                            5) in
+             let nd17 =
+                 word_add na16
+                  (word_rol (word_add (word_add d (md5_G na16 b c))
+                                      (word_add w6 (EL 17 md5_T)))
+                            9) in
+             let nc18 =
+                 word_add nd17
+                  (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                                      (word_add w11 (EL 18 md5_T)))
+                            14) in
+             let nb19 =
+                 word_add nc18
+                  (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                                      (word_add w0 (EL 19 md5_T)))
+                            20) in
+             let na20 =
+                 word_add nb19
+                  (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                      (word_add w5 (EL 20 md5_T)))
+                            5) in
+             let nd21 =
+                 word_add na20
+                  (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                      (word_add w10 (EL 21 md5_T)))
+                            9) in
+             let nc22 =
+                 word_add nd21
+                  (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                      (word_add w15 (EL 22 md5_T)))
+                            14) in
+             let nb23 =
+                 word_add nc22
+                  (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                      (word_add w4 (EL 23 md5_T)))
+                            20) in
+             let na24 =
+                 word_add nb23
+                  (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                      (word_add w9 (EL 24 md5_T)))
+                            5) in
+             let nd25 =
+                 word_add na24
+                  (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                      (word_add w14 (EL 25 md5_T)))
+                            9) in
+             let nc26 =
+                 word_add nd25
+                  (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                      (word_add w3 (EL 26 md5_T)))
+                            14) in
+             let nb27 =
+                 word_add nc26
+                  (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                      (word_add w8 (EL 27 md5_T)))
+                            20) in
+             nb27) /\
+        read R10 s = (word_zx:int32->int64) (w13:int32) /\
+        read R11 s = read RDX s /\
+        read R12 s = read RDX s /\
+        read (memory :> bytes32 data_ptr) s = w0 /\
+        read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+        read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+        read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+        read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13` THEN
+CONJ_TAC THENL [
+MP_TAC(SPECL
+   [`pc:num`; `data_ptr:int64`;
+    (* a := na20 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      na20):int32`;
+    (* b := nb23 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      let nc22 =
+          word_add nd21
+           (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                               (word_add w15 (EL 22 md5_T)))
+                     14) in
+      let nb23 =
+          word_add nc22
+           (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                               (word_add w4 (EL 23 md5_T)))
+                     20) in
+      nb23):int32`;
+    (* c := nc22 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      let nc22 =
+          word_add nd21
+           (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                               (word_add w15 (EL 22 md5_T)))
+                     14) in
+      nc22):int32`;
+    (* d := nd21 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      nd21):int32`;
+    `w3:int32`; `w8:int32`; `w9:int32`; `w13:int32`; `w14:int32`]
+   MD5_QUARTER7_CORRECT) THEN
+ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL];
+REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN RULE_ASSUM_TAC BETA_RULE THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]];
+MP_TAC(SPECL
+   [`pc:num`; `data_ptr:int64`;
+    (* a := na24 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      let nc22 =
+          word_add nd21
+           (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                               (word_add w15 (EL 22 md5_T)))
+                     14) in
+      let nb23 =
+          word_add nc22
+           (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                               (word_add w4 (EL 23 md5_T)))
+                     20) in
+      let na24 =
+          word_add nb23
+           (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                               (word_add w9 (EL 24 md5_T)))
+                     5) in
+      na24):int32`;
+    (* b := nb27 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      let nc22 =
+          word_add nd21
+           (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                               (word_add w15 (EL 22 md5_T)))
+                     14) in
+      let nb23 =
+          word_add nc22
+           (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                               (word_add w4 (EL 23 md5_T)))
+                     20) in
+      let na24 =
+          word_add nb23
+           (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                               (word_add w9 (EL 24 md5_T)))
+                     5) in
+      let nd25 =
+          word_add na24
+           (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                               (word_add w14 (EL 25 md5_T)))
+                     9) in
+      let nc26 =
+          word_add nd25
+           (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                               (word_add w3 (EL 26 md5_T)))
+                     14) in
+      let nb27 =
+          word_add nc26
+           (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                               (word_add w8 (EL 27 md5_T)))
+                     20) in
+      nb27):int32`;
+    (* c := nc26 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      let nc22 =
+          word_add nd21
+           (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                               (word_add w15 (EL 22 md5_T)))
+                     14) in
+      let nb23 =
+          word_add nc22
+           (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                               (word_add w4 (EL 23 md5_T)))
+                     20) in
+      let na24 =
+          word_add nb23
+           (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                               (word_add w9 (EL 24 md5_T)))
+                     5) in
+      let nd25 =
+          word_add na24
+           (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                               (word_add w14 (EL 25 md5_T)))
+                     9) in
+      let nc26 =
+          word_add nd25
+           (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                               (word_add w3 (EL 26 md5_T)))
+                     14) in
+      nc26):int32`;
+    (* d := nd25 *)
+    `(let na16 =
+          word_add b
+           (word_rol (word_add (word_add a (md5_G b c d))
+                               (word_add w1 (EL 16 md5_T)))
+                     5) in
+      let nd17 =
+          word_add na16
+           (word_rol (word_add (word_add d (md5_G na16 b c))
+                               (word_add w6 (EL 17 md5_T)))
+                     9) in
+      let nc18 =
+          word_add nd17
+           (word_rol (word_add (word_add c (md5_G nd17 na16 b))
+                               (word_add w11 (EL 18 md5_T)))
+                     14) in
+      let nb19 =
+          word_add nc18
+           (word_rol (word_add (word_add b (md5_G nc18 nd17 na16))
+                               (word_add w0 (EL 19 md5_T)))
+                     20) in
+      let na20 =
+          word_add nb19
+           (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                               (word_add w5 (EL 20 md5_T)))
+                     5) in
+      let nd21 =
+          word_add na20
+           (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                               (word_add w10 (EL 21 md5_T)))
+                     9) in
+      let nc22 =
+          word_add nd21
+           (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                               (word_add w15 (EL 22 md5_T)))
+                     14) in
+      let nb23 =
+          word_add nc22
+           (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                               (word_add w4 (EL 23 md5_T)))
+                     20) in
+      let na24 =
+          word_add nb23
+           (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                               (word_add w9 (EL 24 md5_T)))
+                     5) in
+      let nd25 =
+          word_add na24
+           (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                               (word_add w14 (EL 25 md5_T)))
+                     9) in
+      nd25):int32`;
+    `w0:int32`; `w2:int32`; `w7:int32`; `w12:int32`; `w13:int32`]
+   MD5_QUARTER8_CORRECT) THEN
+ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL];
+REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN RULE_ASSUM_TAC BETA_RULE THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]]]);;
