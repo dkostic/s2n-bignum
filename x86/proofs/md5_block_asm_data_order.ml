@@ -12439,3 +12439,92 @@ let MD5_COMPRESS_64_VALUES = prove
                21)`
    (SUBST1_TAC o SYM) THEN
   REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 prelude: 4-step snapshot MOV stretch from pc+40 to pc+52.          *)
+(* The asm at .Lloop (offset 40 in tmc) saves the chaining state:             *)
+(*   movl %eax, %r8d   ; movl %ebx, %r9d                                     *)
+(*   movl %ecx, %r14d  ; movl %edx, %r15d                                    *)
+(* Each is 3 bytes (4*3 = 12 bytes total), bringing us to pc+52 = ROUND1     *)
+(* entry. The MOVs zero-extend EAX/EBX/ECX/EDX into R8/R9/R14/R15.           *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_BLOCK_BODY_PRELUDE = prove
+ (`!pc data_ptr (a:int32) (b:int32) (c:int32) (d:int32).
+       nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                      (data_ptr:int64,64)
+       ==> ensures x86
+             (\s. bytes_loaded s (word pc)
+                    (BUTLAST md5_block_asm_data_order_tmc) /\
+                  read RIP s = word(pc + 40) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx a /\
+                  read RBX s = word_zx b /\
+                  read RCX s = word_zx c /\
+                  read RDX s = word_zx d)
+             (\s. read RIP s = word(pc + 52) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx a /\
+                  read RBX s = word_zx b /\
+                  read RCX s = word_zx c /\
+                  read RDX s = word_zx d /\
+                  read R8 s = word_zx a /\
+                  read R9 s = word_zx b /\
+                  read R14 s = word_zx c /\
+                  read R15 s = word_zx d)
+             (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+              MAYCHANGE [R8; R9; R14; R15])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--4) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64;
+           ARITH_RULE `32 <= 64`; LE_REFL]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 writeback: 4-step add-back from pc+2225 to pc+2237.                *)
+(* The asm at lines 682..685 of md5_block_asm_data_order.S writes back        *)
+(* the per-step ROUND4 outputs into the chaining state:                      *)
+(*   addl %r8d, %eax   ; addl %r9d, %ebx                                     *)
+(*   addl %r14d, %ecx  ; addl %r15d, %edx                                    *)
+(* Each ADD is 3 bytes (4*3 = 12 bytes total). EAX/EBX/ECX/EDX hold the      *)
+(* zx of na60/nb63/nc62/nd61; R8/R9/R14/R15 hold the zx of the original     *)
+(* a/b/c/d. After the ADDs, EAX = zx(na60+a), etc.                          *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_BLOCK_BODY_WRITEBACK = prove
+ (`!pc data_ptr (a:int32) (b:int32) (c:int32) (d:int32)
+        (a4:int32) (b4:int32) (c4:int32) (d4:int32).
+       nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                      (data_ptr:int64,64)
+       ==> ensures x86
+             (\s. bytes_loaded s (word pc)
+                    (BUTLAST md5_block_asm_data_order_tmc) /\
+                  read RIP s = word(pc + 2225) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx a4 /\
+                  read RBX s = word_zx b4 /\
+                  read RCX s = word_zx c4 /\
+                  read RDX s = word_zx d4 /\
+                  read R8 s = word_zx a /\
+                  read R9 s = word_zx b /\
+                  read R14 s = word_zx c /\
+                  read R15 s = word_zx d)
+             (\s. read RIP s = word(pc + 2237) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx (word_add a4 a) /\
+                  read RBX s = word_zx (word_add b4 b) /\
+                  read RCX s = word_zx (word_add c4 c) /\
+                  read RDX s = word_zx (word_add d4 d))
+             (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+              MAYCHANGE [RAX; RBX; RCX; RDX] ,,
+              MAYCHANGE SOME_FLAGS)`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--4) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64;
+           ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC);;
