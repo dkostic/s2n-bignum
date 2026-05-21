@@ -1437,7 +1437,8 @@ let MD5_QUARTER1_CORRECT = prove
                                              (word_add w3 (EL 3 md5_T)))
                                    22)) /\
                    read RSI s = data_ptr /\
-                   read R10 s = word_zx w4)
+                   read R10 s = word_zx w4 /\
+                   read R11 s = read RDX s)
               (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
                MAYCHANGE [RAX; RBX; RCX; RDX; R10; R11] ,,
                MAYCHANGE SOME_FLAGS)`,
@@ -1651,11 +1652,12 @@ let MD5_QUARTER1_CORRECT = prove
 (* (i.e. the renamed na0/nb3/nc2/nd1), message words w4..w7, T[4..7], and   *)
 (* the same per-step rotations [7;12;17;22] (still in round 1, F function). *)
 (*                                                                           *)
-(* Pre-state pins R11 = word_zx (word_zx d) — Q1's last instruction (line   *)
-(* 115 of md5_block_asm_data_order.S, `movl %edx,%r11d`) sets R11 := d, and *)
-(* Q2 step 4's first instruction (`xorl %ecx,%r11d`) reads R11 as the       *)
-(* starting point for the F-machinery. Q1's post leaves R11 in MAYCHANGE,   *)
-(* so to compose Q1+Q2 the caller will need a small R11 carry lemma.        *)
+(* Pre-state pins R11 = word_zx (word_zx d) — the asm at line 115 of      *)
+(* md5_block_asm_data_order.S (`movl %edx,%r11d`) leaves R11 holding the   *)
+(* int32-zx of EDX = d (Q2's d is what was nd1 in Q1). Q2 step 4's first   *)
+(* instruction (`xorl %ecx,%r11d`) reads R11 to start the F-machinery.     *)
+(* Q1's post exports `read R11 s = read RDX s`, which under composition    *)
+(* d := nd1 reduces to `word_zx (word_zx d):int64` modulo WORD_ZX_TRIVIAL. *)
 (* ------------------------------------------------------------------------- *)
 
 let MD5_QUARTER2_CORRECT = prove
