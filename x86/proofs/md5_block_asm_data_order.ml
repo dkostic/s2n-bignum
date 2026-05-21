@@ -5059,9 +5059,10 @@ REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) 
 (* ------------------------------------------------------------------------- *)
 
 let MD5_QUARTER9_CORRECT = prove
- (`!pc data_ptr a b c d (w0:int32) w1 w5 w8 w11 w14:int32.
+ (`!pc (data_ptr:int64) (a:int32) (b:int32) (c:int32) (d:int32)
+   (w0:int32) (w1:int32) (w5:int32) (w8:int32) (w11:int32) (w14:int32).
         nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
-                       (data_ptr:int64,64)
+                       (data_ptr,64)
         ==> ensures x86
               (\s. bytes_loaded s (word pc)
                      (BUTLAST md5_block_asm_data_order_tmc) /\
