@@ -1512,7 +1512,8 @@ let MD5_QUARTER2_CORRECT = prove
                                              (word_add w7 (EL 7 md5_T)))
                                    22)) /\
                    read RSI s = data_ptr /\
-                   read R10 s = word_zx w8)
+                   read R10 s = word_zx w8 /\
+                   read R11 s = read RDX s)
               (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
                MAYCHANGE [RAX; RBX; RCX; RDX; R10; R11] ,,
                MAYCHANGE SOME_FLAGS)`,
@@ -1806,7 +1807,8 @@ let MD5_QUARTER3_CORRECT = prove
                                              (word_add w11 (EL 11 md5_T)))
                                    22)) /\
                    read RSI s = data_ptr /\
-                   read R10 s = word_zx w12)
+                   read R10 s = word_zx w12 /\
+                   read R11 s = read RDX s)
               (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
                MAYCHANGE [RAX; RBX; RCX; RDX; R10; R11] ,,
                MAYCHANGE SOME_FLAGS)`,
