@@ -186,34 +186,45 @@ let sha1su0 = define
 (**
  ** SHA1SU1 Vd.4S, Vn.4S  -- Schedule Update 1
  **
- **  Operation
- **    bits(128) operand1 = V[d];     // partial schedule from SHA1SU0
- **    bits(128) operand2 = V[n];     // last four W-words
+ **  ARM ARM pseudocode (aarch64.instrs.SHA1SU1_V_VV_v):
+ **
+ **    bits(128) operand1 = V[d];
+ **    bits(128) operand2 = V[n];
  **    bits(128) result;
- **    bits(128) T0  = operand1 EOR ((operand2<127:32>) : 0<31:0>);
- **    // T0 lanes are the four pre-rotation candidates W[i-3]^W[i-8]^...
- **    // Then ROL each lane by 1, except the top lane also XORs ROL2 of
- **    // the bottom lane (because the top lane's W[i-3] hasn't been
- **    // computed yet -- ARM uses W[i-3] = ROL1(low lane T0) = ROL1(W[i-3]
- **    // candidate) and so the contribution is ROL1(ROL1(low T0)) = ROL2.
- **    Elem[result, 0, 32] = ROL(Elem[T0, 0, 32], 1);
- **    Elem[result, 1, 32] = ROL(Elem[T0, 1, 32], 1);
- **    Elem[result, 2, 32] = ROL(Elem[T0, 2, 32], 1);
- **    Elem[result, 3, 32] = ROL(Elem[T0, 3, 32], 1) EOR
- **                          ROL(Elem[T0, 0, 32], 2);
+ **    bits(128) T = operand1 EOR LSR(operand2, 32);
+ **    Elem[result, 0, 32] = ROL(Elem[T, 0, 32], 1);
+ **    Elem[result, 1, 32] = ROL(Elem[T, 1, 32], 1);
+ **    Elem[result, 2, 32] = ROL(Elem[T, 2, 32], 1);
+ **    Elem[result, 3, 32] = ROL(Elem[T, 3, 32], 1) EOR
+ **                          ROL(Elem[T, 0, 32], 2);
  **    V[d] = result;
+ **
+ **  `LSR(operand2, 32)` on a 128-bit register shifts the entire register
+ **  right by 32 bits, zero-filling at the top, i.e.:
+ **    LSR(n,32)<31:0>   = n<63:32>     (operand2 lane 1 -> lane 0)
+ **    LSR(n,32)<63:32>  = n<95:64>     (lane 2 -> lane 1)
+ **    LSR(n,32)<95:64>  = n<127:96>    (lane 3 -> lane 2)
+ **    LSR(n,32)<127:96> = 0
+ **
+ **  Hence the per-lane T values are:
+ **    T<31:0>   = d<31:0>   EOR n<63:32>
+ **    T<63:32>  = d<63:32>  EOR n<95:64>
+ **    T<95:64>  = d<95:64>  EOR n<127:96>
+ **    T<127:96> = d<127:96>             (the LSR contribution is 0)
  **)
 let sha1su1 = define
   `sha1su1 (d:int128) (n:int128) : int128 =
-          let t0_0:int32 = word_subword d (0,32) in
-          let t0_1:int32 = word_subword d (32,32) in
-          let t0_2:int32 = word_subword d (64,32) in
-          let t0_3:int32 = word_xor (word_subword d (96,32))
-                                    (word_subword n (32,32):int32) in
-          let r0:int32 = word_rol t0_0 1 in
-          let r1:int32 = word_rol t0_1 1 in
-          let r2:int32 = word_rol t0_2 1 in
-          let r3:int32 = word_xor (word_rol t0_3 1) (word_rol t0_0 2) in
+          let t_0:int32 = word_xor (word_subword d (0,32):int32)
+                                   (word_subword n (32,32):int32) in
+          let t_1:int32 = word_xor (word_subword d (32,32):int32)
+                                   (word_subword n (64,32):int32) in
+          let t_2:int32 = word_xor (word_subword d (64,32):int32)
+                                   (word_subword n (96,32):int32) in
+          let t_3:int32 = word_subword d (96,32) in
+          let r0:int32 = word_rol t_0 1 in
+          let r1:int32 = word_rol t_1 1 in
+          let r2:int32 = word_rol t_2 1 in
+          let r3:int32 = word_xor (word_rol t_3 1) (word_rol t_0 2) in
           (word_join:int32->96 word->int128) r3
             ((word_join:int32->64 word->96 word) r2
                ((word_join:int32->int32->64 word) r1 r0))`;;
