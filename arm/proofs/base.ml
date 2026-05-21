@@ -67,6 +67,23 @@ extra_word_CONV := [AESE_REDUCE_CONV; AESMC_REDUCE_CONV;
                     @ (!extra_word_CONV);;
 
 (* ------------------------------------------------------------------------- *)
+(* SHA-1 cryptographic-extension semantics. Loaded BEFORE instruction.ml so  *)
+(* the arm_SHA1* constructors there can reference sha1{c,p,m,h,su0,su1}.     *)
+(* (sha256.ml and sha512.ml are loaded above, before this point, and so      *)
+(* play the same role for their respective constructors.)                    *)
+(* ------------------------------------------------------------------------- *)
+
+loadt "arm/proofs/sha1.ml";;
+extra_word_CONV :=
+        [SHA1C_REDUCE_CONV;
+         SHA1P_REDUCE_CONV;
+         SHA1M_REDUCE_CONV;
+         SHA1H_REDUCE_CONV;
+         SHA1SU0_REDUCE_CONV;
+         SHA1SU1_REDUCE_CONV]
+        @ (!extra_word_CONV);;
+
+(* ------------------------------------------------------------------------- *)
 (* The main ARM model.                                                       *)
 (* ------------------------------------------------------------------------- *)
 
