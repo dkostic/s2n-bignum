@@ -4117,7 +4117,9 @@ let MD5_ROUND1_CORRECT = prove
                             (word_rol (word_add (word_add nb11 (md5_F nc14 nd13 na12))
                                                 (word_add w15 (EL 15 md5_T)))
                                       22) in
-                       nb15))
+                       nb15) /\
+                  read R10 s = (word_zx:int32->int64) (w0:int32) /\
+                  read R11 s = read RDX s)
              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
               MAYCHANGE [RAX; RBX; RCX; RDX; R10; R11] ,,
               MAYCHANGE SOME_FLAGS)`,
