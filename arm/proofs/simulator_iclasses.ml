@@ -272,6 +272,25 @@ let iclasses =
   (*** SHA512SU1 ***)
   "11001110011xxxxx100010xxxxxxxxxx";
 
+  (*** SHA1 Intrinsics ***)
+  (*** SHA1C ***)
+  "01011110000xxxxx000000xxxxxxxxxx";
+
+  (*** SHA1P ***)
+  "01011110000xxxxx000100xxxxxxxxxx";
+
+  (*** SHA1M ***)
+  "01011110000xxxxx001000xxxxxxxxxx";
+
+  (*** SHA1SU0 ***)
+  "01011110000xxxxx001100xxxxxxxxxx";
+
+  (*** SHA1H ***)
+  "0101111000101000000010xxxxxxxxxx";
+
+  (*** SHA1SU1 ***)
+  "0101111000101000000110xxxxxxxxxx";
+
   (*** SHL (make sure immh is nonzero) ***)
   "0x00111101xxxxxx010101xxxxxxxxxx";
   "0x001111001xxxxx010101xxxxxxxxxx";
