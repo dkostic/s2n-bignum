@@ -1066,3 +1066,118 @@ let MD5_R1_STEP1_CORRECT = prove
   GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
   AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
   CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
+(* Round-1 step 2 over [pc+122, pc+154). Computes:                           *)
+(*   new_c = d + ROL_17(c + md5_F d a b + W[2] + T[2])                       *)
+(* into RCX. RAX/RBX/RDX unchanged. R10 reloaded with W[3], R11 = word_zx a  *)
+(* (carries to step 3's preamble XOR r11d, edx).                             *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_R1_STEP2_CORRECT = prove
+ (`!pc data_ptr a b c d w2 w3:int32.
+        nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                       (data_ptr:int64,64)
+        ==> ensures x86
+              (\s. bytes_loaded s (word pc)
+                     (BUTLAST md5_block_asm_data_order_tmc) /\
+                   read RIP s = word(pc + 122) /\
+                   read RSI s = data_ptr /\
+                   read RAX s = word_zx a /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read R10 s = word_zx w2 /\
+                   read R11 s = word_zx (word_zx b:int32) /\
+                   read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3)
+              (\s. read RIP s = word(pc + 154) /\
+                   read RAX s = word_zx a /\
+                   read RBX s = word_zx b /\
+                   read RCX s =
+                     word_zx (word_add d (word_rol (word_add (word_add c (md5_F d a b))
+                                                             (word_add w2 (EL 2 md5_T)))
+                                                   17)) /\
+                   read RDX s = word_zx d /\
+                   read R10 s = word_zx w3 /\
+                   read R11 s = word_zx (word_zx a:int32))
+              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+               MAYCHANGE [RCX; R10; R11] ,,
+               MAYCHANGE SOME_FLAGS)`,
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--9) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  SIMP_TAC[WORD_SX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  REWRITE_TAC[md5_T] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV [GSYM MD5_F_XOR_AND_FORM] THEN
+  SUBGOAL_THEN
+   `word_xor (word_and (word_xor b a) (d:int32)) b =
+    word_xor (word_and d (word_xor a b)) b`
+   SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+  AP_TERM_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
+  AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+  CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
+(* Round-1 step 3 over [pc+154, pc+186), the last step of round-1's first    *)
+(* quarter. Computes:                                                        *)
+(*   new_b = c + ROL_22(b + md5_F c d a + W[3] + T[3])                       *)
+(* into RBX. RAX/RCX/RDX unchanged. R10 reloaded with W[4], R11 = word_zx d  *)
+(* (carries to step 4's preamble — the start of quarter 2).                  *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_R1_STEP3_CORRECT = prove
+ (`!pc data_ptr a b c d w3 w4:int32.
+        nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                       (data_ptr:int64,64)
+        ==> ensures x86
+              (\s. bytes_loaded s (word pc)
+                     (BUTLAST md5_block_asm_data_order_tmc) /\
+                   read RIP s = word(pc + 154) /\
+                   read RSI s = data_ptr /\
+                   read RAX s = word_zx a /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read R10 s = word_zx w3 /\
+                   read R11 s = word_zx (word_zx a:int32) /\
+                   read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4)
+              (\s. read RIP s = word(pc + 186) /\
+                   read RAX s = word_zx a /\
+                   read RBX s =
+                     word_zx (word_add c (word_rol (word_add (word_add b (md5_F c d a))
+                                                             (word_add w3 (EL 3 md5_T)))
+                                                   22)) /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read R10 s = word_zx w4 /\
+                   read R11 s = word_zx (word_zx d:int32))
+              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+               MAYCHANGE [RBX; R10; R11] ,,
+               MAYCHANGE SOME_FLAGS)`,
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--9) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  SIMP_TAC[WORD_SX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  REWRITE_TAC[md5_T] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV [GSYM MD5_F_XOR_AND_FORM] THEN
+  SUBGOAL_THEN
+   `word_xor (word_and (word_xor a d) (c:int32)) a =
+    word_xor (word_and c (word_xor d a)) a`
+   SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+  AP_TERM_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
+  AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+  CONV_TAC WORD_RULE);;
