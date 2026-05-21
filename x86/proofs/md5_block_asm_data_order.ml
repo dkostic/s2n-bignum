@@ -11052,3 +11052,1388 @@ MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
 REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL];
 REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
 REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN RULE_ASSUM_TAC BETA_RULE THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV let_CONV) THEN REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]]]);;
+(* ------------------------------------------------------------------------- *)
+(* Spec-form retrofit: md5_compress 64 W [a;b;c;d] = [na60;nb63;nc62;nd61].   *)
+(*                                                                            *)
+(* Single 64-step retrofit lemma, modeled on MD5_COMPRESS_4_F_VALUES (line    *)
+(* 1030). Each per-step na/nd/nc/nb is bound to its standard MD5 update.     *)
+(* The conclusion gives the cyclic rotation result after 64 rounds.          *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_COMPRESS_64_VALUES = prove
+ (`!(W:int32 list) (a:int32) b c d
+        w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
+        na0 nd1 nc2 nb3 na4 nd5 nc6 nb7
+        na8 nd9 nc10 nb11 na12 nd13 nc14 nb15
+        na16 nd17 nc18 nb19 na20 nd21 nc22 nb23
+        na24 nd25 nc26 nb27 na28 nd29 nc30 nb31
+        na32 nd33 nc34 nb35 na36 nd37 nc38 nb39
+        na40 nd41 nc42 nb43 na44 nd45 nc46 nb47
+        na48 nd49 nc50 nb51 na52 nd53 nc54 nb55
+        na56 nd57 nc58 nb59 na60 nd61 nc62 nb63.
+        LENGTH W = 16 /\
+        w0 = EL 0 W /\
+        w1 = EL 1 W /\
+        w2 = EL 2 W /\
+        w3 = EL 3 W /\
+        w4 = EL 4 W /\
+        w5 = EL 5 W /\
+        w6 = EL 6 W /\
+        w7 = EL 7 W /\
+        w8 = EL 8 W /\
+        w9 = EL 9 W /\
+        w10 = EL 10 W /\
+        w11 = EL 11 W /\
+        w12 = EL 12 W /\
+        w13 = EL 13 W /\
+        w14 = EL 14 W /\
+        w15 = EL 15 W /\
+        na0 = word_add b
+               (word_rol (word_add (word_add a (md5_F b c d))
+                                   (word_add w0 (EL 0 md5_T)))
+                         7) /\
+        nd1 = word_add na0
+               (word_rol (word_add (word_add d (md5_F na0 b c))
+                                   (word_add w1 (EL 1 md5_T)))
+                         12) /\
+        nc2 = word_add nd1
+               (word_rol (word_add (word_add c (md5_F nd1 na0 b))
+                                   (word_add w2 (EL 2 md5_T)))
+                         17) /\
+        nb3 = word_add nc2
+               (word_rol (word_add (word_add b (md5_F nc2 nd1 na0))
+                                   (word_add w3 (EL 3 md5_T)))
+                         22) /\
+        na4 = word_add nb3
+               (word_rol (word_add (word_add na0 (md5_F nb3 nc2 nd1))
+                                   (word_add w4 (EL 4 md5_T)))
+                         7) /\
+        nd5 = word_add na4
+               (word_rol (word_add (word_add nd1 (md5_F na4 nb3 nc2))
+                                   (word_add w5 (EL 5 md5_T)))
+                         12) /\
+        nc6 = word_add nd5
+               (word_rol (word_add (word_add nc2 (md5_F nd5 na4 nb3))
+                                   (word_add w6 (EL 6 md5_T)))
+                         17) /\
+        nb7 = word_add nc6
+               (word_rol (word_add (word_add nb3 (md5_F nc6 nd5 na4))
+                                   (word_add w7 (EL 7 md5_T)))
+                         22) /\
+        na8 = word_add nb7
+               (word_rol (word_add (word_add na4 (md5_F nb7 nc6 nd5))
+                                   (word_add w8 (EL 8 md5_T)))
+                         7) /\
+        nd9 = word_add na8
+               (word_rol (word_add (word_add nd5 (md5_F na8 nb7 nc6))
+                                   (word_add w9 (EL 9 md5_T)))
+                         12) /\
+        nc10 = word_add nd9
+               (word_rol (word_add (word_add nc6 (md5_F nd9 na8 nb7))
+                                   (word_add w10 (EL 10 md5_T)))
+                         17) /\
+        nb11 = word_add nc10
+               (word_rol (word_add (word_add nb7 (md5_F nc10 nd9 na8))
+                                   (word_add w11 (EL 11 md5_T)))
+                         22) /\
+        na12 = word_add nb11
+               (word_rol (word_add (word_add na8 (md5_F nb11 nc10 nd9))
+                                   (word_add w12 (EL 12 md5_T)))
+                         7) /\
+        nd13 = word_add na12
+               (word_rol (word_add (word_add nd9 (md5_F na12 nb11 nc10))
+                                   (word_add w13 (EL 13 md5_T)))
+                         12) /\
+        nc14 = word_add nd13
+               (word_rol (word_add (word_add nc10 (md5_F nd13 na12 nb11))
+                                   (word_add w14 (EL 14 md5_T)))
+                         17) /\
+        nb15 = word_add nc14
+               (word_rol (word_add (word_add nb11 (md5_F nc14 nd13 na12))
+                                   (word_add w15 (EL 15 md5_T)))
+                         22) /\
+        na16 = word_add nb15
+               (word_rol (word_add (word_add na12 (md5_G nb15 nc14 nd13))
+                                   (word_add w1 (EL 16 md5_T)))
+                         5) /\
+        nd17 = word_add na16
+               (word_rol (word_add (word_add nd13 (md5_G na16 nb15 nc14))
+                                   (word_add w6 (EL 17 md5_T)))
+                         9) /\
+        nc18 = word_add nd17
+               (word_rol (word_add (word_add nc14 (md5_G nd17 na16 nb15))
+                                   (word_add w11 (EL 18 md5_T)))
+                         14) /\
+        nb19 = word_add nc18
+               (word_rol (word_add (word_add nb15 (md5_G nc18 nd17 na16))
+                                   (word_add w0 (EL 19 md5_T)))
+                         20) /\
+        na20 = word_add nb19
+               (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                   (word_add w5 (EL 20 md5_T)))
+                         5) /\
+        nd21 = word_add na20
+               (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                   (word_add w10 (EL 21 md5_T)))
+                         9) /\
+        nc22 = word_add nd21
+               (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                   (word_add w15 (EL 22 md5_T)))
+                         14) /\
+        nb23 = word_add nc22
+               (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                   (word_add w4 (EL 23 md5_T)))
+                         20) /\
+        na24 = word_add nb23
+               (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                   (word_add w9 (EL 24 md5_T)))
+                         5) /\
+        nd25 = word_add na24
+               (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                   (word_add w14 (EL 25 md5_T)))
+                         9) /\
+        nc26 = word_add nd25
+               (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                   (word_add w3 (EL 26 md5_T)))
+                         14) /\
+        nb27 = word_add nc26
+               (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                   (word_add w8 (EL 27 md5_T)))
+                         20) /\
+        na28 = word_add nb27
+               (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25))
+                                   (word_add w13 (EL 28 md5_T)))
+                         5) /\
+        nd29 = word_add na28
+               (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26))
+                                   (word_add w2 (EL 29 md5_T)))
+                         9) /\
+        nc30 = word_add nd29
+               (word_rol (word_add (word_add nc26 (md5_G nd29 na28 nb27))
+                                   (word_add w7 (EL 30 md5_T)))
+                         14) /\
+        nb31 = word_add nc30
+               (word_rol (word_add (word_add nb27 (md5_G nc30 nd29 na28))
+                                   (word_add w12 (EL 31 md5_T)))
+                         20) /\
+        na32 = word_add nb31
+               (word_rol (word_add (word_add na28 (md5_H nb31 nc30 nd29))
+                                   (word_add w5 (EL 32 md5_T)))
+                         4) /\
+        nd33 = word_add na32
+               (word_rol (word_add (word_add nd29 (md5_H na32 nb31 nc30))
+                                   (word_add w8 (EL 33 md5_T)))
+                         11) /\
+        nc34 = word_add nd33
+               (word_rol (word_add (word_add nc30 (md5_H nd33 na32 nb31))
+                                   (word_add w11 (EL 34 md5_T)))
+                         16) /\
+        nb35 = word_add nc34
+               (word_rol (word_add (word_add nb31 (md5_H nc34 nd33 na32))
+                                   (word_add w14 (EL 35 md5_T)))
+                         23) /\
+        na36 = word_add nb35
+               (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33))
+                                   (word_add w1 (EL 36 md5_T)))
+                         4) /\
+        nd37 = word_add na36
+               (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34))
+                                   (word_add w4 (EL 37 md5_T)))
+                         11) /\
+        nc38 = word_add nd37
+               (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35))
+                                   (word_add w7 (EL 38 md5_T)))
+                         16) /\
+        nb39 = word_add nc38
+               (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36))
+                                   (word_add w10 (EL 39 md5_T)))
+                         23) /\
+        na40 = word_add nb39
+               (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37))
+                                   (word_add w13 (EL 40 md5_T)))
+                         4) /\
+        nd41 = word_add na40
+               (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38))
+                                   (word_add w0 (EL 41 md5_T)))
+                         11) /\
+        nc42 = word_add nd41
+               (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39))
+                                   (word_add w3 (EL 42 md5_T)))
+                         16) /\
+        nb43 = word_add nc42
+               (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40))
+                                   (word_add w6 (EL 43 md5_T)))
+                         23) /\
+        na44 = word_add nb43
+               (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41))
+                                   (word_add w9 (EL 44 md5_T)))
+                         4) /\
+        nd45 = word_add na44
+               (word_rol (word_add (word_add nd41 (md5_H na44 nb43 nc42))
+                                   (word_add w12 (EL 45 md5_T)))
+                         11) /\
+        nc46 = word_add nd45
+               (word_rol (word_add (word_add nc42 (md5_H nd45 na44 nb43))
+                                   (word_add w15 (EL 46 md5_T)))
+                         16) /\
+        nb47 = word_add nc46
+               (word_rol (word_add (word_add nb43 (md5_H nc46 nd45 na44))
+                                   (word_add w2 (EL 47 md5_T)))
+                         23) /\
+        na48 = word_add nb47
+               (word_rol (word_add (word_add na44 (md5_I nb47 nc46 nd45))
+                                   (word_add w0 (EL 48 md5_T)))
+                         6) /\
+        nd49 = word_add na48
+               (word_rol (word_add (word_add nd45 (md5_I na48 nb47 nc46))
+                                   (word_add w7 (EL 49 md5_T)))
+                         10) /\
+        nc50 = word_add nd49
+               (word_rol (word_add (word_add nc46 (md5_I nd49 na48 nb47))
+                                   (word_add w14 (EL 50 md5_T)))
+                         15) /\
+        nb51 = word_add nc50
+               (word_rol (word_add (word_add nb47 (md5_I nc50 nd49 na48))
+                                   (word_add w5 (EL 51 md5_T)))
+                         21) /\
+        na52 = word_add nb51
+               (word_rol (word_add (word_add na48 (md5_I nb51 nc50 nd49))
+                                   (word_add w12 (EL 52 md5_T)))
+                         6) /\
+        nd53 = word_add na52
+               (word_rol (word_add (word_add nd49 (md5_I na52 nb51 nc50))
+                                   (word_add w3 (EL 53 md5_T)))
+                         10) /\
+        nc54 = word_add nd53
+               (word_rol (word_add (word_add nc50 (md5_I nd53 na52 nb51))
+                                   (word_add w10 (EL 54 md5_T)))
+                         15) /\
+        nb55 = word_add nc54
+               (word_rol (word_add (word_add nb51 (md5_I nc54 nd53 na52))
+                                   (word_add w1 (EL 55 md5_T)))
+                         21) /\
+        na56 = word_add nb55
+               (word_rol (word_add (word_add na52 (md5_I nb55 nc54 nd53))
+                                   (word_add w8 (EL 56 md5_T)))
+                         6) /\
+        nd57 = word_add na56
+               (word_rol (word_add (word_add nd53 (md5_I na56 nb55 nc54))
+                                   (word_add w15 (EL 57 md5_T)))
+                         10) /\
+        nc58 = word_add nd57
+               (word_rol (word_add (word_add nc54 (md5_I nd57 na56 nb55))
+                                   (word_add w6 (EL 58 md5_T)))
+                         15) /\
+        nb59 = word_add nc58
+               (word_rol (word_add (word_add nb55 (md5_I nc58 nd57 na56))
+                                   (word_add w13 (EL 59 md5_T)))
+                         21) /\
+        na60 = word_add nb59
+               (word_rol (word_add (word_add na56 (md5_I nb59 nc58 nd57))
+                                   (word_add w4 (EL 60 md5_T)))
+                         6) /\
+        nd61 = word_add na60
+               (word_rol (word_add (word_add nd57 (md5_I na60 nb59 nc58))
+                                   (word_add w11 (EL 61 md5_T)))
+                         10) /\
+        nc62 = word_add nd61
+               (word_rol (word_add (word_add nc58 (md5_I nd61 na60 nb59))
+                                   (word_add w2 (EL 62 md5_T)))
+                         15) /\
+        nb63 = word_add nc62
+               (word_rol (word_add (word_add nb59 (md5_I nc62 nd61 na60))
+                                   (word_add w9 (EL 63 md5_T)))
+                         21)
+        ==> md5_compress 64 W [a;b;c;d] =
+            [na60; nb63; nc62; nd61]`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `64 = 63 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `63 = 62 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `62 = 61 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `61 = 60 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `60 = 59 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `59 = 58 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `58 = 57 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `57 = 56 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `56 = 55 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `55 = 54 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `54 = 53 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `53 = 52 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `52 = 51 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `51 = 50 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `50 = 49 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `49 = 48 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `48 = 47 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `47 = 46 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `46 = 45 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `45 = 44 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `44 = 43 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `43 = 42 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `42 = 41 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `41 = 40 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `40 = 39 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `39 = 38 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `38 = 37 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `37 = 36 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `36 = 35 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `35 = 34 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `34 = 33 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `33 = 32 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `32 = 31 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `31 = 30 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `30 = 29 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `29 = 28 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `28 = 27 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `27 = 26 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `26 = 25 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `25 = 24 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `24 = 23 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `23 = 22 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `22 = 21 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `21 = 20 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `20 = 19 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `19 = 18 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `18 = 17 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `17 = 16 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `16 = 15 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `15 = 14 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `14 = 13 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `13 = 12 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `12 = 11 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `11 = 10 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `10 = 9 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `9 = 8 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `8 = 7 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `7 = 6 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `6 = 5 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `5 = 4 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `4 = 3 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `3 = 2 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `2 = 1 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `1 = 0 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  CONV_TAC(ONCE_DEPTH_CONV NUM_REDUCE_CONV) THEN
+  (* Round 0 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (a:int32)
+             (word_add (md5_F b c d) (word_add (EL 0 W) (EL 0 md5_T))) =
+    word_add (word_add a (md5_F b c d)) (word_add w0 (EL 0 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na0:int32 =
+    word_add b
+     (word_rol (word_add (word_add a (md5_F b c d)) (word_add w0 (EL 0 md5_T)))
+               7)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 1 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (d:int32)
+             (word_add (md5_F na0 b c) (word_add (EL 1 W) (EL 1 md5_T))) =
+    word_add (word_add d (md5_F na0 b c)) (word_add w1 (EL 1 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd1:int32 =
+    word_add na0
+     (word_rol (word_add (word_add d (md5_F na0 b c)) (word_add w1 (EL 1 md5_T)))
+               12)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 2 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (c:int32)
+             (word_add (md5_F nd1 na0 b) (word_add (EL 2 W) (EL 2 md5_T))) =
+    word_add (word_add c (md5_F nd1 na0 b)) (word_add w2 (EL 2 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc2:int32 =
+    word_add nd1
+     (word_rol (word_add (word_add c (md5_F nd1 na0 b)) (word_add w2 (EL 2 md5_T)))
+               17)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 3 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (b:int32)
+             (word_add (md5_F nc2 nd1 na0) (word_add (EL 3 W) (EL 3 md5_T))) =
+    word_add (word_add b (md5_F nc2 nd1 na0)) (word_add w3 (EL 3 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb3:int32 =
+    word_add nc2
+     (word_rol (word_add (word_add b (md5_F nc2 nd1 na0)) (word_add w3 (EL 3 md5_T)))
+               22)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 4 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na0:int32)
+             (word_add (md5_F nb3 nc2 nd1) (word_add (EL 4 W) (EL 4 md5_T))) =
+    word_add (word_add na0 (md5_F nb3 nc2 nd1)) (word_add w4 (EL 4 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na4:int32 =
+    word_add nb3
+     (word_rol (word_add (word_add na0 (md5_F nb3 nc2 nd1)) (word_add w4 (EL 4 md5_T)))
+               7)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 5 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd1:int32)
+             (word_add (md5_F na4 nb3 nc2) (word_add (EL 5 W) (EL 5 md5_T))) =
+    word_add (word_add nd1 (md5_F na4 nb3 nc2)) (word_add w5 (EL 5 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd5:int32 =
+    word_add na4
+     (word_rol (word_add (word_add nd1 (md5_F na4 nb3 nc2)) (word_add w5 (EL 5 md5_T)))
+               12)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 6 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc2:int32)
+             (word_add (md5_F nd5 na4 nb3) (word_add (EL 6 W) (EL 6 md5_T))) =
+    word_add (word_add nc2 (md5_F nd5 na4 nb3)) (word_add w6 (EL 6 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc6:int32 =
+    word_add nd5
+     (word_rol (word_add (word_add nc2 (md5_F nd5 na4 nb3)) (word_add w6 (EL 6 md5_T)))
+               17)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 7 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb3:int32)
+             (word_add (md5_F nc6 nd5 na4) (word_add (EL 7 W) (EL 7 md5_T))) =
+    word_add (word_add nb3 (md5_F nc6 nd5 na4)) (word_add w7 (EL 7 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb7:int32 =
+    word_add nc6
+     (word_rol (word_add (word_add nb3 (md5_F nc6 nd5 na4)) (word_add w7 (EL 7 md5_T)))
+               22)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 8 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na4:int32)
+             (word_add (md5_F nb7 nc6 nd5) (word_add (EL 8 W) (EL 8 md5_T))) =
+    word_add (word_add na4 (md5_F nb7 nc6 nd5)) (word_add w8 (EL 8 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na8:int32 =
+    word_add nb7
+     (word_rol (word_add (word_add na4 (md5_F nb7 nc6 nd5)) (word_add w8 (EL 8 md5_T)))
+               7)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 9 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd5:int32)
+             (word_add (md5_F na8 nb7 nc6) (word_add (EL 9 W) (EL 9 md5_T))) =
+    word_add (word_add nd5 (md5_F na8 nb7 nc6)) (word_add w9 (EL 9 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd9:int32 =
+    word_add na8
+     (word_rol (word_add (word_add nd5 (md5_F na8 nb7 nc6)) (word_add w9 (EL 9 md5_T)))
+               12)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 10 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc6:int32)
+             (word_add (md5_F nd9 na8 nb7) (word_add (EL 10 W) (EL 10 md5_T))) =
+    word_add (word_add nc6 (md5_F nd9 na8 nb7)) (word_add w10 (EL 10 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc10:int32 =
+    word_add nd9
+     (word_rol (word_add (word_add nc6 (md5_F nd9 na8 nb7)) (word_add w10 (EL 10 md5_T)))
+               17)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 11 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb7:int32)
+             (word_add (md5_F nc10 nd9 na8) (word_add (EL 11 W) (EL 11 md5_T))) =
+    word_add (word_add nb7 (md5_F nc10 nd9 na8)) (word_add w11 (EL 11 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb11:int32 =
+    word_add nc10
+     (word_rol (word_add (word_add nb7 (md5_F nc10 nd9 na8)) (word_add w11 (EL 11 md5_T)))
+               22)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 12 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na8:int32)
+             (word_add (md5_F nb11 nc10 nd9) (word_add (EL 12 W) (EL 12 md5_T))) =
+    word_add (word_add na8 (md5_F nb11 nc10 nd9)) (word_add w12 (EL 12 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na12:int32 =
+    word_add nb11
+     (word_rol (word_add (word_add na8 (md5_F nb11 nc10 nd9)) (word_add w12 (EL 12 md5_T)))
+               7)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 13 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd9:int32)
+             (word_add (md5_F na12 nb11 nc10) (word_add (EL 13 W) (EL 13 md5_T))) =
+    word_add (word_add nd9 (md5_F na12 nb11 nc10)) (word_add w13 (EL 13 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd13:int32 =
+    word_add na12
+     (word_rol (word_add (word_add nd9 (md5_F na12 nb11 nc10)) (word_add w13 (EL 13 md5_T)))
+               12)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 14 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc10:int32)
+             (word_add (md5_F nd13 na12 nb11) (word_add (EL 14 W) (EL 14 md5_T))) =
+    word_add (word_add nc10 (md5_F nd13 na12 nb11)) (word_add w14 (EL 14 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc14:int32 =
+    word_add nd13
+     (word_rol (word_add (word_add nc10 (md5_F nd13 na12 nb11)) (word_add w14 (EL 14 md5_T)))
+               17)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 15 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb11:int32)
+             (word_add (md5_F nc14 nd13 na12) (word_add (EL 15 W) (EL 15 md5_T))) =
+    word_add (word_add nb11 (md5_F nc14 nd13 na12)) (word_add w15 (EL 15 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb15:int32 =
+    word_add nc14
+     (word_rol (word_add (word_add nb11 (md5_F nc14 nd13 na12)) (word_add w15 (EL 15 md5_T)))
+               22)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 16 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na12:int32)
+             (word_add (md5_G nb15 nc14 nd13) (word_add (EL 1 W) (EL 16 md5_T))) =
+    word_add (word_add na12 (md5_G nb15 nc14 nd13)) (word_add w1 (EL 16 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na16:int32 =
+    word_add nb15
+     (word_rol (word_add (word_add na12 (md5_G nb15 nc14 nd13)) (word_add w1 (EL 16 md5_T)))
+               5)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 17 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd13:int32)
+             (word_add (md5_G na16 nb15 nc14) (word_add (EL 6 W) (EL 17 md5_T))) =
+    word_add (word_add nd13 (md5_G na16 nb15 nc14)) (word_add w6 (EL 17 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd17:int32 =
+    word_add na16
+     (word_rol (word_add (word_add nd13 (md5_G na16 nb15 nc14)) (word_add w6 (EL 17 md5_T)))
+               9)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 18 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc14:int32)
+             (word_add (md5_G nd17 na16 nb15) (word_add (EL 11 W) (EL 18 md5_T))) =
+    word_add (word_add nc14 (md5_G nd17 na16 nb15)) (word_add w11 (EL 18 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc18:int32 =
+    word_add nd17
+     (word_rol (word_add (word_add nc14 (md5_G nd17 na16 nb15)) (word_add w11 (EL 18 md5_T)))
+               14)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 19 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb15:int32)
+             (word_add (md5_G nc18 nd17 na16) (word_add (EL 0 W) (EL 19 md5_T))) =
+    word_add (word_add nb15 (md5_G nc18 nd17 na16)) (word_add w0 (EL 19 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb19:int32 =
+    word_add nc18
+     (word_rol (word_add (word_add nb15 (md5_G nc18 nd17 na16)) (word_add w0 (EL 19 md5_T)))
+               20)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 20 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na16:int32)
+             (word_add (md5_G nb19 nc18 nd17) (word_add (EL 5 W) (EL 20 md5_T))) =
+    word_add (word_add na16 (md5_G nb19 nc18 nd17)) (word_add w5 (EL 20 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na20:int32 =
+    word_add nb19
+     (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17)) (word_add w5 (EL 20 md5_T)))
+               5)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 21 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd17:int32)
+             (word_add (md5_G na20 nb19 nc18) (word_add (EL 10 W) (EL 21 md5_T))) =
+    word_add (word_add nd17 (md5_G na20 nb19 nc18)) (word_add w10 (EL 21 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd21:int32 =
+    word_add na20
+     (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18)) (word_add w10 (EL 21 md5_T)))
+               9)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 22 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc18:int32)
+             (word_add (md5_G nd21 na20 nb19) (word_add (EL 15 W) (EL 22 md5_T))) =
+    word_add (word_add nc18 (md5_G nd21 na20 nb19)) (word_add w15 (EL 22 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc22:int32 =
+    word_add nd21
+     (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19)) (word_add w15 (EL 22 md5_T)))
+               14)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 23 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb19:int32)
+             (word_add (md5_G nc22 nd21 na20) (word_add (EL 4 W) (EL 23 md5_T))) =
+    word_add (word_add nb19 (md5_G nc22 nd21 na20)) (word_add w4 (EL 23 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb23:int32 =
+    word_add nc22
+     (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20)) (word_add w4 (EL 23 md5_T)))
+               20)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 24 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na20:int32)
+             (word_add (md5_G nb23 nc22 nd21) (word_add (EL 9 W) (EL 24 md5_T))) =
+    word_add (word_add na20 (md5_G nb23 nc22 nd21)) (word_add w9 (EL 24 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na24:int32 =
+    word_add nb23
+     (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21)) (word_add w9 (EL 24 md5_T)))
+               5)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 25 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd21:int32)
+             (word_add (md5_G na24 nb23 nc22) (word_add (EL 14 W) (EL 25 md5_T))) =
+    word_add (word_add nd21 (md5_G na24 nb23 nc22)) (word_add w14 (EL 25 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd25:int32 =
+    word_add na24
+     (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22)) (word_add w14 (EL 25 md5_T)))
+               9)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 26 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc22:int32)
+             (word_add (md5_G nd25 na24 nb23) (word_add (EL 3 W) (EL 26 md5_T))) =
+    word_add (word_add nc22 (md5_G nd25 na24 nb23)) (word_add w3 (EL 26 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc26:int32 =
+    word_add nd25
+     (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23)) (word_add w3 (EL 26 md5_T)))
+               14)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 27 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb23:int32)
+             (word_add (md5_G nc26 nd25 na24) (word_add (EL 8 W) (EL 27 md5_T))) =
+    word_add (word_add nb23 (md5_G nc26 nd25 na24)) (word_add w8 (EL 27 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb27:int32 =
+    word_add nc26
+     (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24)) (word_add w8 (EL 27 md5_T)))
+               20)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 28 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na24:int32)
+             (word_add (md5_G nb27 nc26 nd25) (word_add (EL 13 W) (EL 28 md5_T))) =
+    word_add (word_add na24 (md5_G nb27 nc26 nd25)) (word_add w13 (EL 28 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na28:int32 =
+    word_add nb27
+     (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25)) (word_add w13 (EL 28 md5_T)))
+               5)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 29 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd25:int32)
+             (word_add (md5_G na28 nb27 nc26) (word_add (EL 2 W) (EL 29 md5_T))) =
+    word_add (word_add nd25 (md5_G na28 nb27 nc26)) (word_add w2 (EL 29 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd29:int32 =
+    word_add na28
+     (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26)) (word_add w2 (EL 29 md5_T)))
+               9)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 30 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc26:int32)
+             (word_add (md5_G nd29 na28 nb27) (word_add (EL 7 W) (EL 30 md5_T))) =
+    word_add (word_add nc26 (md5_G nd29 na28 nb27)) (word_add w7 (EL 30 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc30:int32 =
+    word_add nd29
+     (word_rol (word_add (word_add nc26 (md5_G nd29 na28 nb27)) (word_add w7 (EL 30 md5_T)))
+               14)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 31 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb27:int32)
+             (word_add (md5_G nc30 nd29 na28) (word_add (EL 12 W) (EL 31 md5_T))) =
+    word_add (word_add nb27 (md5_G nc30 nd29 na28)) (word_add w12 (EL 31 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb31:int32 =
+    word_add nc30
+     (word_rol (word_add (word_add nb27 (md5_G nc30 nd29 na28)) (word_add w12 (EL 31 md5_T)))
+               20)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 32 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na28:int32)
+             (word_add (md5_H nb31 nc30 nd29) (word_add (EL 5 W) (EL 32 md5_T))) =
+    word_add (word_add na28 (md5_H nb31 nc30 nd29)) (word_add w5 (EL 32 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na32:int32 =
+    word_add nb31
+     (word_rol (word_add (word_add na28 (md5_H nb31 nc30 nd29)) (word_add w5 (EL 32 md5_T)))
+               4)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 33 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd29:int32)
+             (word_add (md5_H na32 nb31 nc30) (word_add (EL 8 W) (EL 33 md5_T))) =
+    word_add (word_add nd29 (md5_H na32 nb31 nc30)) (word_add w8 (EL 33 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd33:int32 =
+    word_add na32
+     (word_rol (word_add (word_add nd29 (md5_H na32 nb31 nc30)) (word_add w8 (EL 33 md5_T)))
+               11)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 34 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc30:int32)
+             (word_add (md5_H nd33 na32 nb31) (word_add (EL 11 W) (EL 34 md5_T))) =
+    word_add (word_add nc30 (md5_H nd33 na32 nb31)) (word_add w11 (EL 34 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc34:int32 =
+    word_add nd33
+     (word_rol (word_add (word_add nc30 (md5_H nd33 na32 nb31)) (word_add w11 (EL 34 md5_T)))
+               16)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 35 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb31:int32)
+             (word_add (md5_H nc34 nd33 na32) (word_add (EL 14 W) (EL 35 md5_T))) =
+    word_add (word_add nb31 (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb35:int32 =
+    word_add nc34
+     (word_rol (word_add (word_add nb31 (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T)))
+               23)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 36 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na32:int32)
+             (word_add (md5_H nb35 nc34 nd33) (word_add (EL 1 W) (EL 36 md5_T))) =
+    word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na36:int32 =
+    word_add nb35
+     (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T)))
+               4)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 37 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd33:int32)
+             (word_add (md5_H na36 nb35 nc34) (word_add (EL 4 W) (EL 37 md5_T))) =
+    word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd37:int32 =
+    word_add na36
+     (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T)))
+               11)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 38 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc34:int32)
+             (word_add (md5_H nd37 na36 nb35) (word_add (EL 7 W) (EL 38 md5_T))) =
+    word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc38:int32 =
+    word_add nd37
+     (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T)))
+               16)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 39 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb35:int32)
+             (word_add (md5_H nc38 nd37 na36) (word_add (EL 10 W) (EL 39 md5_T))) =
+    word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb39:int32 =
+    word_add nc38
+     (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T)))
+               23)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 40 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na36:int32)
+             (word_add (md5_H nb39 nc38 nd37) (word_add (EL 13 W) (EL 40 md5_T))) =
+    word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na40:int32 =
+    word_add nb39
+     (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T)))
+               4)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 41 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd37:int32)
+             (word_add (md5_H na40 nb39 nc38) (word_add (EL 0 W) (EL 41 md5_T))) =
+    word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd41:int32 =
+    word_add na40
+     (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T)))
+               11)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 42 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc38:int32)
+             (word_add (md5_H nd41 na40 nb39) (word_add (EL 3 W) (EL 42 md5_T))) =
+    word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc42:int32 =
+    word_add nd41
+     (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T)))
+               16)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 43 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb39:int32)
+             (word_add (md5_H nc42 nd41 na40) (word_add (EL 6 W) (EL 43 md5_T))) =
+    word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb43:int32 =
+    word_add nc42
+     (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T)))
+               23)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 44 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na40:int32)
+             (word_add (md5_H nb43 nc42 nd41) (word_add (EL 9 W) (EL 44 md5_T))) =
+    word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na44:int32 =
+    word_add nb43
+     (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T)))
+               4)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 45 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd41:int32)
+             (word_add (md5_H na44 nb43 nc42) (word_add (EL 12 W) (EL 45 md5_T))) =
+    word_add (word_add nd41 (md5_H na44 nb43 nc42)) (word_add w12 (EL 45 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd45:int32 =
+    word_add na44
+     (word_rol (word_add (word_add nd41 (md5_H na44 nb43 nc42)) (word_add w12 (EL 45 md5_T)))
+               11)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 46 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc42:int32)
+             (word_add (md5_H nd45 na44 nb43) (word_add (EL 15 W) (EL 46 md5_T))) =
+    word_add (word_add nc42 (md5_H nd45 na44 nb43)) (word_add w15 (EL 46 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc46:int32 =
+    word_add nd45
+     (word_rol (word_add (word_add nc42 (md5_H nd45 na44 nb43)) (word_add w15 (EL 46 md5_T)))
+               16)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 47 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb43:int32)
+             (word_add (md5_H nc46 nd45 na44) (word_add (EL 2 W) (EL 47 md5_T))) =
+    word_add (word_add nb43 (md5_H nc46 nd45 na44)) (word_add w2 (EL 47 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb47:int32 =
+    word_add nc46
+     (word_rol (word_add (word_add nb43 (md5_H nc46 nd45 na44)) (word_add w2 (EL 47 md5_T)))
+               23)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 48 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na44:int32)
+             (word_add (md5_I nb47 nc46 nd45) (word_add (EL 0 W) (EL 48 md5_T))) =
+    word_add (word_add na44 (md5_I nb47 nc46 nd45)) (word_add w0 (EL 48 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na48:int32 =
+    word_add nb47
+     (word_rol (word_add (word_add na44 (md5_I nb47 nc46 nd45)) (word_add w0 (EL 48 md5_T)))
+               6)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 49 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd45:int32)
+             (word_add (md5_I na48 nb47 nc46) (word_add (EL 7 W) (EL 49 md5_T))) =
+    word_add (word_add nd45 (md5_I na48 nb47 nc46)) (word_add w7 (EL 49 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd49:int32 =
+    word_add na48
+     (word_rol (word_add (word_add nd45 (md5_I na48 nb47 nc46)) (word_add w7 (EL 49 md5_T)))
+               10)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 50 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc46:int32)
+             (word_add (md5_I nd49 na48 nb47) (word_add (EL 14 W) (EL 50 md5_T))) =
+    word_add (word_add nc46 (md5_I nd49 na48 nb47)) (word_add w14 (EL 50 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc50:int32 =
+    word_add nd49
+     (word_rol (word_add (word_add nc46 (md5_I nd49 na48 nb47)) (word_add w14 (EL 50 md5_T)))
+               15)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 51 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb47:int32)
+             (word_add (md5_I nc50 nd49 na48) (word_add (EL 5 W) (EL 51 md5_T))) =
+    word_add (word_add nb47 (md5_I nc50 nd49 na48)) (word_add w5 (EL 51 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb51:int32 =
+    word_add nc50
+     (word_rol (word_add (word_add nb47 (md5_I nc50 nd49 na48)) (word_add w5 (EL 51 md5_T)))
+               21)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 52 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na48:int32)
+             (word_add (md5_I nb51 nc50 nd49) (word_add (EL 12 W) (EL 52 md5_T))) =
+    word_add (word_add na48 (md5_I nb51 nc50 nd49)) (word_add w12 (EL 52 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na52:int32 =
+    word_add nb51
+     (word_rol (word_add (word_add na48 (md5_I nb51 nc50 nd49)) (word_add w12 (EL 52 md5_T)))
+               6)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 53 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd49:int32)
+             (word_add (md5_I na52 nb51 nc50) (word_add (EL 3 W) (EL 53 md5_T))) =
+    word_add (word_add nd49 (md5_I na52 nb51 nc50)) (word_add w3 (EL 53 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd53:int32 =
+    word_add na52
+     (word_rol (word_add (word_add nd49 (md5_I na52 nb51 nc50)) (word_add w3 (EL 53 md5_T)))
+               10)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 54 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc50:int32)
+             (word_add (md5_I nd53 na52 nb51) (word_add (EL 10 W) (EL 54 md5_T))) =
+    word_add (word_add nc50 (md5_I nd53 na52 nb51)) (word_add w10 (EL 54 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc54:int32 =
+    word_add nd53
+     (word_rol (word_add (word_add nc50 (md5_I nd53 na52 nb51)) (word_add w10 (EL 54 md5_T)))
+               15)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 55 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb51:int32)
+             (word_add (md5_I nc54 nd53 na52) (word_add (EL 1 W) (EL 55 md5_T))) =
+    word_add (word_add nb51 (md5_I nc54 nd53 na52)) (word_add w1 (EL 55 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb55:int32 =
+    word_add nc54
+     (word_rol (word_add (word_add nb51 (md5_I nc54 nd53 na52)) (word_add w1 (EL 55 md5_T)))
+               21)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 56 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na52:int32)
+             (word_add (md5_I nb55 nc54 nd53) (word_add (EL 8 W) (EL 56 md5_T))) =
+    word_add (word_add na52 (md5_I nb55 nc54 nd53)) (word_add w8 (EL 56 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na56:int32 =
+    word_add nb55
+     (word_rol (word_add (word_add na52 (md5_I nb55 nc54 nd53)) (word_add w8 (EL 56 md5_T)))
+               6)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 57 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd53:int32)
+             (word_add (md5_I na56 nb55 nc54) (word_add (EL 15 W) (EL 57 md5_T))) =
+    word_add (word_add nd53 (md5_I na56 nb55 nc54)) (word_add w15 (EL 57 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd57:int32 =
+    word_add na56
+     (word_rol (word_add (word_add nd53 (md5_I na56 nb55 nc54)) (word_add w15 (EL 57 md5_T)))
+               10)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 58 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc54:int32)
+             (word_add (md5_I nd57 na56 nb55) (word_add (EL 6 W) (EL 58 md5_T))) =
+    word_add (word_add nc54 (md5_I nd57 na56 nb55)) (word_add w6 (EL 58 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc58:int32 =
+    word_add nd57
+     (word_rol (word_add (word_add nc54 (md5_I nd57 na56 nb55)) (word_add w6 (EL 58 md5_T)))
+               15)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 59 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb55:int32)
+             (word_add (md5_I nc58 nd57 na56) (word_add (EL 13 W) (EL 59 md5_T))) =
+    word_add (word_add nb55 (md5_I nc58 nd57 na56)) (word_add w13 (EL 59 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb59:int32 =
+    word_add nc58
+     (word_rol (word_add (word_add nb55 (md5_I nc58 nd57 na56)) (word_add w13 (EL 59 md5_T)))
+               21)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 60 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (na56:int32)
+             (word_add (md5_I nb59 nc58 nd57) (word_add (EL 4 W) (EL 60 md5_T))) =
+    word_add (word_add na56 (md5_I nb59 nc58 nd57)) (word_add w4 (EL 60 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na60:int32 =
+    word_add nb59
+     (word_rol (word_add (word_add na56 (md5_I nb59 nc58 nd57)) (word_add w4 (EL 60 md5_T)))
+               6)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 61 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nd57:int32)
+             (word_add (md5_I na60 nb59 nc58) (word_add (EL 11 W) (EL 61 md5_T))) =
+    word_add (word_add nd57 (md5_I na60 nb59 nc58)) (word_add w11 (EL 61 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd61:int32 =
+    word_add na60
+     (word_rol (word_add (word_add nd57 (md5_I na60 nb59 nc58)) (word_add w11 (EL 61 md5_T)))
+               10)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 62 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nc58:int32)
+             (word_add (md5_I nd61 na60 nb59) (word_add (EL 2 W) (EL 62 md5_T))) =
+    word_add (word_add nc58 (md5_I nd61 na60 nb59)) (word_add w2 (EL 62 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc62:int32 =
+    word_add nd61
+     (word_rol (word_add (word_add nc58 (md5_I nd61 na60 nb59)) (word_add w2 (EL 62 md5_T)))
+               15)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 63 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (nb59:int32)
+             (word_add (md5_I nc62 nd61 na60) (word_add (EL 9 W) (EL 63 md5_T))) =
+    word_add (word_add nb59 (md5_I nc62 nd61 na60)) (word_add w9 (EL 63 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb63:int32 =
+    word_add nc62
+     (word_rol (word_add (word_add nb59 (md5_I nc62 nd61 na60)) (word_add w9 (EL 63 md5_T)))
+               21)`
+   (SUBST1_TAC o SYM) THEN
+  REFL_TAC);;
