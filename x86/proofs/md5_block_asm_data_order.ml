@@ -1010,6 +1010,64 @@ let MD5_COMPRESS_ROUND_4LIST = prove
   CONV_TAC(DEPTH_CONV EL_CONV) THEN REPEAT GEN_TAC THEN REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 5: strengthened step-0 lemma exposing R10 = w1 and                  *)
+(* R11 = word_zx (word_zx c) in the post (set by MOV r10d, [rsi+4] and       *)
+(* MOV r11d, ecx in the tail of step 0's body). Pre adds the message-word    *)
+(* w1 from memory at offset 4. Same proof as MD5_1STEP_CORRECT — the         *)
+(* enrichment threads through automatically because the stepper records      *)
+(* both register writes during steps 1--11.                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_1STEP_CORRECT_STRONG = prove
+ (`!pc data_ptr a b c d w0 w1:int32.
+        nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                       (data_ptr:int64,64)
+        ==> ensures x86
+              (\s. bytes_loaded s (word pc)
+                     (BUTLAST md5_block_asm_data_order_tmc) /\
+                   read RIP s = word(pc + 52) /\
+                   read RSI s = data_ptr /\
+                   read RAX s = word_zx a /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read (memory :> bytes32 data_ptr) s = w0 /\
+                   read (memory :> bytes32 (word_add data_ptr (word 4))) s = w1)
+              (\s. read RIP s = word(pc + 90) /\
+                   read RAX s =
+                     word_zx (word_add b (word_rol (word_add (word_add a (md5_F b c d))
+                                                             (word_add w0 (EL 0 md5_T)))
+                                                   7)) /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read R10 s = word_zx w1 /\
+                   read R11 s = word_zx (word_zx c:int32))
+              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+               MAYCHANGE [RAX; R10; R11] ,,
+               MAYCHANGE SOME_FLAGS)`,
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--11) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  SIMP_TAC[WORD_SX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  REWRITE_TAC[md5_T] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV [GSYM MD5_F_XOR_AND_FORM] THEN
+  SUBGOAL_THEN
+   `word_xor (word_and (word_xor d c) (b:int32)) d =
+    word_xor (word_and b (word_xor c d)) d`
+   SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+  AP_TERM_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
+  AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+  CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 5: round-1 step 1 over [pc+90, pc+122). Computes:                   *)
 (*   new_d = a + ROL_12(d + md5_F a b c + W[1] + T[1])                       *)
 (* RAX/RBX/RCX unchanged. R10/R11 preserved (R11 = word_zx b for next step). *)
