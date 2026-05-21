@@ -13,6 +13,7 @@ let XREG' = new_definition `XREG' (n:5 word) = XREG (val n)`;;
 let WREG' = new_definition `WREG' (n:5 word) = WREG (val n)`;;
 let QREG' = new_definition `QREG' (n:5 word) = QREG (val n)`;;
 let DREG' = new_definition `DREG' (n:5 word) = DREG (val n)`;;
+let SREG' = new_definition `SREG' (n:5 word) = SREG (val n)`;;
 
 let QLANE = define
  `QLANE reg 8 ix = QREG' reg :> LANE_B ix /\
@@ -766,6 +767,30 @@ let decode = new_definition `!w:int32. decode w =
   | [0b01011110000:11; Rm:5; 0b011000:6; Rn:5; Rd:5] ->
     // SHA256SU1
     SOME (arm_SHA256SU1 (QREG' Rd) (QREG' Rn) (QREG' Rm))
+
+  | [0b01011110000:11; Rm:5; 0b000000:6; Rn:5; Rd:5] ->
+    // SHA1C
+    SOME (arm_SHA1C (QREG' Rd) (SREG' Rn) (QREG' Rm))
+
+  | [0b01011110000:11; Rm:5; 0b000100:6; Rn:5; Rd:5] ->
+    // SHA1P
+    SOME (arm_SHA1P (QREG' Rd) (SREG' Rn) (QREG' Rm))
+
+  | [0b01011110000:11; Rm:5; 0b001000:6; Rn:5; Rd:5] ->
+    // SHA1M
+    SOME (arm_SHA1M (QREG' Rd) (SREG' Rn) (QREG' Rm))
+
+  | [0b01011110000:11; Rm:5; 0b001100:6; Rn:5; Rd:5] ->
+    // SHA1SU0
+    SOME (arm_SHA1SU0 (QREG' Rd) (QREG' Rn) (QREG' Rm))
+
+  | [0b0101111000101000000010:22; Rn:5; Rd:5] ->
+    // SHA1H
+    SOME (arm_SHA1H (QREG' Rd) (QREG' Rn))
+
+  | [0b0101111000101000000110:22; Rn:5; Rd:5] ->
+    // SHA1SU1
+    SOME (arm_SHA1SU1 (QREG' Rd) (QREG' Rn))
 
   | [0b11001110011:11; Rm:5; 0b100000:6; Rn:5; Rd:5] ->
     // SHA512H

@@ -2884,6 +2884,63 @@ let arm_SHA256SU1 = define
         let d' = sha256su1 d n m in
         (Rd := d') s`;;
 
+(* ------------------------------------------------------------------------- *)
+(* SHA-1 cryptographic-extension instructions.                               *)
+(* The math functions sha1c / sha1p / sha1m / sha1h / sha1su0 / sha1su1 are  *)
+(* defined in arm/proofs/sha1.ml.                                            *)
+(* ------------------------------------------------------------------------- *)
+
+let arm_SHA1C = define
+ `arm_SHA1C Rd Rn Rm =
+    \s:armstate.
+        let d = read Rd s
+        and n = read Rn s
+        and m = read Rm s in
+        let d' = sha1c d n m in
+        (Rd := d') s`;;
+
+let arm_SHA1P = define
+ `arm_SHA1P Rd Rn Rm =
+    \s:armstate.
+        let d = read Rd s
+        and n = read Rn s
+        and m = read Rm s in
+        let d' = sha1p d n m in
+        (Rd := d') s`;;
+
+let arm_SHA1M = define
+ `arm_SHA1M Rd Rn Rm =
+    \s:armstate.
+        let d = read Rd s
+        and n = read Rn s
+        and m = read Rm s in
+        let d' = sha1m d n m in
+        (Rd := d') s`;;
+
+let arm_SHA1H = define
+ `arm_SHA1H Rd Rn =
+    \s:armstate.
+        let n = read Rn s in
+        let d' = sha1h n in
+        (Rd := d') s`;;
+
+let arm_SHA1SU0 = define
+ `arm_SHA1SU0 Rd Rn Rm =
+    \s:armstate.
+        let d = read Rd s
+        and n = read Rn s
+        and m = read Rm s in
+        let d' = sha1su0 d n m in
+        (Rd := d') s`;;
+
+let arm_SHA1SU1 = define
+ `arm_SHA1SU1 Rd Rn =
+    \s:armstate.
+        let d = read Rd s
+        and n = read Rn s in
+        let d' = sha1su1 d n in
+        (Rd := d') s`;;
+
 let arm_SHA512H = define
  `arm_SHA512H Rd Rn Rm =
     \s:armstate.
@@ -3601,7 +3658,14 @@ let ARM_OPERATION_CLAUSES =
        arm_SHA512H;
        arm_SHA512H2;
        arm_SHA512SU0;
-       arm_SHA512SU1 ];;
+       arm_SHA512SU1;
+    (*** SHA-1 cryptographic-extension instructions ***)
+       arm_SHA1C;
+       arm_SHA1P;
+       arm_SHA1M;
+       arm_SHA1H;
+       arm_SHA1SU0;
+       arm_SHA1SU1 ];;
 
 let ARM_LOAD_STORE_CLAUSES =
   map (CONV_RULE(TOP_DEPTH_CONV let_CONV) o SPEC_ALL)
