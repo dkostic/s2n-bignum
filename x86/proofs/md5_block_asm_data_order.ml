@@ -1239,3 +1239,295 @@ let MD5_R1_STEP3_CORRECT = prove
   GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
   AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
   CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
+(* MD5_QUARTER1_CORRECT: round-1 quarter-1 (steps 0..3, 38 instructions).    *)
+(*                                                                           *)
+(* Direct 38-step symbolic execution from pc+52 to pc+186.                   *)
+(* The four register-result conjuncts (RAX, RDX, RCX, RBX) are closed by    *)
+(* extending the MD5_2STEP_CORRECT proof template with successive ABBREV    *)
+(* layers: na0 = step-0 result, nd1 = step-1 result, nc2 = step-2 result.   *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_QUARTER1_CORRECT = prove
+ (`!pc data_ptr a b c d w0 w1 w2 w3 w4:int32.
+        nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                       (data_ptr:int64,64)
+        ==> ensures x86
+              (\s. bytes_loaded s (word pc)
+                     (BUTLAST md5_block_asm_data_order_tmc) /\
+                   read RIP s = word(pc + 52) /\
+                   read RSI s = data_ptr /\
+                   read RAX s = word_zx a /\
+                   read RBX s = word_zx b /\
+                   read RCX s = word_zx c /\
+                   read RDX s = word_zx d /\
+                   read (memory :> bytes32 data_ptr) s = w0 /\
+                   read (memory :> bytes32 (word_add data_ptr (word 4))) s =
+                     w1 /\
+                   read (memory :> bytes32 (word_add data_ptr (word 8))) s =
+                     w2 /\
+                   read (memory :> bytes32 (word_add data_ptr (word 12))) s =
+                     w3 /\
+                   read (memory :> bytes32 (word_add data_ptr (word 16))) s =
+                     w4)
+              (\s. read RIP s = word(pc + 186) /\
+                   read RAX s =
+                     word_zx (word_add b
+                              (word_rol (word_add (word_add a (md5_F b c d))
+                                                  (word_add w0 (EL 0 md5_T)))
+                                        7)) /\
+                   read RDX s =
+                     word_zx
+                       (let na0 =
+                            word_add b
+                             (word_rol (word_add (word_add a (md5_F b c d))
+                                                 (word_add w0 (EL 0 md5_T)))
+                                       7) in
+                        word_add na0
+                         (word_rol (word_add (word_add d (md5_F na0 b c))
+                                             (word_add w1 (EL 1 md5_T)))
+                                   12)) /\
+                   read RCX s =
+                     word_zx
+                       (let na0 =
+                            word_add b
+                             (word_rol (word_add (word_add a (md5_F b c d))
+                                                 (word_add w0 (EL 0 md5_T)))
+                                       7) in
+                        let nd1 =
+                            word_add na0
+                             (word_rol (word_add (word_add d (md5_F na0 b c))
+                                                 (word_add w1 (EL 1 md5_T)))
+                                       12) in
+                        word_add nd1
+                         (word_rol (word_add (word_add c (md5_F nd1 na0 b))
+                                             (word_add w2 (EL 2 md5_T)))
+                                   17)) /\
+                   read RBX s =
+                     word_zx
+                       (let na0 =
+                            word_add b
+                             (word_rol (word_add (word_add a (md5_F b c d))
+                                                 (word_add w0 (EL 0 md5_T)))
+                                       7) in
+                        let nd1 =
+                            word_add na0
+                             (word_rol (word_add (word_add d (md5_F na0 b c))
+                                                 (word_add w1 (EL 1 md5_T)))
+                                       12) in
+                        let nc2 =
+                            word_add nd1
+                             (word_rol (word_add (word_add c (md5_F nd1 na0 b))
+                                                 (word_add w2 (EL 2 md5_T)))
+                                       17) in
+                        word_add nc2
+                         (word_rol (word_add (word_add b (md5_F nc2 nd1 na0))
+                                             (word_add w3 (EL 3 md5_T)))
+                                   22)) /\
+                   read RSI s = data_ptr /\
+                   read R10 s = word_zx w4)
+              (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+               MAYCHANGE [RAX; RBX; RCX; RDX; R10; R11] ,,
+               MAYCHANGE SOME_FLAGS)`,
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--38) THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  SIMP_TAC[WORD_SX_ZX; DIMINDEX_32; DIMINDEX_64; ARITH_RULE `32 <= 64`; LE_REFL] THEN
+  REWRITE_TAC[md5_T] THEN
+  CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN
+  CONV_TAC(RAND_CONV(REWRITE_CONV[LET_DEF; LET_END_DEF])) THEN
+  CONJ_TAC THENL
+   [(* RAX: step-0 result *)
+    GEN_REWRITE_TAC ONCE_DEPTH_CONV [GSYM MD5_F_XOR_AND_FORM] THEN
+    SUBGOAL_THEN
+     `word_xor (word_and (word_xor d c) (b:int32)) d =
+      word_xor (word_and b (word_xor c d)) d`
+     SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+    CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+    AP_TERM_TAC THEN
+    GEN_REWRITE_TAC LAND_CONV [WORD_ADD_SYM] THEN
+    AP_TERM_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN
+    CONV_TAC WORD_RULE;
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [(* RDX: step-1 result *)
+    REWRITE_TAC[GSYM MD5_F_XOR_AND_FORM] THEN
+    REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+    CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+    SUBGOAL_THEN
+     `word_xor (word_and (word_xor d c) (b:int32)) d =
+      word_xor (word_and b (word_xor c d)) d`
+     SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    SUBGOAL_THEN
+     `!u:int32. word_and (word_xor c b) u = word_and u (word_xor b c)`
+     (fun th -> REWRITE_TAC[th]) THENL
+     [GEN_TAC THEN CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    AP_TERM_TAC THEN
+    ABBREV_TAC
+     `Fxor:int32 = word_xor (word_and (b:int32) (word_xor c d)) d` THEN
+    SUBGOAL_THEN
+     `word_add (word_add (a:int32) (word_add w0 (word 3614090360))) Fxor =
+      word_add (word_add a Fxor) (word_add w0 (word 3614090360))`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Rrol7:int32 = word_rol
+                     (word_add (word_add (a:int32) Fxor)
+                               (word_add w0 (word 3614090360))) 7` THEN
+    SUBGOAL_THEN `word_add (Rrol7:int32) b = word_add b Rrol7`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Xform:int32 = word_xor (word_and (word_add (b:int32) Rrol7)
+                                       (word_xor b c)) c` THEN
+    SUBGOAL_THEN
+     `word_add (word_add (d:int32) (word_add w1 (word 3905402710))) Xform =
+      word_add (word_add d Xform) (word_add w1 (word 3905402710))`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    CONV_TAC WORD_RULE;
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [(* RCX: step-2 result *)
+    REWRITE_TAC[GSYM MD5_F_XOR_AND_FORM] THEN
+    REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+    CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+    AP_TERM_TAC THEN
+    SUBGOAL_THEN
+     `word_xor (word_and (word_xor d c) (b:int32)) d =
+      word_xor (word_and b (word_xor c d)) d`
+     SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Fxor:int32 = word_xor (word_and (b:int32) (word_xor c d)) d` THEN
+    SUBGOAL_THEN
+     `word_add (word_add (a:int32) (word_add w0 (word 3614090360))) Fxor =
+      word_add (word_add a Fxor) (word_add w0 (word 3614090360))`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Rrol7:int32 = word_rol
+                     (word_add (word_add (a:int32) Fxor)
+                               (word_add w0 (word 3614090360))) 7` THEN
+    SUBGOAL_THEN
+     `word_add (Rrol7:int32) b = word_add b Rrol7`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    SUBGOAL_THEN
+     `word_xor (b:int32) (word_add b Rrol7) = word_xor (word_add b Rrol7) b`
+     SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    SUBGOAL_THEN
+     `!u:int32. word_and (word_xor c b) u = word_and u (word_xor b c)`
+     (fun th -> REWRITE_TAC[th]) THENL
+     [GEN_TAC THEN CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Xform:int32 = word_xor (word_and (word_add (b:int32) Rrol7)
+                                       (word_xor b c)) c` THEN
+    SUBGOAL_THEN
+     `word_add (word_add (d:int32) (word_add w1 (word 3905402710))) Xform =
+      word_add (word_add d Xform) (word_add w1 (word 3905402710))`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Rrol12:int32 = word_rol
+                      (word_add (word_add (d:int32) Xform)
+                                (word_add w1 (word 3905402710))) 12` THEN
+    ABBREV_TAC `na0:int32 = word_add (b:int32) Rrol7` THEN
+    SUBGOAL_THEN
+     `word_add Rrol12 (na0:int32) = word_add na0 Rrol12`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    SUBGOAL_THEN
+     `word_and (word_xor (na0:int32) b) (word_add na0 Rrol12) =
+      word_and (word_add na0 Rrol12) (word_xor na0 b)`
+     SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Yform:int32 = word_xor (word_and (word_add (na0:int32) Rrol12)
+                                       (word_xor na0 b)) b` THEN
+    SUBGOAL_THEN
+     `word_add (word_add (c:int32) (word_add w2 (word 606105819))) Yform =
+      word_add (word_add c Yform) (word_add w2 (word 606105819))`
+     SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    ABBREV_TAC
+     `Rrol17:int32 = word_rol
+                      (word_add (word_add (c:int32) Yform)
+                                (word_add w2 (word 606105819))) 17` THEN
+    CONV_TAC WORD_RULE;
+    ALL_TAC] THEN
+  (* RBX: step-3 result *)
+  REWRITE_TAC[GSYM MD5_F_XOR_AND_FORM] THEN
+  REWRITE_TAC[LEA_TRUNC_LEMMA] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_REDUCE_CONV) THEN
+  AP_TERM_TAC THEN
+  SUBGOAL_THEN
+   `word_xor (word_and (word_xor d c) (b:int32)) d =
+    word_xor (word_and b (word_xor c d)) d`
+   SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  ABBREV_TAC
+   `Fxor:int32 = word_xor (word_and (b:int32) (word_xor c d)) d` THEN
+  ABBREV_TAC
+   `Rrol7:int32 = word_rol
+                   (word_add (word_add (a:int32) (word_add w0 (word 3614090360)))
+                             Fxor) 7` THEN
+  SUBGOAL_THEN
+   `word_add (Rrol7:int32) b = word_add b Rrol7`
+   SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `!u:int32. word_and (word_xor c b) u = word_and u (word_xor b c)`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [GEN_TAC THEN CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  ABBREV_TAC
+   `Xform:int32 = word_xor (word_and (word_add (b:int32) Rrol7)
+                                     (word_xor b c)) c` THEN
+  ABBREV_TAC
+   `Rrol12:int32 = word_rol
+                    (word_add (word_add (d:int32) (word_add w1 (word 3905402710)))
+                              Xform) 12` THEN
+  ABBREV_TAC `na0:int32 = word_add (b:int32) Rrol7` THEN
+  SUBGOAL_THEN
+   `word_add Rrol12 (na0:int32) = word_add na0 Rrol12`
+   SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `!u:int32. word_and (word_xor b (na0:int32)) u =
+              word_and u (word_xor na0 b)`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [GEN_TAC THEN CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  ABBREV_TAC
+   `Yform:int32 = word_xor (word_and (word_add (na0:int32) Rrol12)
+                                     (word_xor na0 b)) b` THEN
+  ABBREV_TAC
+   `Rrol17:int32 = word_rol
+                    (word_add (word_add (c:int32) (word_add w2 (word 606105819)))
+                              Yform) 17` THEN
+  ABBREV_TAC `nd1:int32 = word_add (na0:int32) Rrol12` THEN
+  SUBGOAL_THEN
+   `word_add Rrol17 (nd1:int32) = word_add nd1 Rrol17`
+   SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ABBREV_TAC `nc2:int32 = word_add (nd1:int32) Rrol17` THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN
+   `word_add (word_add (a:int32) Fxor) (word_add w0 (word 3614090360)) =
+    word_add (word_add a (word_add w0 (word 3614090360))) Fxor`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN
+   `word_add (word_add (d:int32) Xform) (word_add w1 (word 3905402710)) =
+    word_add (word_add d (word_add w1 (word 3905402710))) Xform`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN
+   `word_add (word_add (c:int32) Yform) (word_add w2 (word 606105819)) =
+    word_add (word_add c (word_add w2 (word 606105819))) Yform`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN
+   `word_xor (word_and (word_xor (na0:int32) nd1) nc2) na0 =
+    word_xor (word_and nc2 (word_xor nd1 na0)) na0`
+   SUBST1_TAC THENL [CONV_TAC WORD_BITWISE_RULE; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `word_add (word_add (b:int32) (word_add w3 (word 3250441966)))
+             (word_xor (word_and nc2 (word_xor nd1 na0)) na0) =
+    word_add (word_add b (word_xor (word_and nc2 (word_xor nd1 na0)) na0))
+             (word_add w3 (word 3250441966))`
+   SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  CONV_TAC WORD_RULE);;
