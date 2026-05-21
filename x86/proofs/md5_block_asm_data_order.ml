@@ -1010,6 +1010,117 @@ let MD5_COMPRESS_ROUND_4LIST = prove
   CONV_TAC(DEPTH_CONV EL_CONV) THEN REPEAT GEN_TAC THEN REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* Spec-form sanity check (Phase 5 — gates the per-quarter spec conversion). *)
+(*                                                                           *)
+(* Validates that md5_compress 4 W [a;b;c;d] reduces to a clean 4-list of    *)
+(* the per-step results na0/nd1/nc2/nb3 in the order [na0; nb3; nc2; nd1].    *)
+(* The list ordering reflects the [d; new_a; b; c] cycling of                *)
+(* md5_compress_round: after 4 rounds, EL 0 = na0 (step 0), EL 1 = nb3       *)
+(* (step 3), EL 2 = nc2 (step 2), EL 3 = nd1 (step 1). This matches the      *)
+(* asm's writeback assignment RAX/RBX/RCX/RDX = step 0/3/2/1 respectively.   *)
+(*                                                                           *)
+(* Strategy: linear unfold md5_compress 4 to a 4-deep nest of                *)
+(* md5_compress_round, then per-round MD5_COMPRESS_ROUND_4LIST + numerical   *)
+(* reduction of md5_round_function/md5_K/md5_S, normalize the inner add via  *)
+(* WORD_RULE, and fold the per-step nai with UNDISCH_THEN. Bottom-up         *)
+(* per-round reduction keeps term size linear; a one-shot LET_DEF unfold     *)
+(* on the goal's RHS would blow up exponentially.                            *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_COMPRESS_4_F_VALUES = prove
+ (`!(W:int32 list) (a:int32) b c d w0 w1 w2 w3 na0 nd1 nc2 nb3.
+        LENGTH W = 16 /\
+        w0 = EL 0 W /\ w1 = EL 1 W /\ w2 = EL 2 W /\ w3 = EL 3 W /\
+        na0 = word_add b
+               (word_rol (word_add (word_add a (md5_F b c d))
+                                   (word_add w0 (EL 0 md5_T)))
+                         7) /\
+        nd1 = word_add na0
+               (word_rol (word_add (word_add d (md5_F na0 b c))
+                                   (word_add w1 (EL 1 md5_T)))
+                         12) /\
+        nc2 = word_add nd1
+               (word_rol (word_add (word_add c (md5_F nd1 na0 b))
+                                   (word_add w2 (EL 2 md5_T)))
+                         17) /\
+        nb3 = word_add nc2
+               (word_rol (word_add (word_add b (md5_F nc2 nd1 na0))
+                                   (word_add w3 (EL 3 md5_T)))
+                         22)
+        ==> md5_compress 4 W [a;b;c;d] = [na0; nb3; nc2; nd1]`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `4 = 3 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `3 = 2 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `2 = 1 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  ONCE_REWRITE_TAC[ARITH_RULE `1 = 0 + 1`] THEN REWRITE_TAC[md5_compress] THEN
+  CONV_TAC(ONCE_DEPTH_CONV NUM_REDUCE_CONV) THEN
+  (* Round 0 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (a:int32)
+             (word_add (md5_F b c d) (word_add (EL 0 W) (EL 0 md5_T))) =
+    word_add (word_add a (md5_F b c d)) (word_add w0 (EL 0 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `na0:int32 =
+    word_add b
+     (word_rol (word_add (word_add a (md5_F b c d)) (word_add w0 (EL 0 md5_T)))
+               7)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 1 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (d:int32)
+             (word_add (md5_F na0 b c) (word_add (EL 1 W) (EL 1 md5_T))) =
+    word_add (word_add d (md5_F na0 b c)) (word_add w1 (EL 1 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nd1:int32 =
+    word_add na0
+     (word_rol (word_add (word_add d (md5_F na0 b c)) (word_add w1 (EL 1 md5_T)))
+               12)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 2 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (c:int32)
+             (word_add (md5_F nd1 na0 b) (word_add (EL 2 W) (EL 2 md5_T))) =
+    word_add (word_add c (md5_F nd1 na0 b)) (word_add w2 (EL 2 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nc2:int32 =
+    word_add nd1
+     (word_rol (word_add (word_add c (md5_F nd1 na0 b)) (word_add w2 (EL 2 md5_T)))
+               17)`
+   (SUBST1_TAC o SYM) THEN
+  (* Round 3 *)
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV) [MD5_COMPRESS_ROUND_4LIST] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV[md5_round_function; md5_K; md5_S])) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+  CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV EL_CONV)) THEN
+  SUBGOAL_THEN
+   `word_add (b:int32)
+             (word_add (md5_F nc2 nd1 na0) (word_add (EL 3 W) (EL 3 md5_T))) =
+    word_add (word_add b (md5_F nc2 nd1 na0)) (word_add w3 (EL 3 md5_T))`
+   SUBST1_TAC THENL [ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  UNDISCH_THEN
+   `nb3:int32 =
+    word_add nc2
+     (word_rol (word_add (word_add b (md5_F nc2 nd1 na0)) (word_add w3 (EL 3 md5_T)))
+               22)`
+   (SUBST1_TAC o SYM) THEN
+  REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 5: strengthened step-0 lemma exposing R10 = w1 and                  *)
 (* R11 = word_zx (word_zx c) in the post (set by MOV r10d, [rsi+4] and       *)
 (* MOV r11d, ecx in the tail of step 0's body). Pre adds the message-word    *)
