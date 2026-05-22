@@ -357,7 +357,10 @@ let CRC32C_LOOP16_CORRECT = prove
     (* Subgoal 0: ~(iters = 0), discharged from `1 <= iters`. *)
     ASM_ARITH_TAC;
     (* Subgoal 1: pc -> pc1 (i.e. pc -> pc), i = 0. Trivial since pc = pc1. *)
-    CHEAT_TAC;
+    ENSURES_INIT_TAC "s0" THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[consumed_bytes; crc32c_bytes_NIL; MULT_CLAUSES;
+                    SUB_0; WORD_ADD_0; LT; LE_0];
     (* Subgoal 2: body, invariant(i) at pc -> invariant(i+1) at pc + 0x84. *)
     CHEAT_TAC;
     (* Subgoal 3: back-edge, invariant(i) at pc + 0x84 -> invariant(i) at pc. *)
