@@ -3979,6 +3979,43 @@ let subroutine_signatures = [
    ])
 );
 
+("crc32c_octo_zerofill_xor",
+  ([(*args*)
+     ("a", "uint8_t*", (*is const?*)"false");
+     ("b", "uint8_t*", (*is const?*)"false");
+     ("c", "uint8_t*", (*is const?*)"false");
+     ("d", "uint8_t*", (*is const?*)"false");
+     ("e", "uint8_t*", (*is const?*)"false");
+     ("f", "uint8_t*", (*is const?*)"false");
+     ("g", "uint8_t*", (*is const?*)"false");
+     ("h", "uint8_t*", (*is const?*)"false");
+     ("len", "size_t", (*is const?*)"false");
+   ],
+   "uint32_t",
+   [(* input buffers *)
+    ("a", "len"(* num elems *), 1(* elem bytesize *));
+    ("b", "len"(* num elems *), 1(* elem bytesize *));
+    ("c", "len"(* num elems *), 1(* elem bytesize *));
+    ("d", "len"(* num elems *), 1(* elem bytesize *));
+    ("e", "len"(* num elems *), 1(* elem bytesize *));
+    ("f", "len"(* num elems *), 1(* elem bytesize *));
+    ("g", "len"(* num elems *), 1(* elem bytesize *));
+    ("h", "len"(* num elems *), 1(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("a", "len"(* num elems *), 1(* elem bytesize *));
+    ("b", "len"(* num elems *), 1(* elem bytesize *));
+    ("c", "len"(* num elems *), 1(* elem bytesize *));
+    ("d", "len"(* num elems *), 1(* elem bytesize *));
+    ("e", "len"(* num elems *), 1(* elem bytesize *));
+    ("f", "len"(* num elems *), 1(* elem bytesize *));
+    ("g", "len"(* num elems *), 1(* elem bytesize *));
+    ("h", "len"(* num elems *), 1(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
 ("curve25519_ladderstep",
   ([(*args*)
      ("rr", "uint64_t[16]", (*is const?*)"false");

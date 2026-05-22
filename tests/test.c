@@ -3122,6 +3122,23 @@ void reference_mldsa_inverse_ntt_spec(int32_t a[256])
     }
 }
 
+// CRC32C (Castagnoli) reference: bit-by-bit, LSB-first, reflected polynomial
+// 0x82F63B78, init 0xFFFFFFFF, finalisation = bitwise NOT.
+
+static uint32_t reference_crc32c(const uint8_t *data, size_t len)
+{ uint32_t crc = 0xFFFFFFFFu;
+  size_t i;
+  int j;
+  for (i = 0; i < len; ++i)
+   { crc ^= (uint32_t) data[i];
+     for (j = 0; j < 8; ++j)
+      { uint32_t mask = -(crc & 1u);
+        crc = (crc >> 1) ^ (0x82F63B78u & mask);
+      }
+   }
+  return ~crc;
+}
+
 // Keccak-f1600 reference.
 // https://keccak.team/files/Keccak-reference-3.0.pdf
 
@@ -14823,6 +14840,112 @@ int test_secp256k1_jmixadd_alt(void)
   return 0;
 }
 
+int test_crc32c_octo_zerofill_xor(void)
+{
+#ifdef __x86_64__
+  return 1;
+#else
+  // Per-buffer max for the length sweep (largest len exercised below).
+  enum { MAX_LEN = 128 };
+  static const size_t lens[] =
+   { 0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128 };
+  size_t nlens = sizeof(lens) / sizeof(lens[0]);
+
+  uint8_t bufs[8][MAX_LEN];
+  uint8_t saved[8][MAX_LEN];
+  size_t li, i, j;
+  uint64_t t;
+  printf("Testing crc32c_octo_zerofill_xor with %d cases\n",tests);
+
+  // Sanity check: reference CRC32C of "123456789" matches the IETF KAT.
+  { static const char abc[] = "123456789";
+    size_t klen = sizeof(abc) - 1;
+    uint32_t expected = 0xE3069283u;
+    if (reference_crc32c((const uint8_t *) abc, klen) != expected)
+     { printf("Error: reference_crc32c(\"123456789\") != 0x%08x\n", expected);
+       return 1;
+     }
+    if (VERBOSE) printf("OK: reference_crc32c(\"123456789\") = 0xE3069283\n");
+  }
+
+  // Test 1: IETF KAT. All 8 buffers carry 9 bytes; buffer 0 holds
+  // "123456789" and buffers 1..7 hold nine zero bytes. The kernel returns
+  // XOR of all 8 buffer CRCs, i.e. crc("123456789") XOR (7 copies of
+  // crc(zero^9)). With 7 copies (odd), the XOR reduces to
+  // crc("123456789") XOR crc(zero^9), which we compute via the reference.
+  { static const char abc[] = "123456789";
+    size_t klen = sizeof(abc) - 1;     // = 9
+    uint32_t expected_xor = 0;
+    uint32_t r;
+    for (i = 0; i < 8; ++i)
+     { for (j = 0; j < klen; ++j) bufs[i][j] = 0;
+     }
+    for (j = 0; j < klen; ++j) bufs[0][j] = (uint8_t) abc[j];
+    for (i = 0; i < 8; ++i)
+      expected_xor ^= reference_crc32c(bufs[i], klen);
+    r = crc32c_octo_zerofill_xor(bufs[0], bufs[1], bufs[2], bufs[3],
+                                 bufs[4], bufs[5], bufs[6], bufs[7], klen);
+    if (r != expected_xor)
+     { printf("Error: crc32c_octo IETF-style KAT mismatch: "
+              "asm=0x%08x ref=0x%08x\n", r, expected_xor);
+       return 1;
+     }
+    for (i = 0; i < 8; ++i)
+     { for (j = 0; j < klen; ++j)
+        { if (bufs[i][j] != 0)
+           { printf("Error: KAT buffer %zu not zerofilled at byte %zu "
+                    "(got 0x%02x)\n", i, j, bufs[i][j]);
+             return 1;
+           }
+        }
+     }
+    if (VERBOSE)
+      printf("OK: crc32c_octo(\"123456789\",zero^9 x7,len=9) = 0x%08x\n", r);
+  }
+
+  // Test 2: length sweep against the C reference.
+  for (li = 0; li < nlens; ++li)
+   { size_t len = lens[li];
+     for (t = 0; t < tests; ++t)
+      { uint32_t expected_xor = 0;
+        uint32_t r;
+        // Random bytes in each of the 8 buffers; capture for reference.
+        for (i = 0; i < 8; ++i)
+         { for (j = 0; j < len; ++j)
+            { bufs[i][j] = (uint8_t) (rand() & 0xff);
+              saved[i][j] = bufs[i][j];
+            }
+           expected_xor ^= reference_crc32c(saved[i], len);
+         }
+        r = crc32c_octo_zerofill_xor(bufs[0], bufs[1], bufs[2], bufs[3],
+                                     bufs[4], bufs[5], bufs[6], bufs[7],
+                                     len);
+        if (r != expected_xor)
+         { printf("Error: crc32c_octo XOR mismatch at len=%zu: "
+                  "asm=0x%08x ref=0x%08x\n", len, r, expected_xor);
+           return 1;
+         }
+        for (i = 0; i < 8; ++i)
+         { for (j = 0; j < len; ++j)
+            { if (bufs[i][j] != 0)
+               { printf("Error: buffer %zu not zerofilled at byte %zu "
+                        "(len=%zu, got 0x%02x)\n",
+                        i, j, len, bufs[i][j]);
+                 return 1;
+               }
+            }
+         }
+        if (VERBOSE)
+         { printf("OK: crc32c_octo len=%zu -> 0x%08x\n", len, r);
+         }
+      }
+   }
+
+  printf("All OK\n");
+  return 0;
+#endif
+}
+
 int test_sha3_keccak_f1600(void)
 { uint64_t t, i;
   uint64_t a[25], b[25], c[25];
@@ -16861,6 +16984,7 @@ int main(int argc, char *argv[])
     functionaltest(sha3,"sha3_keccak2_f1600",test_sha3_keccak2_f1600);
     functionaltest(sha3,"sha3_keccak2_f1600_alt",test_sha3_keccak2_f1600_alt);
     functionaltest(sha3,"sha3_keccak4_f1600_alt2",test_sha3_keccak4_f1600_alt2);
+    functionaltest(arm,"crc32c_octo_zerofill_xor",test_crc32c_octo_zerofill_xor);
     functionaltest(aes,"aes_xts_encrypt",test_aes_xts_encrypt);
     functionaltest(aes,"aes_xts_decrypt",test_aes_xts_decrypt);
     functionaltest(aes,"aes_xts_roundtrip",test_aes_xts_roundtrip);

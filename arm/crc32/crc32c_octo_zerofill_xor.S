@@ -8,10 +8,12 @@
 //      STP xzr, xzr interleaved with the load/CRC ops)
 //   3. Returns the XOR-reduction of all 8 CRCs as a SINGLE uint32_t
 //
-// extern uint32_t crc32c_octo_zerofill_xor(uint8_t *a, uint8_t *b,
-//                                          uint8_t *c, uint8_t *d,
-//                                          uint8_t *e, uint8_t *f,
-//                                          uint8_t *g, uint8_t *h,
+// Inputs a[len], b[len], c[len], d[len], e[len], f[len], g[len], h[len], len; outputs a[len], b[len], c[len], d[len], e[len], f[len], g[len], h[len], function return
+//
+// extern uint32_t crc32c_octo_zerofill_xor(uint8_t *a,uint8_t *b,
+//                                          uint8_t *c,uint8_t *d,
+//                                          uint8_t *e,uint8_t *f,
+//                                          uint8_t *g,uint8_t *h,
 //                                          size_t len);
 //
 // The 8 MVNs that the canonical CRC32C finalisation would need are
