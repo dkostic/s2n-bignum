@@ -304,6 +304,61 @@ let SHA1_RG0_REG_CORRECT = prove
   CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7/8 stepping-stone: round-group-0 ensures with opaque Q1.           *)
+(*                                                                           *)
+(* Variant of SHA1_RG0_REG_CORRECT in which Q1's upper 96 bits are opaque    *)
+(* — the precondition is `read Q1 s = q1_in:int128` with a side hypothesis  *)
+(* `word_subword q1_in (0,32) = e_lane` rather than the canonical            *)
+(* `word_join4 e_lane 0 0 0` form. This matches the BODY loop invariant of   *)
+(* the multi-block ensures (in sha1_block_data_order_hw_ensures.ml), where   *)
+(* Q1's upper lanes are clobbered by `add v1.4s,v1.4s,v2.4s` between blocks. *)
+(*                                                                           *)
+(* The proof exercises SHA1C_LANE0_NORM: after ARM_STEPS produces            *)
+(*    read Q0 s4 = sha1c (word_join4 a b c d) q1_in (...)                    *)
+(* we apply ONCE_REWRITE[SHA1C_LANE0_NORM] to canonicalise the n operand to  *)
+(* word_join4-of-lane-0 form, then ONCE_REWRITE the side hypothesis to       *)
+(* substitute e_lane for word_subword q1_in (0,32). After that, Q0 matches   *)
+(* the bridge form expected by GEN_CUT_POINT_TAC.                            *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA1_RG0_REG_CORRECT_LANE0 = prove
+ (`!(a:int32) b c d (e_lane:int32) (q1_in:int128)
+    (w0:int32) w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
+    W pc.
+    word_subword q1_in (0,32):int32 = e_lane /\
+    sha1_message_schedule 64
+      [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W
+    ==> ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word (pc + 0x50) /\
+          read Q0 s = word_join4 a b c d /\
+          read Q1 s = q1_in /\
+          read Q4 s = word_join4 w0 w1 w2 w3 /\
+          read Q5 s = word_join4 w4 w5 w6 w7 /\
+          read Q6 s = word_join4 w8 w9 w10 w11 /\
+          read Q16 s =
+            word_join4 (sha1_K 0) (sha1_K 0) (sha1_K 0) (sha1_K 0) /\
+          read Q20 s =
+            word_join4
+              (word_add (sha1_K 0) w0) (word_add (sha1_K 1) w1)
+              (word_add (sha1_K 2) w2) (word_add (sha1_K 3) w3))
+     (\s. read PC s = word (pc + 0x60) /\
+          (let st = sha1_compress 4 W [a;b;c;d;e_lane] in
+           read Q0 s = word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) /\
+           read Q3 s = word_join4 (EL 4 st) (word 0) (word 0) (word 0)))
+     (MAYCHANGE [PC] ,, MAYCHANGE [Q0; Q3; Q4; Q20] ,,
+      MAYCHANGE [events])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--4) THEN
+  RULE_ASSUM_TAC(ONCE_REWRITE_RULE[SHA1C_LANE0_NORM]) THEN
+  RULE_ASSUM_TAC(ONCE_REWRITE_RULE[ASSUME
+    `word_subword (q1_in:int128) (0,32):int32 = e_lane`]) THEN
+  GEN_CUT_POINT_TAC `[a:int32;b;c;d;e_lane]` 0 `s4:armstate` THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 sanity-check: round-group-5 ensures (P_LO band).                  *)
 (*                                                                           *)
 (* Validates GEN_CUT_POINT_TAC + GROUP_BRIDGE_P_LO.(0) on real ARM_STEPS     *)
