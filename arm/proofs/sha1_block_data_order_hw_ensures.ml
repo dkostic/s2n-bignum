@@ -413,7 +413,25 @@ let SHA1_HW_CORRECT = prove
        instead of letting them propagate to the outer prove call where they
        manifest as a confusing "TAC_PROOF: Unsolved goals". CHEAT_TAC catches
        any straggler so the file loads; the diagnosis points to BODY rather
-       than EXIT. *)
+       than EXIT.
+
+       Session 018 characterised the surviving subgoal (per axioms() dump
+       on s018a) as the Q1 lane-0 invariant residual:
+         word_subword
+           (word_join4 (word_add (word_subword q1_lane_init (0,32)) e_compress)
+                       (word_add (word_subword q1_lane_init (32,32)) (word 0))
+                       (word_add (word_subword q1_lane_init (64,32)) (word 0))
+                       (word_add (word_subword q1_lane_init (96,32)) (word 0)))
+           (0,32)
+         = word_add e_compress (EL 4 (sha1_hash_blocks ii blocks [a;b;c;d;e]))
+       where e_compress = EL 4 (sha1_compress 80 W (sha1_hash_blocks ii ...)).
+       Closer that works on synthetic version (interactively, both s018a/s018b):
+         REPEAT STRIP_TAC THEN
+         REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+         ASM_REWRITE_TAC[WORD_ADD_AC]   (or MATCH_ACCEPT_TAC WORD_ADD_SYM)
+       But under loadt, replacing CHEAT_TAC with that closer caused EXIT
+       (next subgoal) to fail with "Unsolved goals" despite previously
+       passing — root cause unidentified. See session 018 summary. *)
     CHEAT_TAC;
 
     (* ================================================================= *)
