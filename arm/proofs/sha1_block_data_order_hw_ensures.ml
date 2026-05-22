@@ -165,7 +165,70 @@ let SHA1_HW_CORRECT = prove
     CONV_TAC(DEPTH_CONV EL_CONV) THEN
     CONV_TAC WORD_BLAST;
 
-    (* BODY *)
+    (* ================================================================= *)
+    (* Subgoal 2: BODY -- invariant(i) at pc+0x1c ==>                    *)
+    (*            invariant(i+1) at pc+0x1c0                             *)
+    (*                                                                   *)
+    (* Body executes pc+0x1c..pc+0x1bc (instrs 8..112).                  *)
+    (* Pre-loop setup:                                                   *)
+    (*   8..11: LDR Q4..Q7 from data_ptr (16-byte loads, raw bytes)     *)
+    (*   12:    ADD X1, X1, #64    (advance data ptr)                    *)
+    (*   13:    SUB X2, X2, #1     (decrement counter)                   *)
+    (*   14..17: REV32 Q4..Q7      (byte-swap to logical layout)         *)
+    (*   18:    MOV V22, V0        (save abcd for add-back)              *)
+    (*   19..20: ADD V20=K0+W0,3, V21=K0+W4,7 (K+W bands)                *)
+    (* Then 20 round groups (RG0..RG19) at 4 (RG0) or 5 (RG1+) instrs    *)
+    (* per group, with K-band changes Q16->Q17->Q18->Q19 every 5 RGs.    *)
+    (* Final 2 instrs (111,112): ADD Q1+=Q2, ADD Q0+=Q22 (e and abcd     *)
+    (* add-back).                                                        *)
+    (* ================================================================= *)
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    SUBGOAL_THEN `num_blocks - ii < 2 EXP 64` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    GHOST_INTRO_TAC `q1_lane_init:int128` `read Q1` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    EXPAND_K_TAC THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
+    EXPAND_DATA_TAC THEN STRIP_TAC THEN
+    RULE_ASSUM_TAC(CONV_RULE(DEPTH_CONV NUM_ADD_CONV)) THEN
+    ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--10) THEN
+    REV32_BITBLAST_TAC `read Q4 s = x:int128`
+      `read Q4 s10 = word_join4 ((EL 0 (EL ii blocks)):int32)
+        (EL 1 (EL ii blocks)) (EL 2 (EL ii blocks))
+        (EL 3 (EL ii blocks))` THEN
+    REV32_BITBLAST_TAC `read Q5 s = x:int128`
+      `read Q5 s10 = word_join4 ((EL 4 (EL ii blocks)):int32)
+        (EL 5 (EL ii blocks)) (EL 6 (EL ii blocks))
+        (EL 7 (EL ii blocks))` THEN
+    REV32_BITBLAST_TAC `read Q6 s = x:int128`
+      `read Q6 s10 = word_join4 ((EL 8 (EL ii blocks)):int32)
+        (EL 9 (EL ii blocks)) (EL 10 (EL ii blocks))
+        (EL 11 (EL ii blocks))` THEN
+    REV32_BITBLAST_TAC `read Q7 s = x:int128`
+      `read Q7 s10 = word_join4 ((EL 12 (EL ii blocks)):int32)
+        (EL 13 (EL ii blocks)) (EL 14 (EL ii blocks))
+        (EL 15 (EL ii blocks))` THEN
+    ABBREV_TAC `w0 = (EL 0 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w1 = (EL 1 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w2 = (EL 2 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w3 = (EL 3 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w4 = (EL 4 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w5 = (EL 5 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w6 = (EL 6 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w7 = (EL 7 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w8 = (EL 8 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w9 = (EL 9 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w10 = (EL 10 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w11 = (EL 11 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w12 = (EL 12 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w13 = (EL 13 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w14 = (EL 14 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `w15 = (EL 15 (EL ii blocks)):int32` THEN
+    ABBREV_TAC `W = sha1_message_schedule 64
+      [w0:int32;w1;w2;w3;w4;w5;w6;w7;
+       w8;w9;w10;w11;w12;w13;w14;w15]` THEN
     CHEAT_TAC;
 
     (* ================================================================= *)
