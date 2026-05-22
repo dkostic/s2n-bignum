@@ -388,7 +388,7 @@ let SHA1_HW_CORRECT = prove
     THENL
      [REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
       MATCH_MP_TAC EL_MAP2 THEN
-      MP_TAC(SPECL [`W:int32 list`;
+      MP_TAC(SPECL [`80:num`; `W:int32 list`;
                     `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]`]
                    LENGTH_SHA1_COMPRESS) THEN
       ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
@@ -403,11 +403,19 @@ let SHA1_HW_CORRECT = prove
                          (mk_binop `(<):num->num->bool` kt `5`))) in
           ASSUME_TAC inst) [0;1;2;3;4]) THEN
     ENSURES_FINAL_STATE_TAC THEN
+    SUBGOAL_THEN
+      `word_sub (word (num_blocks - ii):int64) (word 1) =
+       word (num_blocks - (ii + 1))` ASSUME_TAC
+    THENL
+     [ASM_SIMP_TAC[WORD_SUB; LE_1; VAL_WORD_1] THEN
+      AP_TERM_TAC THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
     ASM_REWRITE_TAC[WORD_ADVANCE_64] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
     ASM_REWRITE_TAC[] THEN
-    CONV_TAC WORD_BLAST;
+    (TRY (CONV_TAC WORD_BLAST)) THEN
+    (TRY ASM_ARITH_TAC);
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1c0 ==>              *)
