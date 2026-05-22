@@ -375,15 +375,15 @@ let SHA1_HW_CORRECT = prove
       (LABEL_TAC "lanef")
     THENL
      [REPEAT STRIP_TAC THEN
-      ONCE_REWRITE_TAC[ARITH_RULE `ii + 1 = SUC ii`] THEN
-      REWRITE_TAC[sha1_hash_blocks; ARITH_RULE `SUC n = n + 1`] THEN
+      REWRITE_TAC[sha1_hash_blocks] THEN
       ASM_REWRITE_TAC[] THEN
       MP_TAC(SPECL [`[w0:int32;w1;w2;w3;w4;w5;w6;w7;
                        w8;w9;w10;w11;w12;w13;w14;w15]`;
                      `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]`]
                     SHA1_BLOCK_COMPRESS_EL) THEN
       ASM_REWRITE_TAC[] THEN
-      DISCH_THEN(fun th -> ASM_REWRITE_TAC[MATCH_MP th (ASSUME `k < 5`)]);
+      DISCH_THEN(MP_TAC o SPEC `k:num`) THEN
+      ASM_REWRITE_TAC[];
       ALL_TAC] THEN
     (* Specialise the lane-fold quantifier to k = 0, 1, 2, 3, 4.             *)
     USE_THEN
