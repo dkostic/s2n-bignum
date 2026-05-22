@@ -269,8 +269,8 @@ let SHA1_HASH_LOOP_STEP3 = prove
 (* ------------------------------------------------------------------------- *)
 
 let SHA1C_BRIDGE = prove
- (`!a b c d e kw0 kw1 kw2 kw3:int32.
-    let s0 = [a;b;c;d;e] in
+ (`!a b c d kw0 kw1 kw2 kw3:int32. !e:int128.
+    let s0 = [a;b;c;d;(word_subword e (0,32):int32)] in
     let s1 = sha1_compress_round_pre 0 kw0 s0 in
     let s2 = sha1_compress_round_pre 0 kw1 s1 in
     let s3 = sha1_compress_round_pre 0 kw2 s2 in
@@ -287,8 +287,8 @@ let SHA1C_BRIDGE = prove
   REFL_TAC);;
 
 let SHA1P_BRIDGE = prove
- (`!a b c d e kw0 kw1 kw2 kw3:int32.
-    let s0 = [a;b;c;d;e] in
+ (`!a b c d kw0 kw1 kw2 kw3:int32. !e:int128.
+    let s0 = [a;b;c;d;(word_subword e (0,32):int32)] in
     let s1 = sha1_compress_round_pre 1 kw0 s0 in
     let s2 = sha1_compress_round_pre 1 kw1 s1 in
     let s3 = sha1_compress_round_pre 1 kw2 s2 in
@@ -305,8 +305,8 @@ let SHA1P_BRIDGE = prove
   REFL_TAC);;
 
 let SHA1M_BRIDGE = prove
- (`!a b c d e kw0 kw1 kw2 kw3:int32.
-    let s0 = [a;b;c;d;e] in
+ (`!a b c d kw0 kw1 kw2 kw3:int32. !e:int128.
+    let s0 = [a;b;c;d;(word_subword e (0,32):int32)] in
     let s1 = sha1_compress_round_pre 2 kw0 s0 in
     let s2 = sha1_compress_round_pre 2 kw1 s1 in
     let s3 = sha1_compress_round_pre 2 kw2 s2 in

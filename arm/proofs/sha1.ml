@@ -132,18 +132,18 @@ let sha1hash = new_definition
  ** Result : new 128-bit state (a, b, c, d) after 4 rounds with f = Ch.
  **)
 let sha1c = define
-  `sha1c (d:int128) (n:int32) (m:int128) : int128 =
-          word_subword (sha1hash 0 d n m) (0,128)`;;
+  `sha1c (d:int128) (n:int128) (m:int128) : int128 =
+          word_subword (sha1hash 0 d (word_subword n (0,32):int32) m) (0,128)`;;
 
 (** SHA1P : same as SHA1C but f = Parity.                                  **)
 let sha1p = define
-  `sha1p (d:int128) (n:int32) (m:int128) : int128 =
-          word_subword (sha1hash 1 d n m) (0,128)`;;
+  `sha1p (d:int128) (n:int128) (m:int128) : int128 =
+          word_subword (sha1hash 1 d (word_subword n (0,32):int32) m) (0,128)`;;
 
 (** SHA1M : same as SHA1C but f = Majority.                                **)
 let sha1m = define
-  `sha1m (d:int128) (n:int32) (m:int128) : int128 =
-          word_subword (sha1hash 2 d n m) (0,128)`;;
+  `sha1m (d:int128) (n:int128) (m:int128) : int128 =
+          word_subword (sha1hash 2 d (word_subword n (0,32):int32) m) (0,128)`;;
 
 (**
  ** SHA1H  Sd, Sn

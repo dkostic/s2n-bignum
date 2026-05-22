@@ -779,15 +779,15 @@ let decode = new_definition `!w:int32. decode w =
 
   | [0b01011110000:11; Rm:5; 0b000000:6; Rn:5; Rd:5] ->
     // SHA1C
-    SOME (arm_SHA1C (QREG' Rd) (SREG' Rn) (QREG' Rm))
+    SOME (arm_SHA1C (QREG' Rd) (QREG' Rn) (QREG' Rm))
 
   | [0b01011110000:11; Rm:5; 0b000100:6; Rn:5; Rd:5] ->
     // SHA1P
-    SOME (arm_SHA1P (QREG' Rd) (SREG' Rn) (QREG' Rm))
+    SOME (arm_SHA1P (QREG' Rd) (QREG' Rn) (QREG' Rm))
 
   | [0b01011110000:11; Rm:5; 0b001000:6; Rn:5; Rd:5] ->
     // SHA1M
-    SOME (arm_SHA1M (QREG' Rd) (SREG' Rn) (QREG' Rm))
+    SOME (arm_SHA1M (QREG' Rd) (QREG' Rn) (QREG' Rm))
 
   | [0b01011110000:11; Rm:5; 0b001100:6; Rn:5; Rd:5] ->
     // SHA1SU0
@@ -1264,8 +1264,10 @@ let REG_CONV =
   and qs = [|Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10;Q11;Q12;Q13;Q14;Q15;
              Q16;Q17;Q18;Q19;Q20;Q21;Q22;Q23;Q24;Q25;Q26;Q27;Q28;Q29;Q30;Q31|]
   and ds = [|D0; D1; D2; D3; D4; D5; D6; D7; D8; D9; D10;D11;D12;D13;D14;D15;
-          D16;D17;D18;D19;D20;D21;D22;D23;D24;D25;D26;D27;D28;D29;D30;D31|] in
-  List.iter (fun A -> Array.iteri (fun i th -> A.(i) <- SYM th) A) [xs;ws;qs;ds];
+          D16;D17;D18;D19;D20;D21;D22;D23;D24;D25;D26;D27;D28;D29;D30;D31|]
+  and ss = [|S0; S1; S2; S3; S4; S5; S6; S7; S8; S9; S10;S11;S12;S13;S14;S15;
+          S16;S17;S18;S19;S20;S21;S22;S23;S24;S25;S26;S27;S28;S29;S30;S31|] in
+  List.iter (fun A -> Array.iteri (fun i th -> A.(i) <- SYM th) A) [xs;ws;qs;ds;ss];
   let _ =
     let th1,th2 = (CONJ_PAIR o prove) (`XREG 31 = XZR /\ WREG 31 = WZR`,
       REWRITE_TAC [ARM_ZERO_REGISTER]) in
@@ -1281,11 +1283,11 @@ let REG_CONV =
       let th' = INST [mk_numeral (num i),`n:num`] regth in
       TRANS (PROVE_HYP (EQT_ELIM (NUM_RED_CONV (hd (hyp th')))) th') th) A in
     F sp xth xs, F wsp wth ws in
-  let xs',ws',qs',ds' =
+  let xs',ws',qs',ds',ss' =
     let F th' A = Array.mapi (fun i ->
       TRANS (CONV_RULE (RAND_CONV (RAND_CONV WORD_RED_CONV))
         (SPEC (mk_comb (`word:num->5 word`, mk_numeral (num i))) th'))) A in
-    F XREG' xs, F WREG' ws, F QREG' qs,F DREG' ds in
+    F XREG' xs, F WREG' ws, F QREG' qs,F DREG' ds, F SREG' ss in
   function
   | Comb(Const("XREG",_),n) -> xs.(Num.int_of_num (dest_numeral n))
   | Comb(Const("WREG",_),n) -> ws.(Num.int_of_num (dest_numeral n))
@@ -1297,6 +1299,8 @@ let REG_CONV =
     qs'.(Num.int_of_num (dest_numeral n))
   | Comb(Const("DREG'",_),Comb(Const("word",_),n)) ->
     ds'.(Num.int_of_num (dest_numeral n))
+  | Comb(Const("SREG'",_),Comb(Const("word",_),n)) ->
+    ss'.(Num.int_of_num (dest_numeral n))
   | Comb(Const("XREG_SP",_),Comb(Const("word",_),n)) ->
     xsp.(Num.int_of_num (dest_numeral n))
   | Comb(Const("WREG_SP",_),Comb(Const("word",_),n)) ->
@@ -1484,7 +1488,7 @@ let PURE_DECODE_CONV =
     add_conv (`_MATCH:A->(A->B->bool)->B`, 2, MATCH_CONV) rw;
 
     (* components and instructions *)
-    List.iter (fun tm -> add_conv (tm, 1, REG_CONV) rw) [`XREG'`; `WREG'`; `QREG'`; `DREG'`; `XREG_SP`; `WREG_SP`];
+    List.iter (fun tm -> add_conv (tm, 1, REG_CONV) rw) [`XREG'`; `WREG'`; `QREG'`; `DREG'`; `SREG'`; `XREG_SP`; `WREG_SP`];
     add_thms [arm_adcop; arm_addop; arm_adv_simd_expand_imm;
               arm_bfmop; arm_ccop; arm_csop;
               arm_ldst; arm_ldst_q; arm_ldst_d; arm_ldstb; arm_ldstp; arm_ldstp_q; arm_ldstp_d;
