@@ -59,3 +59,200 @@ let crc32c_loop16_mc = define_assert_from_elf
 ];;
 
 let CRC32C_LOOP16_EXEC = ARM_MK_EXEC_RULE crc32c_loop16_mc;;
+
+(* ------------------------------------------------------------------------- *)
+(* Helper: list of 16 LE bytes from a (lo,hi) pair of int64s.                *)
+(* This is the byte enumeration the postcondition feeds into crc32c_bytes,   *)
+(* matching the layout already established in Phase 7.                       *)
+(* ------------------------------------------------------------------------- *)
+
+let chunk16_bytes = define
+ `chunk16_bytes (lo:int64) (hi:int64) : byte list =
+   [word_subword lo (0,8); word_subword lo (8,8);
+    word_subword lo (16,8); word_subword lo (24,8);
+    word_subword lo (32,8); word_subword lo (40,8);
+    word_subword lo (48,8); word_subword lo (56,8);
+    word_subword hi (0,8); word_subword hi (8,8);
+    word_subword hi (16,8); word_subword hi (24,8);
+    word_subword hi (32,8); word_subword hi (40,8);
+    word_subword hi (48,8); word_subword hi (56,8)]`;;
+
+(* ------------------------------------------------------------------------- *)
+(* Iterated chunk concatenation: bytes consumed by buffer n through          *)
+(* iteration count i, given per-iteration ghosts m_lo/m_hi (j:num).          *)
+(* Defined recursively over j with APPEND so it interacts cleanly with       *)
+(* crc32c_bytes_APPEND in the body subgoal.                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let consumed_bytes = define
+ `(consumed_bytes (m_lo:num->int64) (m_hi:num->int64) 0 = []) /\
+  (consumed_bytes (m_lo:num->int64) (m_hi:num->int64) (SUC j) =
+     APPEND (consumed_bytes m_lo m_hi j) (chunk16_bytes (m_lo j) (m_hi j)))`;;
+
+let CONSUMED_BYTES_STEP = prove
+ (`!m_lo m_hi j.
+        consumed_bytes m_lo m_hi (j + 1) =
+        APPEND (consumed_bytes m_lo m_hi j) (chunk16_bytes (m_lo j) (m_hi j))`,
+  REWRITE_TAC[GSYM ADD1; consumed_bytes]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Loop16 multi-iteration correctness.                                       *)
+(*                                                                           *)
+(* For iters >= 1 and residue < 16 with 16*iters + residue < 2^64, starting  *)
+(* with X19 = word(16*iters + residue), the loop runs exactly `iters`        *)
+(* iterations: each pointer X0..X7 advances by 16*iters bytes; the consumed  *)
+(* prefix at each buffer becomes zero; each accumulator W8..W15 folds the    *)
+(* concatenation of all per-iteration 16-byte chunks; X19 ends at            *)
+(* word residue. PC ends at pc + 0x8c (after b.ge falls through).            *)
+(* ------------------------------------------------------------------------- *)
+
+let CRC32C_LOOP16_CORRECT = prove
+ (`!a0 a1 a2 a3 a4 a5 a6 a7
+    init0 init1 init2 init3 init4 init5 init6 init7
+    (m0_lo:num->int64) (m0_hi:num->int64)
+    (m1_lo:num->int64) (m1_hi:num->int64)
+    (m2_lo:num->int64) (m2_hi:num->int64)
+    (m3_lo:num->int64) (m3_hi:num->int64)
+    (m4_lo:num->int64) (m4_hi:num->int64)
+    (m5_lo:num->int64) (m5_hi:num->int64)
+    (m6_lo:num->int64) (m6_hi:num->int64)
+    (m7_lo:num->int64) (m7_hi:num->int64)
+    iters residue pc.
+        1 <= iters /\
+        residue < 16 /\
+        16 * iters + residue < 2 EXP 64 /\
+        PAIRWISE nonoverlapping
+         [(word pc, LENGTH crc32c_loop16_mc);
+          (a0, 16 * iters); (a1, 16 * iters);
+          (a2, 16 * iters); (a3, 16 * iters);
+          (a4, 16 * iters); (a5, 16 * iters);
+          (a6, 16 * iters); (a7, 16 * iters)]
+        ==> ensures arm
+             (\s. aligned_bytes_loaded s (word pc) crc32c_loop16_mc /\
+                  read PC s = word pc /\
+                  read X0 s = a0 /\ read X1 s = a1 /\
+                  read X2 s = a2 /\ read X3 s = a3 /\
+                  read X4 s = a4 /\ read X5 s = a5 /\
+                  read X6 s = a6 /\ read X7 s = a7 /\
+                  read X8 s = word_zx (init0:int32) /\
+                  read X9 s = word_zx (init1:int32) /\
+                  read X10 s = word_zx (init2:int32) /\
+                  read X11 s = word_zx (init3:int32) /\
+                  read X12 s = word_zx (init4:int32) /\
+                  read X13 s = word_zx (init5:int32) /\
+                  read X14 s = word_zx (init6:int32) /\
+                  read X15 s = word_zx (init7:int32) /\
+                  read X19 s = word(16 * iters + residue) /\
+                  (!j. j < iters ==>
+                     read (memory :> bytes64
+                            (word_add a0 (word(16 * j)))) s = m0_lo j /\
+                     read (memory :> bytes64
+                            (word_add a0 (word(16 * j + 8)))) s = m0_hi j /\
+                     read (memory :> bytes64
+                            (word_add a1 (word(16 * j)))) s = m1_lo j /\
+                     read (memory :> bytes64
+                            (word_add a1 (word(16 * j + 8)))) s = m1_hi j /\
+                     read (memory :> bytes64
+                            (word_add a2 (word(16 * j)))) s = m2_lo j /\
+                     read (memory :> bytes64
+                            (word_add a2 (word(16 * j + 8)))) s = m2_hi j /\
+                     read (memory :> bytes64
+                            (word_add a3 (word(16 * j)))) s = m3_lo j /\
+                     read (memory :> bytes64
+                            (word_add a3 (word(16 * j + 8)))) s = m3_hi j /\
+                     read (memory :> bytes64
+                            (word_add a4 (word(16 * j)))) s = m4_lo j /\
+                     read (memory :> bytes64
+                            (word_add a4 (word(16 * j + 8)))) s = m4_hi j /\
+                     read (memory :> bytes64
+                            (word_add a5 (word(16 * j)))) s = m5_lo j /\
+                     read (memory :> bytes64
+                            (word_add a5 (word(16 * j + 8)))) s = m5_hi j /\
+                     read (memory :> bytes64
+                            (word_add a6 (word(16 * j)))) s = m6_lo j /\
+                     read (memory :> bytes64
+                            (word_add a6 (word(16 * j + 8)))) s = m6_hi j /\
+                     read (memory :> bytes64
+                            (word_add a7 (word(16 * j)))) s = m7_lo j /\
+                     read (memory :> bytes64
+                            (word_add a7 (word(16 * j + 8)))) s = m7_hi j))
+             (\s. read PC s = word(pc + 0x8c) /\
+                  read X0 s = word_add a0 (word(16 * iters)) /\
+                  read X1 s = word_add a1 (word(16 * iters)) /\
+                  read X2 s = word_add a2 (word(16 * iters)) /\
+                  read X3 s = word_add a3 (word(16 * iters)) /\
+                  read X4 s = word_add a4 (word(16 * iters)) /\
+                  read X5 s = word_add a5 (word(16 * iters)) /\
+                  read X6 s = word_add a6 (word(16 * iters)) /\
+                  read X7 s = word_add a7 (word(16 * iters)) /\
+                  read X8 s =
+                    word_zx
+                     (crc32c_bytes init0 (consumed_bytes m0_lo m0_hi iters)) /\
+                  read X9 s =
+                    word_zx
+                     (crc32c_bytes init1 (consumed_bytes m1_lo m1_hi iters)) /\
+                  read X10 s =
+                    word_zx
+                     (crc32c_bytes init2 (consumed_bytes m2_lo m2_hi iters)) /\
+                  read X11 s =
+                    word_zx
+                     (crc32c_bytes init3 (consumed_bytes m3_lo m3_hi iters)) /\
+                  read X12 s =
+                    word_zx
+                     (crc32c_bytes init4 (consumed_bytes m4_lo m4_hi iters)) /\
+                  read X13 s =
+                    word_zx
+                     (crc32c_bytes init5 (consumed_bytes m5_lo m5_hi iters)) /\
+                  read X14 s =
+                    word_zx
+                     (crc32c_bytes init6 (consumed_bytes m6_lo m6_hi iters)) /\
+                  read X15 s =
+                    word_zx
+                     (crc32c_bytes init7 (consumed_bytes m7_lo m7_hi iters)) /\
+                  read X19 s = word residue /\
+                  (!j. j < iters ==>
+                     read (memory :> bytes64
+                            (word_add a0 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a0 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a1 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a1 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a2 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a2 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a3 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a3 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a4 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a4 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a5 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a5 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a6 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a6 (word(16 * j + 8)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a7 (word(16 * j)))) s = word 0 /\
+                     read (memory :> bytes64
+                            (word_add a7 (word(16 * j + 8)))) s = word 0))
+          (MAYCHANGE [PC; X0; X1; X2; X3; X4; X5; X6; X7;
+                      X8; X9; X10; X11; X12; X13; X14; X15;
+                      X16; X17; X19] ,,
+           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+           MAYCHANGE [memory :> bytes(a0, 16 * iters);
+                      memory :> bytes(a1, 16 * iters);
+                      memory :> bytes(a2, 16 * iters);
+                      memory :> bytes(a3, 16 * iters);
+                      memory :> bytes(a4, 16 * iters);
+                      memory :> bytes(a5, 16 * iters);
+                      memory :> bytes(a6, 16 * iters);
+                      memory :> bytes(a7, 16 * iters)])`,
+  CHEAT_TAC);;
