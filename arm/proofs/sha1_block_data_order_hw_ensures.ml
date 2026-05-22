@@ -147,6 +147,14 @@ let SHA1_HW_CORRECT = prove
              read (memory :> bytes128 (word_add kptr (word(16 * k)))) s =
              word_join4 (sha1_K (20*k)) (sha1_K (20*k))
                         (sha1_K (20*k)) (sha1_K (20*k))) /\
+           read Q16 s =
+             word_join4 (sha1_K 0) (sha1_K 0) (sha1_K 0) (sha1_K 0) /\
+           read Q17 s =
+             word_join4 (sha1_K 20) (sha1_K 20) (sha1_K 20) (sha1_K 20) /\
+           read Q18 s =
+             word_join4 (sha1_K 40) (sha1_K 40) (sha1_K 40) (sha1_K 40) /\
+           read Q19 s =
+             word_join4 (sha1_K 60) (sha1_K 60) (sha1_K 60) (sha1_K 60) /\
            read (memory :> bytes128 state_ptr) s = word_join4 a b c d /\
            read (memory :> bytes32 (word_add state_ptr (word 16))) s = e` THEN
   ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL [
