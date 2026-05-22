@@ -467,3 +467,94 @@ let EL_W_ALL_LIST =
     el_w_acc := !el_w_acc @ [th10]
   done;
   !el_w_acc;;
+
+(* ========================================================================= *)
+(* GEN_CUT_POINT_TAC: at a round-group boundary (after rg i, i = 0..19),     *)
+(* assert the canonical cut-point invariant:                                 *)
+(*   read Q0 sname = word_join4 (EL 0 sb_t) (EL 1 sb_t)                      *)
+(*                              (EL 2 sb_t) (EL 3 sb_t)                      *)
+(*   read Q? sname = word_join4 (EL 4 sb_t) (word 0) (word 0) (word 0)       *)
+(* where sb_t = sha1_compress (4(i+1)) W H, and Q? = Q3 if i even, Q2 if i   *)
+(* odd (the SHA1H output register written during round group i).             *)
+(*                                                                           *)
+(* The Q0 cut is proved using the appropriate per-group bridge from          *)
+(* GROUP_BRIDGE_{C,P_LO,M,P_HI}. The Q? cut uses SHA1H_BRIDGE_FLAT plus      *)
+(* SHA1_COMPRESS_4MORE_E_EQ to fold ROL_30 of the previous a-lane into the   *)
+(* next state's e-lane.                                                      *)
+(*                                                                           *)
+(* After establishing the cut form, all sha1{h,c,p,m} assumptions are        *)
+(* discarded (subsumed), schedule registers carrying sha1su1 results are     *)
+(* unfolded via SHA1SU_BRIDGE_FLAT, and the temporary K+W registers Q20/Q21  *)
+(* are dropped.                                                              *)
+(* ========================================================================= *)
+
+(* Active e register (post round group i): Q3 if i even, Q2 if i odd. *)
+let q_e_after_rg i =
+  if i mod 2 = 0 then `Q3:(armstate,int128)component`
+  else `Q2:(armstate,int128)component`;;
+
+(* Pick the right per-group bridge for round group i (0..19). *)
+let group_bridge_for_rg i =
+  if i < 5  then GROUP_BRIDGE_C.(i)
+  else if i < 10 then GROUP_BRIDGE_P_LO.(i - 5)
+  else if i < 15 then GROUP_BRIDGE_M.(i - 10)
+                 else GROUP_BRIDGE_P_HI.(i - 15);;
+
+let GEN_CUT_POINT_TAC h_tm i sname =
+  let target = mk_small_numeral(4 * (i + 1)) in
+  let bridge = group_bridge_for_rg i in
+  let bridge_inst = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int32 list`; h_tm] bridge) in
+  let q_e_reg = q_e_after_rg i in
+  let sb = subst [target, `t:num`; h_tm, `H:int32 list`]
+            `sha1_compress t W (H:int32 list)` in
+  let el k = mk_comb(mk_comb(`EL:num->int32 list->int32`,
+                             mk_small_numeral k), sb) in
+  let read_q0 = mk_comb(mk_comb(
+    `read:(armstate,int128)component->armstate->int128`,
+    `Q0:(armstate,int128)component`), sname) in
+  let q0_rhs = list_mk_comb(
+    `word_join4:int32->int32->int32->int32->int128`,
+    [el 0; el 1; el 2; el 3]) in
+  let q0_tm = mk_eq(read_q0, q0_rhs) in
+  let read_q_e = mk_comb(mk_comb(
+    `read:(armstate,int128)component->armstate->int128`,
+    q_e_reg), sname) in
+  let q_e_rhs = list_mk_comb(
+    `word_join4:int32->int32->int32->int32->int128`,
+    [el 4; `word 0:int32`; `word 0:int32`; `word 0:int32`]) in
+  let q_e_tm = mk_eq(read_q_e, q_e_rhs) in
+  let four_more_inst =
+    let k = mk_small_numeral(4 * i) in
+    let kn_th = ARITH_RULE(mk_eq(
+      mk_comb(mk_comb(`(+):num->num->num`, k), `4`), target)) in
+    REWRITE_RULE[kn_th]
+      (SPECL [`W:int32 list`; h_tm; k] SHA1_COMPRESS_4MORE_E_EQ) in
+  let CUT_Q0_TAC =
+    ASM_REWRITE_TAC[bridge_inst] THEN
+    TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha1_compress)))) THEN
+    TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
+    REFL_TAC in
+  let CUT_QE_TAC =
+    ASM_REWRITE_TAC[SHA1H_BRIDGE_FLAT] THEN
+    REWRITE_TAC[four_more_inst] THEN
+    TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha1_compress)))) THEN
+    TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
+    REFL_TAC in
+  SUBGOAL_THEN q0_tm ASSUME_TAC THENL
+   [CUT_Q0_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN q_e_tm ASSUME_TAC THENL
+   [CUT_QE_TAC; ALL_TAC] THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    can (find_term (fun t ->
+      try let nm = fst(dest_const t) in
+          nm = "sha1c" || nm = "sha1p" || nm = "sha1m" || nm = "sha1h"
+      with _ -> false)) (concl th)))) THEN
+  RULE_ASSUM_TAC(fun th ->
+    if can (find_term (fun t ->
+        try fst(dest_const t) = "sha1su1" with _ -> false)) (concl th)
+    then REWRITE_RULE[SHA1SU_BRIDGE_FLAT] th
+    else th) THEN
+  DISCARD_MATCHING_ASSUMPTIONS
+    [`read Q20 s = x:int128`;
+     `read Q21 s = x:int128`];;
