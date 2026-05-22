@@ -613,6 +613,75 @@ let GEN_CUT_POINT_TAC h_tm i sname =
      `read Q21 s = x:int128`];;
 
 (* ========================================================================= *)
+(* GEN_CUT_POINT_NODISCARD_TAC: variant of GEN_CUT_POINT_TAC that does NOT   *)
+(* discard the read Q20/Q21 hyps. Required when chaining cut points across   *)
+(* round groups in the multi-block ensures: the next sha1c reads Q20 or Q21, *)
+(* and without the canonical hyp ARM_STEPS substitutes the raw `read Qn s_t` *)
+(* into the new Q0 hyp, which then mentions two state vars and gets erased   *)
+(* by DISCARD_OLDSTATE_TAC inside ARM_SINGLE_STEP_TAC.                        *)
+(* ========================================================================= *)
+
+let GEN_CUT_POINT_NODISCARD_TAC h_tm i sname =
+  let target = mk_small_numeral(4 * (i + 1)) in
+  let bridge = group_bridge_for_rg i in
+  let bridge_inst = CONV_RULE(TOP_DEPTH_CONV let_CONV)
+    (SPECL [`W:int32 list`; h_tm] bridge) in
+  let q_e_reg = q_e_after_rg i in
+  let sb = subst [target, `t:num`; h_tm, `H:int32 list`]
+            `sha1_compress t W (H:int32 list)` in
+  let el k = mk_comb(mk_comb(`EL:num->int32 list->int32`,
+                             mk_small_numeral k), sb) in
+  let read_q0 = mk_comb(mk_comb(
+    `read:(armstate,int128)component->armstate->int128`,
+    `Q0:(armstate,int128)component`), sname) in
+  let q0_rhs = list_mk_comb(
+    `word_join4:int32->int32->int32->int32->int128`,
+    [el 0; el 1; el 2; el 3]) in
+  let q0_tm = mk_eq(read_q0, q0_rhs) in
+  let read_q_e = mk_comb(mk_comb(
+    `read:(armstate,int128)component->armstate->int128`,
+    q_e_reg), sname) in
+  let q_e_rhs = list_mk_comb(
+    `word_join4:int32->int32->int32->int32->int128`,
+    [el 4; `word 0:int32`; `word 0:int32`; `word 0:int32`]) in
+  let q_e_tm = mk_eq(read_q_e, q_e_rhs) in
+  let four_more_inst =
+    let k = mk_small_numeral(4 * i) in
+    let kn_th = ARITH_RULE(mk_eq(
+      mk_comb(mk_comb(`(+):num->num->num`, k), `4`), target)) in
+    REWRITE_RULE[kn_th]
+      (SPECL [`W:int32 list`; h_tm; k] SHA1_COMPRESS_4MORE_E_EQ) in
+  let CUT_Q0_TAC =
+    ASM_REWRITE_TAC[bridge_inst] THEN
+    TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha1_compress)))) THEN
+    TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
+    REWRITE_TAC[sha1_K] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    REFL_TAC in
+  let CUT_QE_TAC =
+    ASM_REWRITE_TAC[SHA1H_BRIDGE_FLAT] THEN
+    REWRITE_TAC[four_more_inst] THEN
+    TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha1_compress)))) THEN
+    TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
+    REWRITE_TAC[sha1_K] THEN CONV_TAC NUM_REDUCE_CONV THEN
+    REFL_TAC in
+  SUBGOAL_THEN q0_tm ASSUME_TAC THENL
+   [CUT_Q0_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN q_e_tm ASSUME_TAC THENL
+   [CUT_QE_TAC; ALL_TAC] THEN
+  REPEAT(FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+    can (find_term (fun t ->
+      try let nm = fst(dest_const t) in
+          nm = "sha1c" || nm = "sha1p" || nm = "sha1m" || nm = "sha1h"
+      with _ -> false)) (concl th)))) THEN
+  RULE_ASSUM_TAC(fun th ->
+    if can (find_term (fun t ->
+        try fst(dest_const t) = "sha1su1" with _ -> false)) (concl th)
+    then REWRITE_RULE[SHA1SU_BRIDGE_FLAT] th
+    else th);;
+
+(* ========================================================================= *)
 (* GEN_POSTCOND_TAC: at the end of a block, fold the per-lane add-back form  *)
 (*    word_add (EL k (sha1_compress 80 W H)) (EL k H)                        *)
 (* into the spec form                                                        *)
