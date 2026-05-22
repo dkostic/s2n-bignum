@@ -44,6 +44,17 @@ let SHA1P_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1P_BRIDGE;;
 let SHA1M_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1M_BRIDGE;;
 let SHA1SU_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1SU_BRIDGE;;
 
+(* Canonicalise the recursive `word_join (word_join d c) (word_join b a)`     *)
+(* form (produced by ARM_STEPS for `add v.4s` instructions) into word_join4.  *)
+(* Needed inside BODY proofs to align Q20/Q21 K+W operands with bridge form.  *)
+
+let WORD_JOIN_PAIR2_NORM = prove
+ (`!(a:int32) (b:int32) (c:int32) (d:int32).
+     word_join (word_join (d:int32) (c:int32):int64)
+               (word_join (b:int32) (a:int32):int64):int128 =
+     word_join4 a b c d`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[word_join4] THEN BITBLAST_TAC);;
+
 (* Lane-0 normalisation: SHA1{C,P,M} only inspect lane 0 of their `n`         *)
 (* operand, and SHA1H only inspects lane 0 of its input. These rewrites       *)
 (* canonicalise the n/d operand into `word_join4 (lane0) 0 0 0` form, which   *)
