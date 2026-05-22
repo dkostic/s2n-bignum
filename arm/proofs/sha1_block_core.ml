@@ -280,13 +280,15 @@ let mk_group_bridge_c i =
       word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) =
       sha1c (word_join4 (EL 0 sb) (EL 1 sb) (EL 2 sb) (EL 3 sb))
             (word_join4 (EL 4 sb) (word 0:int32) (word 0) (word 0))
-            (word_join4 (word_add (EL i0 W) (sha1_K i0))
-                        (word_add (EL i1 W) (sha1_K i1))
-                        (word_add (EL i2 W) (sha1_K i2))
-                        (word_add (EL i3 W) (sha1_K i3)))`,
+            (word_join4 (word_add (sha1_K i0) (EL i0 W))
+                        (word_add (sha1_K i1) (EL i1 W))
+                        (word_add (sha1_K i2) (EL i2 W))
+                        (word_add (sha1_K i3) (EL i3 W)))`,
     REPEAT GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     GEN_REWRITE_TAC RAND_CONV [SHA1C_BRIDGE_FLAT] THEN
     REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+    ONCE_REWRITE_TAC[WORD_RULE
+      `word_add (K:int32) W = word_add W K`] THEN
     REWRITE_TAC pre_eq_concrete THEN
     REWRITE_TAC[SHA1_COMPRESS_ROUND_EL_LIST] THEN
     CONV_TAC(LAND_CONV(DEPTH_CONV(REWR_CONV
@@ -313,13 +315,15 @@ let mk_group_bridge_p_lo i =
       word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) =
       sha1p (word_join4 (EL 0 sb) (EL 1 sb) (EL 2 sb) (EL 3 sb))
             (word_join4 (EL 4 sb) (word 0:int32) (word 0) (word 0))
-            (word_join4 (word_add (EL i0 W) (sha1_K i0))
-                        (word_add (EL i1 W) (sha1_K i1))
-                        (word_add (EL i2 W) (sha1_K i2))
-                        (word_add (EL i3 W) (sha1_K i3)))`,
+            (word_join4 (word_add (sha1_K i0) (EL i0 W))
+                        (word_add (sha1_K i1) (EL i1 W))
+                        (word_add (sha1_K i2) (EL i2 W))
+                        (word_add (sha1_K i3) (EL i3 W)))`,
     REPEAT GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     GEN_REWRITE_TAC RAND_CONV [SHA1P_BRIDGE_FLAT] THEN
     REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+    ONCE_REWRITE_TAC[WORD_RULE
+      `word_add (K:int32) W = word_add W K`] THEN
     REWRITE_TAC pre_eq_concrete THEN
     REWRITE_TAC[SHA1_COMPRESS_ROUND_EL_LIST] THEN
     CONV_TAC(LAND_CONV(DEPTH_CONV(REWR_CONV
@@ -346,13 +350,15 @@ let mk_group_bridge_m i =
       word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) =
       sha1m (word_join4 (EL 0 sb) (EL 1 sb) (EL 2 sb) (EL 3 sb))
             (word_join4 (EL 4 sb) (word 0:int32) (word 0) (word 0))
-            (word_join4 (word_add (EL i0 W) (sha1_K i0))
-                        (word_add (EL i1 W) (sha1_K i1))
-                        (word_add (EL i2 W) (sha1_K i2))
-                        (word_add (EL i3 W) (sha1_K i3)))`,
+            (word_join4 (word_add (sha1_K i0) (EL i0 W))
+                        (word_add (sha1_K i1) (EL i1 W))
+                        (word_add (sha1_K i2) (EL i2 W))
+                        (word_add (sha1_K i3) (EL i3 W)))`,
     REPEAT GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     GEN_REWRITE_TAC RAND_CONV [SHA1M_BRIDGE_FLAT] THEN
     REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+    ONCE_REWRITE_TAC[WORD_RULE
+      `word_add (K:int32) W = word_add W K`] THEN
     REWRITE_TAC pre_eq_concrete THEN
     REWRITE_TAC[SHA1_COMPRESS_ROUND_EL_LIST] THEN
     CONV_TAC(LAND_CONV(DEPTH_CONV(REWR_CONV
@@ -379,13 +385,15 @@ let mk_group_bridge_p_hi i =
       word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) =
       sha1p (word_join4 (EL 0 sb) (EL 1 sb) (EL 2 sb) (EL 3 sb))
             (word_join4 (EL 4 sb) (word 0:int32) (word 0) (word 0))
-            (word_join4 (word_add (EL i0 W) (sha1_K i0))
-                        (word_add (EL i1 W) (sha1_K i1))
-                        (word_add (EL i2 W) (sha1_K i2))
-                        (word_add (EL i3 W) (sha1_K i3)))`,
+            (word_join4 (word_add (sha1_K i0) (EL i0 W))
+                        (word_add (sha1_K i1) (EL i1 W))
+                        (word_add (sha1_K i2) (EL i2 W))
+                        (word_add (sha1_K i3) (EL i3 W)))`,
     REPEAT GEN_TAC THEN CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     GEN_REWRITE_TAC RAND_CONV [SHA1P_BRIDGE_FLAT] THEN
     REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+    ONCE_REWRITE_TAC[WORD_RULE
+      `word_add (K:int32) W = word_add W K`] THEN
     REWRITE_TAC pre_eq_concrete THEN
     REWRITE_TAC[SHA1_COMPRESS_ROUND_EL_LIST] THEN
     CONV_TAC(LAND_CONV(DEPTH_CONV(REWR_CONV
@@ -534,12 +542,16 @@ let GEN_CUT_POINT_TAC h_tm i sname =
     ASM_REWRITE_TAC[bridge_inst] THEN
     TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha1_compress)))) THEN
     TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
+    REWRITE_TAC[sha1_K] THEN CONV_TAC NUM_REDUCE_CONV THEN
     REFL_TAC in
   let CUT_QE_TAC =
     ASM_REWRITE_TAC[SHA1H_BRIDGE_FLAT] THEN
     REWRITE_TAC[four_more_inst] THEN
     TRY(CONV_TAC(ONCE_DEPTH_CONV(REWR_CONV(CONJUNCT1 sha1_compress)))) THEN
     TRY(CONV_TAC(DEPTH_CONV EL_CONV)) THEN
+    REWRITE_TAC EL_W_ALL_LIST THEN
+    REWRITE_TAC[sha1_K] THEN CONV_TAC NUM_REDUCE_CONV THEN
     REFL_TAC in
   SUBGOAL_THEN q0_tm ASSUME_TAC THENL
    [CUT_Q0_TAC; ALL_TAC] THEN
