@@ -239,6 +239,21 @@ let SHA1_HW_CORRECT = prove
     ABBREV_TAC `W = sha1_message_schedule 64
       [w0:int32;w1;w2;w3;w4;w5;w6;w7;
        w8;w9;w10;w11;w12;w13;w14;w15]` THEN
+    (* Prelude: instr 11=mov v22.16b,v0.16b ; 12=add v20=K0+w0..w3 ;          *)
+    (*          13=add v21=K0+w4..w7 ; instr 14..17 = RG0.                    *)
+    ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (11--17) THEN
+    (* Canonicalise Q0 = sha1c (...) q1_lane_init (...) using LANE0_NORM       *)
+    (* and the loop-invariant side hypothesis on word_subword q1_lane_init.    *)
+    RULE_ASSUM_TAC(ONCE_REWRITE_RULE[SHA1C_LANE0_NORM]) THEN
+    RULE_ASSUM_TAC(ONCE_REWRITE_RULE[ASSUME
+      `word_subword (q1_lane_init:int128) (0,32):int32 =
+       EL 4 (sha1_hash_blocks ii blocks [a:int32;b;c;d;e])`]) THEN
+    (* Canonicalise Q20/Q21 (K+W) from word_join recursion to word_join4,    *)
+    (* then expand word_subword across the lanes so K0+w_i appears flat.     *)
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN_PAIR2_NORM]) THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+    GEN_CUT_POINT_TAC
+      `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]` 0 `s17:armstate` THEN
     CHEAT_TAC;
 
     (* ================================================================= *)
