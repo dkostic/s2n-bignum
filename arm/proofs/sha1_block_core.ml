@@ -386,3 +386,64 @@ let GROUP_BRIDGE_C    = Array.init 5 mk_group_bridge_c;;
 let GROUP_BRIDGE_P_LO = Array.init 5 (fun i -> mk_group_bridge_p_lo (5 + i));;
 let GROUP_BRIDGE_M    = Array.init 5 (fun i -> mk_group_bridge_m (10 + i));;
 let GROUP_BRIDGE_P_HI = Array.init 5 (fun i -> mk_group_bridge_p_hi (15 + i));;
+
+(* ========================================================================= *)
+(* EL n W lemmas: EL n (sha1_message_schedule 64 M) = expression.            *)
+(*                                                                           *)
+(* For n < 16:  RHS = w_n.                                                   *)
+(* For 16 <= n < 80: RHS = ROL_1(...XOR-tree of w0..w15...), fully inlined. *)
+(*                                                                           *)
+(* These are conditional on the assumption                                   *)
+(*   sha1_message_schedule 64 [w0;...;w15] = W                              *)
+(* (the `w_abbrev` ASSUME below). They form a closed rewrite set: applying  *)
+(* `REWRITE_TAC EL_W_ALL_LIST` to a goal containing `EL k W` for k in 0..79 *)
+(* gives a closed expression in w0..w15.                                    *)
+(* ========================================================================= *)
+
+let w_abbrev = ASSUME
+  `sha1_message_schedule 64
+   [w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W`;;
+
+let m_list =
+  `[w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15]`;;
+
+let len_m = prove(mk_eq(mk_comb(`LENGTH:int32 list->num`, m_list), `16`),
+  REWRITE_TAC[LENGTH] THEN ARITH_TAC);;
+
+let EL_W_ALL_LIST =
+  let el_w_acc = ref (List.map (fun k ->
+    let th = SPECL [`64`; m_list; mk_small_numeral k] SHA1_SCHEDULE_PREFIX in
+    let th1 = MP th (EQT_ELIM(REWRITE_CONV[len_m; ARITH] (lhand(concl th)))) in
+    let th2 = CONV_RULE(RAND_CONV EL_CONV) th1 in
+    CONV_RULE(LAND_CONV(RAND_CONV(REWR_CONV w_abbrev))) th2) (0--15)) in
+  for n = 0 to 63 do
+    let th = SPECL [mk_small_numeral n; m_list] SHA1_W_EXTEND in
+    let cond_thm = prove(lhand(concl th), REWRITE_TAC[len_m] THEN ARITH_TAC) in
+    let th2 = MP th cond_thm in
+    let th3 = CONV_RULE(RAND_CONV(TOP_DEPTH_CONV let_CONV)) th2 in
+    let th4 = CONV_RULE(RAND_CONV(DEPTH_CONV NUM_ADD_CONV)) th3 in
+    let prefix_rules = List.init 16 (fun k ->
+      let sth = SPECL [mk_small_numeral n; m_list; mk_small_numeral k]
+        SHA1_SCHEDULE_PREFIX in
+      try MP sth (EQT_ELIM(REWRITE_CONV[len_m; ARITH] (lhand(concl sth))))
+      with _ -> TRUTH) in
+    let th5 = REWRITE_RULE prefix_rules th4 in
+    let th6 = CONV_RULE(RAND_CONV(DEPTH_CONV EL_CONV)) th5 in
+    let mono_rules = List.init (min n 64) (fun i ->
+      let k = i + 16 in
+      if k < n + 16 then
+        let sth = SPECL [mk_small_numeral n; `64`; m_list; mk_small_numeral k]
+          SHA1_SCHEDULE_MONO in
+        try let cond_thm = prove(lhand(concl sth),
+              REWRITE_TAC[len_m] THEN ARITH_TAC) in
+            CONV_RULE(RAND_CONV(RAND_CONV(REWR_CONV w_abbrev)))
+              (GSYM(MP sth cond_thm))
+        with _ -> TRUTH
+      else TRUTH) in
+    let th7 = REWRITE_RULE mono_rules th6 in
+    let th8 = REWRITE_RULE !el_w_acc th7 in
+    let th9 = CONV_RULE(LAND_CONV(REWRITE_CONV[ARITH])) th8 in
+    let th10 = CONV_RULE(LAND_CONV(RAND_CONV(REWR_CONV w_abbrev))) th9 in
+    el_w_acc := !el_w_acc @ [th10]
+  done;
+  !el_w_acc;;
