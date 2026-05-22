@@ -194,3 +194,53 @@ let SHA1_4ROUNDS_REG_CORRECT = prove
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   REWRITE_TAC[CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1H_BRIDGE;
               CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1C_BRIDGE]);;
+
+(* ------------------------------------------------------------------------- *)
+(* K-constant load (Phase 6).                                                *)
+(*                                                                           *)
+(* The four LDR Q16/Q17/Q18/Q19 instructions at mc indices 3..6 (PC          *)
+(* offsets 0x0c..0x18) load the K-table at X3 into the four broadcast        *)
+(* lanes per FIPS 180-4 SHA-1 K constant (rounds 0..19, 20..39, 40..59,      *)
+(* 60..79). The K table is arranged as 16 32-bit words: 4 lanes of K0,       *)
+(* then 4 lanes of K1, then K2, then K3 (band order).                        *)
+(*                                                                           *)
+(* Inputs:                                                                   *)
+(*   X3 = k_addr                                                             *)
+(*   memory[k_addr + 16*i] = word_join4 (sha1_K (20*i)) ... (4 lanes each)   *)
+(*                                                                           *)
+(* Outputs:                                                                  *)
+(*   Q16 = 4-lane broadcast of sha1_K  0  (= 0x5a827999, rounds  0..19)     *)
+(*   Q17 = 4-lane broadcast of sha1_K 20  (= 0x6ed9eba1, rounds 20..39)     *)
+(*   Q18 = 4-lane broadcast of sha1_K 40  (= 0x8f1bbcdc, rounds 40..59)     *)
+(*   Q19 = 4-lane broadcast of sha1_K 60  (= 0xca62c1d6, rounds 60..79)     *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA1_KLOAD_REG_CORRECT = prove
+ (`!k_addr pc.
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word (pc + 0xc) /\
+          read X3 s = k_addr /\
+          read (memory :> bytes128 k_addr) s =
+            word_join4 (sha1_K 0) (sha1_K 0) (sha1_K 0) (sha1_K 0) /\
+          read (memory :> bytes128 (word_add k_addr (word 16))) s =
+            word_join4 (sha1_K 20) (sha1_K 20) (sha1_K 20) (sha1_K 20) /\
+          read (memory :> bytes128 (word_add k_addr (word 32))) s =
+            word_join4 (sha1_K 40) (sha1_K 40) (sha1_K 40) (sha1_K 40) /\
+          read (memory :> bytes128 (word_add k_addr (word 48))) s =
+            word_join4 (sha1_K 60) (sha1_K 60) (sha1_K 60) (sha1_K 60))
+     (\s. read PC s = word (pc + 0x1c) /\
+          read Q16 s = word_join4 (sha1_K 0) (sha1_K 0) (sha1_K 0) (sha1_K 0) /\
+          read Q17 s =
+            word_join4 (sha1_K 20) (sha1_K 20) (sha1_K 20) (sha1_K 20) /\
+          read Q18 s =
+            word_join4 (sha1_K 40) (sha1_K 40) (sha1_K 40) (sha1_K 40) /\
+          read Q19 s =
+            word_join4 (sha1_K 60) (sha1_K 60) (sha1_K 60) (sha1_K 60))
+     (MAYCHANGE [PC] ,, MAYCHANGE [Q16; Q17; Q18; Q19] ,,
+      MAYCHANGE [events])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--4) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
