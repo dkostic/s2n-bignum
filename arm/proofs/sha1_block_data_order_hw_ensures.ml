@@ -168,9 +168,32 @@ let SHA1_HW_CORRECT = prove
     (* BODY *)
     CHEAT_TAC;
 
-    (* BACK-EDGE *)
-    CHEAT_TAC;
+    (* ================================================================= *)
+    (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1c0 ==>              *)
+    (*            invariant(i) at pc+0x1c (only for 0 < i < num_blocks) *)
+    (* Just CBNZ X2, .Loop_hw — branches back since X2 = num_blocks-i!=0 *)
+    (* ================================================================= *)
+    X_GEN_TAC `ii:num` THEN STRIP_TAC THEN
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+    VAL_INT64_TAC `num_blocks - ii` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
 
-    (* EXIT *)
-    CHEAT_TAC
+    (* ================================================================= *)
+    (* Subgoal 4: EXIT -- invariant(num_blocks) at pc+0x1c0 ==>          *)
+    (*            postcondition at pc+0x1d0                              *)
+    (* CBNZ falls through (x2=0), STR Q0, UMOV W4 Q1[0], STR W4 (4 instrs)*)
+    (* RET (instr 117) at pc+0x1d0 is NOT executed; SUBROUTINE wraps it. *)
+    (* ================================================================= *)
+    REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI;
+                NONOVERLAPPING_CLAUSES; SUB_REFL] THEN
+    VAL_INT64_TAC `num_blocks - num_blocks` THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--4) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    CONV_TAC WORD_BLAST
   ]);;
