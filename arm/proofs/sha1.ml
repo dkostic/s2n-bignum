@@ -163,24 +163,32 @@ let sha1h = define
 (**
  ** SHA1SU0 Vd.4S, Vn.4S, Vm.4S  -- Schedule Update 0
  **
- **  Operation
+ **  ARM ARM pseudocode (aarch64.instrs.SHA1SU0_V_VVV_v):
+ **
  **    bits(128) operand1 = V[d];      // current four W-words
  **    bits(128) operand2 = V[n];      // next four W-words
  **    bits(128) operand3 = V[m];      // following four W-words
  **    bits(128) result;
- **    bits(128) T = operand2<31:0> : operand1<127:32>;  // shift in by 32
+ **    bits(128) T = operand2<63:0> : operand1<127:64>;  // shift in by 64
  **    result = T EOR operand1 EOR operand3;
  **    V[d] = result;
  **
- **  Equivalently, T is the byte-extract of (operand1 || operand2) at offset
- **  4 bytes (this is the EXT instruction semantics with imm=8 in bytes).
+ **  In W-word semantics: if operand1 packs W[i], W[i+1], W[i+2], W[i+3]
+ **  (lane 0 = W[i], lane 3 = W[i+3]) and operand2 packs W[i+4..i+7], then
+ **  T packs W[i+2..i+5] (i.e. operand1 shifted down by 2 lanes, with
+ **  operand2's bottom 2 lanes filling the top). XORing with operand1 (W[i..i+3])
+ **  and operand3 (W[i+8..i+11]) gives the partial message-schedule mix
+ **  W[t-16] EOR W[t-14] EOR W[t-8] for t = i+16, i+17, i+18, i+19.
+ **
+ **  Equivalently, T is the EXT instruction at imm=8 (byte offset, =2 lanes).
+ **  Cross-checked against ARM HW via differential simulator (Phase 0c).
  **)
 let sha1su0 = define
   `sha1su0 (d:int128) (n:int128) (m:int128) : int128 =
           let t:int128 =
-            (word_join:int32->96 word->int128)
-              (word_subword n (0,32))
-              (word_subword d (32,96)) in
+            (word_join:64 word->64 word->int128)
+              (word_subword n (0,64))
+              (word_subword d (64,64)) in
           word_xor t (word_xor d m)`;;
 
 (**
