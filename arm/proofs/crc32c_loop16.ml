@@ -255,4 +255,113 @@ let CRC32C_LOOP16_CORRECT = prove
                       memory :> bytes(a5, 16 * iters);
                       memory :> bytes(a6, 16 * iters);
                       memory :> bytes(a7, 16 * iters)])`,
-  CHEAT_TAC);;
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[PAIRWISE; ALL; NONOVERLAPPING_CLAUSES; SOME_FLAGS] THEN
+  STRIP_TAC THEN
+
+  ENSURES_WHILE_UP_TAC `iters:num` `pc:num` `pc + 0x84`
+   `\i s. aligned_bytes_loaded s (word pc) crc32c_loop16_mc /\
+          read X0 s = word_add a0 (word(16 * i)) /\
+          read X1 s = word_add a1 (word(16 * i)) /\
+          read X2 s = word_add a2 (word(16 * i)) /\
+          read X3 s = word_add a3 (word(16 * i)) /\
+          read X4 s = word_add a4 (word(16 * i)) /\
+          read X5 s = word_add a5 (word(16 * i)) /\
+          read X6 s = word_add a6 (word(16 * i)) /\
+          read X7 s = word_add a7 (word(16 * i)) /\
+          read X8 s = word_zx
+            (crc32c_bytes init0 (consumed_bytes m0_lo m0_hi i)) /\
+          read X9 s = word_zx
+            (crc32c_bytes init1 (consumed_bytes m1_lo m1_hi i)) /\
+          read X10 s = word_zx
+            (crc32c_bytes init2 (consumed_bytes m2_lo m2_hi i)) /\
+          read X11 s = word_zx
+            (crc32c_bytes init3 (consumed_bytes m3_lo m3_hi i)) /\
+          read X12 s = word_zx
+            (crc32c_bytes init4 (consumed_bytes m4_lo m4_hi i)) /\
+          read X13 s = word_zx
+            (crc32c_bytes init5 (consumed_bytes m5_lo m5_hi i)) /\
+          read X14 s = word_zx
+            (crc32c_bytes init6 (consumed_bytes m6_lo m6_hi i)) /\
+          read X15 s = word_zx
+            (crc32c_bytes init7 (consumed_bytes m7_lo m7_hi i)) /\
+          read X19 s = word(16 * (iters - i) + residue) /\
+          (!j. j < i ==>
+             read (memory :> bytes64 (word_add a0 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a0 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a1 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a1 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a2 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a2 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a3 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a3 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a4 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a4 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a5 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a5 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a6 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a6 (word(16 * j + 8)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a7 (word(16 * j)))) s
+                = word 0 /\
+             read (memory :> bytes64 (word_add a7 (word(16 * j + 8)))) s
+                = word 0) /\
+          (!j. i <= j /\ j < iters ==>
+             read (memory :> bytes64 (word_add a0 (word(16 * j)))) s
+                = m0_lo j /\
+             read (memory :> bytes64 (word_add a0 (word(16 * j + 8)))) s
+                = m0_hi j /\
+             read (memory :> bytes64 (word_add a1 (word(16 * j)))) s
+                = m1_lo j /\
+             read (memory :> bytes64 (word_add a1 (word(16 * j + 8)))) s
+                = m1_hi j /\
+             read (memory :> bytes64 (word_add a2 (word(16 * j)))) s
+                = m2_lo j /\
+             read (memory :> bytes64 (word_add a2 (word(16 * j + 8)))) s
+                = m2_hi j /\
+             read (memory :> bytes64 (word_add a3 (word(16 * j)))) s
+                = m3_lo j /\
+             read (memory :> bytes64 (word_add a3 (word(16 * j + 8)))) s
+                = m3_hi j /\
+             read (memory :> bytes64 (word_add a4 (word(16 * j)))) s
+                = m4_lo j /\
+             read (memory :> bytes64 (word_add a4 (word(16 * j + 8)))) s
+                = m4_hi j /\
+             read (memory :> bytes64 (word_add a5 (word(16 * j)))) s
+                = m5_lo j /\
+             read (memory :> bytes64 (word_add a5 (word(16 * j + 8)))) s
+                = m5_hi j /\
+             read (memory :> bytes64 (word_add a6 (word(16 * j)))) s
+                = m6_lo j /\
+             read (memory :> bytes64 (word_add a6 (word(16 * j + 8)))) s
+                = m6_hi j /\
+             read (memory :> bytes64 (word_add a7 (word(16 * j)))) s
+                = m7_lo j /\
+             read (memory :> bytes64 (word_add a7 (word(16 * j + 8)))) s
+                = m7_hi j)` THEN
+  ASM_REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+  [
+    (* Subgoal 0: ~(iters = 0), discharged from `1 <= iters`. *)
+    ASM_ARITH_TAC;
+    (* Subgoal 1: pc -> pc1 (i.e. pc -> pc), i = 0. Trivial since pc = pc1. *)
+    CHEAT_TAC;
+    (* Subgoal 2: body, invariant(i) at pc -> invariant(i+1) at pc + 0x84. *)
+    CHEAT_TAC;
+    (* Subgoal 3: back-edge, invariant(i) at pc + 0x84 -> invariant(i) at pc. *)
+    CHEAT_TAC;
+    (* Subgoal 4: exit, invariant(iters) at pc + 0x84 -> postcondition. *)
+    CHEAT_TAC
+  ]);;
