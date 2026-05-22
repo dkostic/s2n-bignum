@@ -407,8 +407,9 @@ let SHA1_HW_CORRECT = prove
       `word_sub (word (num_blocks - ii):int64) (word 1) =
        word (num_blocks - (ii + 1))` ASSUME_TAC
     THENL
-     [ASM_SIMP_TAC[WORD_SUB; LE_1; VAL_WORD_1] THEN
-      AP_TERM_TAC THEN ASM_ARITH_TAC;
+     [SUBGOAL_THEN `num_blocks - ii = (num_blocks - (ii + 1)) + 1` SUBST1_TAC
+      THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+      CONV_TAC WORD_RULE;
       ALL_TAC] THEN
     ASM_REWRITE_TAC[WORD_ADVANCE_64] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
