@@ -44,6 +44,36 @@ let SHA1P_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1P_BRIDGE;;
 let SHA1M_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1M_BRIDGE;;
 let SHA1SU_BRIDGE_FLAT = CONV_RULE(TOP_DEPTH_CONV let_CONV) SHA1SU_BRIDGE;;
 
+(* Lane-0 normalisation: SHA1{C,P,M} only inspect lane 0 of their `n`         *)
+(* operand, and SHA1H only inspects lane 0 of its input. These rewrites       *)
+(* canonicalise the n/d operand into `word_join4 (lane0) 0 0 0` form, which   *)
+(* is what GROUP_BRIDGE_* expect. They MUST be applied with ONCE_REWRITE      *)
+(* (the LHS pattern matches the inner sha1c on the RHS).                      *)
+
+let SHA1C_LANE0_NORM = prove
+ (`!d (n:int128) m. sha1c d n m =
+     sha1c d (word_join4 (word_subword n (0,32):int32)
+                         (word 0) (word 0) (word 0)) m`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[sha1c; WORD_JOIN4_SUBWORD]);;
+
+let SHA1P_LANE0_NORM = prove
+ (`!d (n:int128) m. sha1p d n m =
+     sha1p d (word_join4 (word_subword n (0,32):int32)
+                         (word 0) (word 0) (word 0)) m`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[sha1p; WORD_JOIN4_SUBWORD]);;
+
+let SHA1M_LANE0_NORM = prove
+ (`!d (n:int128) m. sha1m d n m =
+     sha1m d (word_join4 (word_subword n (0,32):int32)
+                         (word 0) (word 0) (word 0)) m`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[sha1m; WORD_JOIN4_SUBWORD]);;
+
+let SHA1H_LANE0_NORM = prove
+ (`!(d:int128). sha1h d =
+     sha1h (word_join4 (word_subword d (0,32):int32)
+                       (word 0) (word 0) (word 0))`,
+  GEN_TAC THEN REWRITE_TAC[sha1h; WORD_JOIN4_SUBWORD]);;
+
 (* Pre-add-form (kw = sha1_K t + W_t) but written in the order the hardware  *)
 (* produces: word_add W_t (sha1_K t) instead of word_add (sha1_K t) W_t.     *)
 (* Mirrors SHA-256 pilot's SHA256_COMPRESS_ROUND_PREADD_SYM.                  *)
