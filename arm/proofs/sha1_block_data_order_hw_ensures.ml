@@ -409,14 +409,7 @@ let SHA1_HW_CORRECT = prove
     ASM_REWRITE_TAC[] THEN
     (TRY (CONV_TAC WORD_BLAST)) THEN
     (TRY ASM_ARITH_TAC) THEN
-    (* Diagnostic: if subgoals leak past TRYs above, force a clear failure
-       instead of letting them propagate to the outer prove call where they
-       manifest as a confusing "TAC_PROOF: Unsolved goals". CHEAT_TAC catches
-       any straggler so the file loads; the diagnosis points to BODY rather
-       than EXIT.
-
-       Session 018 characterised the surviving subgoal (per axioms() dump
-       on s018a) as the Q1 lane-0 invariant residual:
+    (* Q1 lane-0 invariant residual (per session 018's axioms() dump on s018a):
          word_subword
            (word_join4 (word_add (word_subword q1_lane_init (0,32)) e_compress)
                        (word_add (word_subword q1_lane_init (32,32)) (word 0))
@@ -424,15 +417,17 @@ let SHA1_HW_CORRECT = prove
                        (word_add (word_subword q1_lane_init (96,32)) (word 0)))
            (0,32)
          = word_add e_compress (EL 4 (sha1_hash_blocks ii blocks [a;b;c;d;e]))
-       where e_compress = EL 4 (sha1_compress 80 W (sha1_hash_blocks ii ...)).
-       Closer that works on synthetic version (interactively, both s018a/s018b):
-         REPEAT STRIP_TAC THEN
-         REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
-         ASM_REWRITE_TAC[WORD_ADD_AC]   (or MATCH_ACCEPT_TAC WORD_ADD_SYM)
-       But under loadt, replacing CHEAT_TAC with that closer caused EXIT
-       (next subgoal) to fail with "Unsolved goals" despite previously
-       passing — root cause unidentified. See session 018 summary. *)
-    CHEAT_TAC;
+       Closes via ASM_REWRITE_TAC[WORD_JOIN4_SUBWORD] (which extracts lane-0,
+       turning LHS into word_add (word_subword q1_lane_init (0,32)) e_compress;
+       ASM_REWRITE then substitutes the loop-invariant lane-0 fact, leaving
+       word_add (EL 4 (sha1_hash_blocks ii ...)) e_compress = word_add e_compress
+       (EL 4 (sha1_hash_blocks ii ...))) followed by MATCH_ACCEPT_TAC WORD_ADD_SYM.
+       Session 019: chose MATCH_ACCEPT_TAC WORD_ADD_SYM over WORD_ADD_AC because
+       the latter triggers Knuth-Bendix completion ("1 basis elements and 0
+       critical pairs" in load log) which session 018 hypothesised may pollute
+       shared rewrite caches and cause the EXIT subgoal to regress under loadt. *)
+    ASM_REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+    MATCH_ACCEPT_TAC WORD_ADD_SYM;
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1c0 ==>              *)
