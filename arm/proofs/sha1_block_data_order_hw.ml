@@ -147,30 +147,6 @@ let sha1_block_data_order_hw_mc = define_assert_from_elf "sha1_block_data_order_
 let SHA1_BLOCK_DATA_ORDER_HW_EXEC = ARM_MK_EXEC_RULE sha1_block_data_order_hw_mc;;
 
 (* ------------------------------------------------------------------------- *)
-(* SREG'-to-SREG aliases for the lane indices used by SHA1C/SHA1P/SHA1M in   *)
-(* this routine. The decoder produces `SREG' (word k)` for these             *)
-(* instructions, which is definitionally `SREG (val (word k))`. The          *)
-(* component-orthogonality machinery does not reduce `val (word k)` on its  *)
-(* own, so without these aliases ASSUMPTION_STATE_UPDATE_TAC silently drops  *)
-(* the SHA1C input read assumption. Registering the rewritten forms with    *)
-(* add_component_alias_thms makes them visible to COMPONENT_CANON_CONV.     *)
-(* ------------------------------------------------------------------------- *)
-
-let SREG_ALIAS_1 = prove
- (`SREG' (word 1) = SREG 1`,
-  REWRITE_TAC[SREG'] THEN CONV_TAC(DEPTH_CONV WORD_VAL_CONV) THEN REFL_TAC);;
-
-let SREG_ALIAS_2 = prove
- (`SREG' (word 2) = SREG 2`,
-  REWRITE_TAC[SREG'] THEN CONV_TAC(DEPTH_CONV WORD_VAL_CONV) THEN REFL_TAC);;
-
-let SREG_ALIAS_3 = prove
- (`SREG' (word 3) = SREG 3`,
-  REWRITE_TAC[SREG'] THEN CONV_TAC(DEPTH_CONV WORD_VAL_CONV) THEN REFL_TAC);;
-
-add_component_alias_thms [SREG_ALIAS_1; SREG_ALIAS_2; SREG_ALIAS_3];;
-
-(* ------------------------------------------------------------------------- *)
 (* Pilot ensures theorem.                                                    *)
 (*                                                                           *)
 (* The slice covers the first SHA1H + SHA1C pair of the block-compression   *)
@@ -178,11 +154,11 @@ add_component_alias_thms [SREG_ALIAS_1; SREG_ALIAS_2; SREG_ALIAS_3];;
 (*   (instruction index 21):                                                 *)
 (*                                                                           *)
 (*       sha1h   s3, s0          (* Q3 := SHA1H Q0    *)                    *)
-(*       sha1c   q0, s1, v20.4s  (* Q0 := SHA1C Q0 (SREG'(word 1)) Q20 *)  *)
+(*       sha1c   q0, s1, v20.4s  (* Q0 := SHA1C Q0 Q1 Q20 *)                *)
 (*                                                                           *)
 (* Inputs:                                                                   *)
 (*   Q0   = word_join4 a b c d       (the four-lane abcd state)              *)
-(*   S1   = e   (i.e. read (SREG' (word 1)) s, the bottom 32 bits of Q1)    *)
+(*   Q1   = e   (int128 holding `e` in low 32 bits per ARM ARM SHA1C Sn)    *)
 (*   Q20  = word_join4 kw0 kw1 kw2 kw3  (the four pre-summed kw values)     *)
 (*                                                                           *)
 (* Outputs:                                                                  *)
@@ -191,19 +167,19 @@ add_component_alias_thms [SREG_ALIAS_1; SREG_ALIAS_2; SREG_ALIAS_3];;
 (* ------------------------------------------------------------------------- *)
 
 let SHA1_4ROUNDS_REG_CORRECT = prove
- (`!(a:int32) (b:int32) (c:int32) (d:int32) (e:int32)
+ (`!(a:int32) (b:int32) (c:int32) (d:int32) (e:int128)
     (kw0:int32) (kw1:int32) (kw2:int32) (kw3:int32)
     pc.
     ensures arm
      (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
           read PC s = word (pc + 0x50) /\
           read Q0 s = word_join4 a b c d /\
-          read (SREG' (word 1)) s = e /\
+          read Q1 s = e /\
           read Q20 s = word_join4 kw0 kw1 kw2 kw3)
      (\s. read PC s = word (pc + 0x58) /\
           read Q3 s = word_join4 (word_rol a 30) (word 0) (word 0) (word 0) /\
           read Q0 s =
-            (let s0 = [a;b;c;d;e] in
+            (let s0 = [a;b;c;d;(word_subword e (0,32):int32)] in
              let s1 = sha1_compress_round_pre 0 kw0 s0 in
              let s2 = sha1_compress_round_pre 0 kw1 s1 in
              let s3 = sha1_compress_round_pre 0 kw2 s2 in
