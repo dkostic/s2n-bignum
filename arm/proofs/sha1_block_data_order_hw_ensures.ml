@@ -439,3 +439,68 @@ let SHA1_HW_CORRECT = prove
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     CONV_TAC WORD_BLAST
   ]);;
+
+(* ========================================================================= *)
+(* Subroutine wrapper: lifts SHA1_HW_CORRECT to a callable routine, with the *)
+(* RET at the end honoured (jumping to the return address in X30).          *)
+(* ========================================================================= *)
+
+let SHA1_HW_SUBROUTINE_CORRECT = prove
+ (`!num_blocks state_ptr data_ptr kptr
+    (a:int32) (b:int32) (c:int32) (d:int32) (e:int32)
+    (blocks:(int32 list) list) pc returnaddress.
+    1 <= num_blocks /\ num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    ALL (nonoverlapping (state_ptr, 20))
+        [(word pc, 468); (data_ptr, 64 * num_blocks); (kptr, 64)] /\
+    nonoverlapping (data_ptr, 64 * num_blocks) (word pc, 468) /\
+    nonoverlapping (kptr, 64) (word pc, 468)
+    ==> ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word pc /\
+          read X30 s = returnaddress /\
+          read X0 s = state_ptr /\
+          read X1 s = data_ptr /\
+          read X2 s = word num_blocks /\
+          read X3 s = kptr /\
+          read (memory :> bytes128 state_ptr) s = word_join4 a b c d /\
+          read (memory :> bytes32 (word_add state_ptr (word 16))) s = e /\
+          (!j. j < num_blocks ==>
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j)))) s =
+              word_join4 (word_bytereverse (EL 0 (EL j blocks)))
+                         (word_bytereverse (EL 1 (EL j blocks)))
+                         (word_bytereverse (EL 2 (EL j blocks)))
+                         (word_bytereverse (EL 3 (EL j blocks))) /\
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 16)))) s =
+              word_join4 (word_bytereverse (EL 4 (EL j blocks)))
+                         (word_bytereverse (EL 5 (EL j blocks)))
+                         (word_bytereverse (EL 6 (EL j blocks)))
+                         (word_bytereverse (EL 7 (EL j blocks))) /\
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 32)))) s =
+              word_join4 (word_bytereverse (EL 8 (EL j blocks)))
+                         (word_bytereverse (EL 9 (EL j blocks)))
+                         (word_bytereverse (EL 10 (EL j blocks)))
+                         (word_bytereverse (EL 11 (EL j blocks))) /\
+            read (memory :> bytes128 (word_add data_ptr (word(64 * j + 48)))) s =
+              word_join4 (word_bytereverse (EL 12 (EL j blocks)))
+                         (word_bytereverse (EL 13 (EL j blocks)))
+                         (word_bytereverse (EL 14 (EL j blocks)))
+                         (word_bytereverse (EL 15 (EL j blocks)))) /\
+          (!i. i < 4 ==>
+            read (memory :> bytes128 (word_add kptr (word(16 * i)))) s =
+            word_join4 (sha1_K (20*i)) (sha1_K (20*i))
+                       (sha1_K (20*i)) (sha1_K (20*i))))
+     (\s. read PC s = returnaddress /\
+          (let result = sha1_hash_blocks num_blocks blocks [a;b;c;d;e] in
+           read (memory :> bytes128 state_ptr) s =
+             word_join4 (EL 0 result) (EL 1 result)
+                        (EL 2 result) (EL 3 result) /\
+           read (memory :> bytes32 (word_add state_ptr (word 16))) s =
+             EL 4 result))
+     (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q16; Q17; Q18; Q19;
+                 Q20; Q21; Q22] ,,
+      MAYCHANGE [memory :> bytes(state_ptr, 20)] ,,
+      MAYCHANGE [events])`,
+  ARM_ADD_RETURN_NOSTACK_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC SHA1_HW_CORRECT);;
