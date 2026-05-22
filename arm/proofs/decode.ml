@@ -81,6 +81,8 @@ let arm_ldst_d = new_definition `arm_ldst_d ld Rt =
   (if ld then arm_LDR else arm_STR) (DREG' Rt)`;;
 let arm_ldstb = new_definition `arm_ldstb ld Rt =
   (if ld then arm_LDRB else arm_STRB) (WREG' Rt)`;;
+let arm_ldsth = new_definition `arm_ldsth ld Rt =
+  (if ld then arm_LDRH else arm_STRH) (WREG' Rt)`;;
 let arm_ldstp = new_definition `arm_ldstp ld x Rt Rt2 =
   if x then (if ld then arm_LDP else arm_STP) (XREG' Rt) (XREG' Rt2)
        else (if ld then arm_LDP else arm_STP) (WREG' Rt) (WREG' Rt2)`;;
@@ -310,6 +312,12 @@ let decode = new_definition `!w:int32. decode w =
     // LDRB/STRB shifted register, no shift: option:011 S:0
   | [0b001110000:9; ld; 0b1:1; Rm:5; 0b011010:6; Rn:5; Rt:5] ->
     SOME (arm_ldstb ld Rt (XREG_SP Rn) (Register_Offset (XREG' Rm)))
+  | [0b011110000:9; ld; 0b0:1; imm9:9; 0b01:2; Rn:5; Rt:5] ->
+    SOME (arm_ldsth ld Rt (XREG_SP Rn) (Postimmediate_Offset (word_sx imm9)))
+  | [0b011110000:9; ld; 0b0:1; imm9:9; 0b11:2; Rn:5; Rt:5] ->
+    SOME (arm_ldsth ld Rt (XREG_SP Rn) (Preimmediate_Offset (word_sx imm9)))
+  | [0b011110010:9; ld; imm12:12; Rn:5; Rt:5] ->
+    SOME (arm_ldsth ld Rt (XREG_SP Rn) (Immediate_Offset (word (val imm12 * 2))))
 
   | [x; 0b010100:6; pre; 0b1:1; ld; imm7:7; Rt2:5; Rn:5; Rt:5] ->
     SOME (arm_ldstp ld x Rt Rt2 (XREG_SP Rn)
@@ -1458,7 +1466,7 @@ let PURE_DECODE_CONV =
     List.iter (fun tm -> add_conv (tm, 1, REG_CONV) rw) [`XREG'`; `WREG'`; `QREG'`; `DREG'`; `XREG_SP`; `WREG_SP`];
     add_thms [arm_adcop; arm_addop; arm_adv_simd_expand_imm;
               arm_bfmop; arm_ccop; arm_csop;
-              arm_ldst; arm_ldst_q; arm_ldst_d; arm_ldstb; arm_ldstp; arm_ldstp_q; arm_ldstp_d;
+              arm_ldst; arm_ldst_q; arm_ldst_d; arm_ldstb; arm_ldsth; arm_ldstp; arm_ldstp_q; arm_ldstp_d;
               arm_ldst2; arm_ldstp_2q; arm_ldst3] rw;
     (* .. that have bitmatch exprs inside *)
     List.iter (fun def_th ->

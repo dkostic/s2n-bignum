@@ -530,6 +530,11 @@ let check_insns () =
     (*** ldrb / strb (shifted register, no shift S = 0) ***)
     "001110000x1xxxxxxxx010xxxxxxxxxx";
 
+    (*** ldrh (immediate ofs) ***)
+    "01111000010xxxxxxxxx01xxxxxxxxxx";
+    "01111000010xxxxxxxxx11xxxxxxxxxx";
+    "0111100101xxxxxxxxxxxxxxxxxxxxxx";
+
     (*** ld1 (1 register, Post-immediate offset) ***)
     "0x001100110111110111xxxxxxxxxxxx";
 
@@ -596,6 +601,11 @@ let check_insns () =
     "00111000000xxxxxxxxx01xxxxxxxxxx";
     "00111000000xxxxxxxxx11xxxxxxxxxx";
     "0011100100xxxxxxxxxxxxxxxxxxxxxx";
+
+    (*** strh (immediate ofs) ***)
+    "01111000000xxxxxxxxx01xxxxxxxxxx";
+    "01111000000xxxxxxxxx11xxxxxxxxxx";
+    "0111100100xxxxxxxxxxxxxxxxxxxxxx";
 
     (*** sub/add with sp regs ***)
     "xx0100010xxxxxxxxxxxxxxxxxx11111";
