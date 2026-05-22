@@ -285,6 +285,14 @@ let decode = new_definition `!w:int32. decode w =
     SOME (arm_SMULH (XREG' Rd) (XREG' Rn) (XREG' Rm))
   | [0b10011011110:11; Rm:5; 0b011111:6; Rn:5; Rd:5] ->
     SOME (arm_UMULH (XREG' Rd) (XREG' Rn) (XREG' Rm))
+  | [0b00011010110:11; Rm:5; 0b010100:6; Rn:5; Rd:5] ->
+    SOME (arm_CRC32CB (WREG' Rd) (WREG' Rn) (WREG' Rm))
+  | [0b00011010110:11; Rm:5; 0b010101:6; Rn:5; Rd:5] ->
+    SOME (arm_CRC32CH (WREG' Rd) (WREG' Rn) (WREG' Rm))
+  | [0b00011010110:11; Rm:5; 0b010110:6; Rn:5; Rd:5] ->
+    SOME (arm_CRC32CW (WREG' Rd) (WREG' Rn) (WREG' Rm))
+  | [0b10011010110:11; Rm:5; 0b010111:6; Rn:5; Rd:5] ->
+    SOME (arm_CRC32CX (WREG' Rd) (WREG' Rn) (XREG' Rm))
   | [0b10011011101:11; Rm:5; o0; Ra:5; Rn:5; Rd:5] ->
     SOME ((if o0 then arm_UMSUBL else arm_UMADDL)
           (XREG' Rd) (WREG' Rn) (WREG' Rm) (XREG' Ra))

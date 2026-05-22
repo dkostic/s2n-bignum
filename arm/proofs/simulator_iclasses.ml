@@ -104,6 +104,14 @@ let iclasses =
   (*** SMULH ***)
   "10011011010xxxxx011111xxxxxxxxxx";
 
+  (*** CRC32CB, CRC32CH, CRC32CW (sf=0) ***)
+  "00011010110xxxxx010100xxxxxxxxxx";
+  "00011010110xxxxx010101xxxxxxxxxx";
+  "00011010110xxxxx010110xxxxxxxxxx";
+
+  (*** CRC32CX (sf=1) ***)
+  "10011010110xxxxx010111xxxxxxxxxx";
+
   (*** UMADDL, UMSUBL ***)
   "10011011101xxxxxxxxxxxxxxxxxxxxx";
 

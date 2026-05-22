@@ -2980,6 +2980,109 @@ let arm_RAX1 = define
       (Rd := d') s`;;
 
 (* ------------------------------------------------------------------------- *)
+(* CRC32C (Castagnoli polynomial 0x1EDC6F41 / reflected 0x82F63B78).         *)
+(* The hardware steps process the source operand byte-by-byte LSB-first,     *)
+(* each byte feeding 8 bit-level reflected polynomial reduction steps.       *)
+(* ------------------------------------------------------------------------- *)
+
+(*** Single-bit reflected polynomial step:
+ ***   acc' = (acc >> 1) XOR ( (bit0(acc) XOR b) ? 0x82F63B78 : 0 ).
+ *** This matches the bit-level expansion of the ARM ARM Poly32Mod2 over
+ *** the reflected polynomial used by the CRC32C variants.
+ ***)
+let crc32c_bit = define
+ `crc32c_bit (acc:int32) (b:bool) =
+    let acc' = word_ushr acc 1 in
+    if ~(bit 0 acc <=> b)
+    then word_xor acc' (word 0x82F63B78)
+    else acc'`;;
+
+(*** Single-byte step: 8 bit-steps over the bits of the byte, LSB-first.   ***)
+let crc32c_hw_step = define
+ `crc32c_hw_step (acc:int32) (b:byte) =
+    crc32c_bit
+     (crc32c_bit
+      (crc32c_bit
+       (crc32c_bit
+        (crc32c_bit
+         (crc32c_bit
+          (crc32c_bit
+           (crc32c_bit acc (bit 0 b))
+                       (bit 1 b))
+            (bit 2 b)) (bit 3 b))
+             (bit 4 b)) (bit 5 b))
+              (bit 6 b)) (bit 7 b)`;;
+
+(*** CRC32CB: one-byte hardware step.                                       ***)
+let arm_CRC32CB = define
+ `arm_CRC32CB
+        (Rd:(armstate,int32)component)
+        (Rn:(armstate,int32)component)
+        (Rm:(armstate,int32)component) =
+    \s. let acc:int32 = read Rn s
+        and m:int32 = read Rm s in
+        let d:int32 = crc32c_hw_step acc (word_subword m (0,8):byte) in
+        (Rd := d) s`;;
+
+(*** CRC32CH: two-byte hardware step (LSB-first within Rm).                 ***)
+let arm_CRC32CH = define
+ `arm_CRC32CH
+        (Rd:(armstate,int32)component)
+        (Rn:(armstate,int32)component)
+        (Rm:(armstate,int32)component) =
+    \s. let acc:int32 = read Rn s
+        and m:int32 = read Rm s in
+        let d:int32 =
+            crc32c_hw_step
+             (crc32c_hw_step acc (word_subword m (0,8):byte))
+             (word_subword m (8,8):byte) in
+        (Rd := d) s`;;
+
+(*** CRC32CW: four-byte hardware step (LSB-first within Rm).                ***)
+let arm_CRC32CW = define
+ `arm_CRC32CW
+        (Rd:(armstate,int32)component)
+        (Rn:(armstate,int32)component)
+        (Rm:(armstate,int32)component) =
+    \s. let acc:int32 = read Rn s
+        and m:int32 = read Rm s in
+        let d:int32 =
+            crc32c_hw_step
+             (crc32c_hw_step
+              (crc32c_hw_step
+               (crc32c_hw_step acc (word_subword m (0,8):byte))
+               (word_subword m (8,8):byte))
+              (word_subword m (16,8):byte))
+             (word_subword m (24,8):byte) in
+        (Rd := d) s`;;
+
+(*** CRC32CX: eight-byte hardware step (LSB-first within Rm).               ***)
+let arm_CRC32CX = define
+ `arm_CRC32CX
+        (Rd:(armstate,int32)component)
+        (Rn:(armstate,int32)component)
+        (Rm:(armstate,int64)component) =
+    \s. let acc:int32 = read Rn s
+        and m:int64 = read Rm s in
+        let d:int32 =
+            crc32c_hw_step
+             (crc32c_hw_step
+              (crc32c_hw_step
+               (crc32c_hw_step
+                (crc32c_hw_step
+                 (crc32c_hw_step
+                  (crc32c_hw_step
+                   (crc32c_hw_step acc (word_subword m (0,8):byte))
+                   (word_subword m (8,8):byte))
+                  (word_subword m (16,8):byte))
+                 (word_subword m (24,8):byte))
+                (word_subword m (32,8):byte))
+               (word_subword m (40,8):byte))
+              (word_subword m (48,8):byte))
+             (word_subword m (56,8):byte) in
+        (Rd := d) s`;;
+
+(* ------------------------------------------------------------------------- *)
 (* Cryptographic four-register                                               *)
 (* ------------------------------------------------------------------------- *)
 
@@ -3616,6 +3719,7 @@ let ARM_OPERATION_CLAUSES =
        arm_BL; arm_BL_ABSOLUTE; arm_Bcond;
        arm_CBNZ_ALT; arm_CBZ_ALT; arm_CCMN; arm_CCMP; arm_CLZ;
        arm_CMGE_VEC_ALT; arm_CMGT_VEC_ALT; arm_CMHI_VEC_ALT; arm_CMLE_VEC_ZERO_ALT; arm_CNT_ALT;
+       arm_CRC32CB; arm_CRC32CH; arm_CRC32CW; arm_CRC32CX;
        arm_CSEL; arm_CSINC; arm_CSINV; arm_CSNEG;
        arm_DUP_GEN_ALT;
        arm_EON; arm_EOR; arm_EOR_VEC; arm_EOR3; arm_EXT; arm_EXTR;
