@@ -99,6 +99,26 @@ let SHA1_COMPRESS_ROUND_EL_LIST = prove(
  REPEAT GEN_TAC THEN REWRITE_TAC[sha1_compress_round] THEN
  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN REWRITE_TAC[EL_RECONSTRUCT_5]);;
 
+(* After 4 more rounds (one round group), the e-lane (EL 4) is ROL_30 of the *)
+(* a-lane (EL 0) of the pre-state. This is the abstract spec-level form of   *)
+(* the SHA1H instruction's effect across a round group, and is used in the   *)
+(* cut-point tactic to fold the SHA1H result into the canonical e-invariant. *)
+
+let SHA1_COMPRESS_4MORE_E_EQ = prove(
+  `!W (H:int32 list) k.
+     EL 4 (sha1_compress (k + 4) W H) =
+     word_rol (EL 0 (sha1_compress k W H)) 30`,
+  REPEAT GEN_TAC THEN
+  ABBREV_TAC `s0:int32 list = sha1_compress k W H` THEN
+  REWRITE_TAC[ARITH_RULE
+    `k + 4 = (((k + 1) + 1) + 1) + 1`] THEN
+  REWRITE_TAC[sha1_compress] THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[sha1_compress_round] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  REFL_TAC);;
+
 (* SHA1_COMPRESS_UNROLL_CONV: given `sha1_compress n W state`, unroll into   *)
 (* n nested sha1_compress_round applications via the recurrence              *)
 (*    sha1_compress (k+1) W state =                                          *)
