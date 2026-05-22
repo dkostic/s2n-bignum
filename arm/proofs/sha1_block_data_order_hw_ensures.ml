@@ -350,9 +350,64 @@ let SHA1_HW_CORRECT = prove
     ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (102--103) THEN
     GEN_CUT_POINT_NODISCARD_TAC
       `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]` 19 `s103:armstate` THEN
-    (* Add-back: instr 111 = ADD Q1+=Q2 (e), instr 112 = ADD Q0+=Q22 (abcd) *)
+    (* Add-back: instr 104 = ADD Q1+=Q2 (e), instr 105 = ADD Q0+=Q22 (abcd) *)
     ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (104--105) THEN
-    CHEAT_TAC;
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN_PAIR2_NORM]) THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_JOIN4_SUBWORD]) THEN
+    (* Reconstruct EL ii blocks = [w0;...;w15] for sha1_block_compress fold *)
+    RECONSTRUCT_BLOCK_TAC THEN
+    (* Establish LENGTH (sha1_hash_blocks ii blocks [a;b;c;d;e]) = 5         *)
+    SUBGOAL_THEN
+      `LENGTH (sha1_hash_blocks ii blocks [a:int32;b;c;d;e]) = 5` ASSUME_TAC
+    THENL
+     [MATCH_MP_TAC LENGTH_SHA1_HASH_BLOCKS THEN
+      REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
+    (* Unfold one step of sha1_hash_blocks at ii+1 and substitute             *)
+    (* EL ii blocks = [w0..w15] and W = sha1_message_schedule 64 [w0..w15].   *)
+    SUBGOAL_THEN
+      `sha1_hash_blocks (ii + 1) blocks [a:int32;b;c;d;e] =
+       MAP2 word_add
+         (sha1_compress 80 W (sha1_hash_blocks ii blocks [a;b;c;d;e]))
+         (sha1_hash_blocks ii blocks [a;b;c;d;e])`
+      ASSUME_TAC
+    THENL
+     [REWRITE_TAC[sha1_hash_blocks; sha1_block_compress;
+                  sha1_block_message_schedule] THEN
+      ASM_REWRITE_TAC[] THEN
+      CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
+    (* Per-lane: EL k of MAP2 word_add = word_add (EL k a) (EL k b)          *)
+    SUBGOAL_THEN
+      `!k. k < 5 ==>
+        EL k (sha1_hash_blocks (ii + 1) blocks [a:int32;b;c;d;e]) =
+        word_add
+          (EL k (sha1_compress 80 W (sha1_hash_blocks ii blocks [a;b;c;d;e])))
+          (EL k (sha1_hash_blocks ii blocks [a;b;c;d;e]))`
+      (LABEL_TAC "lanef")
+    THENL
+     [REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+      MATCH_MP_TAC EL_MAP2 THEN
+      MP_TAC(SPECL [`W:int32 list`;
+                    `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]`]
+                   LENGTH_SHA1_COMPRESS) THEN
+      ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    (* Specialise the lane-fold quantifier to k = 0, 1, 2, 3, 4.             *)
+    USE_THEN
+      "lanef" (fun th ->
+        MAP_EVERY (fun k ->
+          let kt = mk_small_numeral k in
+          let inst = MP (SPEC kt th)
+                       (EQT_ELIM(NUM_REDUCE_CONV
+                         (mk_binop `(<):num->num->bool` kt `5`))) in
+          ASSUME_TAC inst) [0;1;2;3;4]) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[WORD_ADVANCE_64] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    REPEAT CONJ_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC WORD_BLAST;
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1c0 ==>              *)
