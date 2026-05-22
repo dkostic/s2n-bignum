@@ -558,3 +558,58 @@ let GEN_CUT_POINT_TAC h_tm i sname =
   DISCARD_MATCHING_ASSUMPTIONS
     [`read Q20 s = x:int128`;
      `read Q21 s = x:int128`];;
+
+(* ========================================================================= *)
+(* GEN_POSTCOND_TAC: at the end of a block, fold the per-lane add-back form  *)
+(*    word_add (EL k (sha1_compress 80 W H)) (EL k H)                        *)
+(* into the spec form                                                        *)
+(*    EL k (sha1_block_compress M H)                                         *)
+(* using SHA1_BLOCK_COMPRESS_EL.                                             *)
+(*                                                                           *)
+(* h_tm is the term for the input hash state (e.g. `[a;b;c;d;e]`); the       *)
+(* tactic discharges 5 EL k (sha1_block_compress M H) reductions.            *)
+(* Caller must have established the symbolic-final state's word_add lanes    *)
+(* via ASM_REWRITE_TAC just before invocation.                               *)
+(* ========================================================================= *)
+
+let GEN_POSTCOND_TAC h_tm =
+  let len_h = prove(mk_eq(mk_comb(`LENGTH:int32 list->num`, h_tm), `5`),
+    REWRITE_TAC[LENGTH] THEN ARITH_TAC) in
+  let m = `[w0:int32;w1;w2;w3;w4;w5;w6;w7;
+            w8;w9;w10;w11;w12;w13;w14;w15]` in
+  let hw_w_abbrev = ASSUME
+    `sha1_message_schedule 64
+     [w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W` in
+  let inst = MP (SPECL [m; h_tm] SHA1_BLOCK_COMPRESS_EL) len_h in
+  let block_el = List.map (fun k ->
+    let th = SPEC (mk_small_numeral k) inst in
+    let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
+    let th3 = CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2 in
+    REWRITE_RULE[hw_w_abbrev] th3) (0--4) in
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC block_el THEN
+  REFL_TAC;;
+
+(* GEN_POSTCOND_TAC2: like GEN_POSTCOND_TAC but takes an external LENGTH    *)
+(* proof, needed for opaque h_tm (e.g. sha1_hash_blocks output) where      *)
+(* LENGTH cannot be computed by REWRITE_TAC[LENGTH] THEN ARITH_TAC.        *)
+
+let GEN_POSTCOND_TAC2 h_tm len_h =
+  let m = `[w0:int32;w1;w2;w3;w4;w5;w6;w7;
+            w8;w9;w10;w11;w12;w13;w14;w15]` in
+  let hw_w_abbrev = ASSUME
+    `sha1_message_schedule 64
+     [w0:int32;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W` in
+  let inst = MP (SPECL [m; h_tm] SHA1_BLOCK_COMPRESS_EL) len_h in
+  let block_el = List.map (fun k ->
+    let th = SPEC (mk_small_numeral k) inst in
+    let th2 = MP th (prove(lhand(concl th), ARITH_TAC)) in
+    let th3 = try CONV_RULE(RAND_CONV(RAND_CONV EL_CONV)) th2
+              with _ -> th2 in
+    REWRITE_RULE[hw_w_abbrev] th3) (0--4) in
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  REWRITE_TAC block_el THEN
+  REFL_TAC;;
+
+(* Single-block convenience: h_tm = [a;b;c;d;e]. *)
+let POSTCOND_TAC_HW = GEN_POSTCOND_TAC `[a:int32;b;c;d;e]`;;
