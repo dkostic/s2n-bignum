@@ -733,6 +733,15 @@ let decode = new_definition `!w:int32. decode w =
       let esize:(64)word = word_shl (word 0b1000: (64)word) (val size) in
       SOME (arm_REV64_VEC (QREG' Rd) (QREG' Rn) (val esize))
 
+  | [0:1; q; 0b101110:6; size:2; 0b100000000010:12; Rn:5; Rd:5] ->
+    // REV32 (vector): reverse bytes within each 32-bit element.
+    // Valid sizes are 00 (esize=8) and 01 (esize=16); 10 and 11 reserved.
+    if ~q then NONE // datasize = 64 is unsupported yet
+    else if val size >= 2 then NONE // "UNDEFINED"
+    else
+      let esize:(64)word = word_shl (word 0b1000: (64)word) (val size) in
+      SOME (arm_REV32_VEC (QREG' Rd) (QREG' Rn) (val esize))
+
   | [0b01101110000:11; imm5:5; 0:1; imm4:4; 1:1; Rn:5; Rd:5] ->
     // INS, or "MOV (element)"
     let size = word_ctz imm5 in

@@ -1474,6 +1474,22 @@ let arm_REV64_VEC = define
           : (16)word) n_reversed16 in
         (Rd := n_reversed8) s`;;
 
+(* REV32 (vector): reverse bytes within each 32-bit element.            *)
+(* Per ARM ARM, esize is the element size of the source (8 or 16),      *)
+(* and the bytes/halfwords within each containing 32-bit element are    *)
+(* reversed. Container size is fixed at 32 bits.                        *)
+let arm_REV32_VEC = define
+ `arm_REV32_VEC Rd Rn esize =
+    \s. let n:(128)word = read Rn (s:armstate) in
+        let n_reversed16 = usimd4 (\x. word_join
+          (word_subword x (0,16):(16)word) (word_subword x (16,16):(16)word)
+          : (32)word) n in
+        if esize = 16 then (Rd := n_reversed16) s else
+        let n_reversed8 = usimd8 (\x. word_join
+          (word_subword x (0,8):(8)word) (word_subword x (8,8):(8)word)
+          : (16)word) n_reversed16 in
+        (Rd := n_reversed8) s`;;
+
 let arm_RORV = define
  `arm_RORV Rd Rm Rn =
     \s. let m = read Rm s
@@ -3473,6 +3489,7 @@ let arm_PMUL_VEC_ALT =   EXPAND_SIMD_RULE arm_PMUL_VEC;;
 let arm_PMULL_VEC_ALT =  EXPAND_SIMD_RULE arm_PMULL_VEC;;
 let arm_PMULL2_VEC_ALT = EXPAND_SIMD_RULE arm_PMULL2_VEC;;
 let arm_REV64_VEC_ALT =  EXPAND_SIMD_RULE arm_REV64_VEC;;
+let arm_REV32_VEC_ALT =  EXPAND_SIMD_RULE arm_REV32_VEC;;
 let arm_SHL_VEC_ALT =    EXPAND_SIMD_RULE arm_SHL_VEC;;
 let arm_SSHR_VEC_ALT =   EXPAND_SIMD_RULE arm_SSHR_VEC;;
 let arm_SHRN_ALT =       EXPAND_SIMD_RULE arm_SHRN;;
@@ -3611,7 +3628,7 @@ let ARM_OPERATION_CLAUSES =
        arm_ORN; arm_ORR; arm_ORR_VEC;
        arm_PMUL_VEC_ALT;
        arm_PMULL_VEC_ALT; arm_PMULL2_VEC_ALT;
-       arm_RET; arm_REV; arm_REV64_VEC_ALT; arm_RORV;
+       arm_RET; arm_REV; arm_REV32_VEC_ALT; arm_REV64_VEC_ALT; arm_RORV;
        arm_SBC; arm_SBCS_ALT; arm_SBFM; arm_SHL_VEC_ALT; arm_SHRN_ALT;
        arm_SRSHR_VEC_ALT;
        arm_SSHR_VEC_ALT;
