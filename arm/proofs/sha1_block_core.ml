@@ -613,3 +613,123 @@ let GEN_POSTCOND_TAC2 h_tm len_h =
 
 (* Single-block convenience: h_tm = [a;b;c;d;e]. *)
 let POSTCOND_TAC_HW = GEN_POSTCOND_TAC `[a:int32;b;c;d;e]`;;
+
+(* ========================================================================= *)
+(* Multi-block helper lemmas.                                                *)
+(*                                                                           *)
+(* These mirror sha256_block_data_order_hw_ref.ml's helper layer (Section    *)
+(* "Helper lemmas for multi-block body proof"), adapted for SHA-1's          *)
+(* 5-element state.                                                          *)
+(* ========================================================================= *)
+
+(* Length of iterated hash output is preserved across blocks. *)
+
+let LENGTH_SHA1_HASH_BLOCKS = prove
+ (`!n blocks H:int32 list. LENGTH H = 5
+   ==> LENGTH(sha1_hash_blocks n blocks H) = 5`,
+  INDUCT_TAC THENL
+   [REWRITE_TAC[sha1_hash_blocks];
+    REWRITE_TAC[ARITH_RULE `SUC n = n + 1`; sha1_hash_blocks] THEN
+    REPEAT STRIP_TAC THEN
+    REWRITE_TAC[sha1_block_compress; sha1_block_message_schedule] THEN
+    CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+    SUBGOAL_THEN `LENGTH (sha1_hash_blocks n blocks (H:int32 list)) = 5`
+      ASSUME_TAC THENL
+     [FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    SUBGOAL_THEN `LENGTH (sha1_compress 80
+        (sha1_message_schedule 64 (EL n blocks:int32 list))
+        (sha1_hash_blocks n blocks H:int32 list)) = 5` ASSUME_TAC THENL
+     [MATCH_MP_TAC LENGTH_SHA1_COMPRESS THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    ASM_MESON_TAC[LENGTH_MAP2]]);;
+
+(* Common arithmetic facts used in the loop invariant. *)
+
+let WORD_SUB_SUC = prove
+ (`!n. word_sub (word(SUC n):int64) (word 1) = word n`,
+  GEN_TAC THEN REWRITE_TAC[ADD1] THEN CONV_TAC WORD_RULE);;
+
+let WORD_ADVANCE_64 = WORD_RULE
+ `word_add (word_add d (word(64 * ii):int64)) (word 64) =
+  word_add d (word(64 * (ii + 1)))`;;
+
+(* A list of length 16 is necessarily a 16-element CONS chain. *)
+
+let LENGTH_16_CONS = prove
+ (`!L:A list. LENGTH L = 16
+   ==> ?a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15.
+       L = [a0;a1;a2;a3;a4;a5;a6;a7;a8;a9;a10;a11;a12;a13;a14;a15]`,
+  let suc16 = NUM_REDUCE_CONV
+    `SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC(SUC
+      (SUC(SUC(SUC(SUC 0)))))))))))))))` in
+  REWRITE_TAC[GSYM suc16; LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN MESON_TAC[]);;
+
+let LIST_16_EL = prove
+ (`!L:A list. LENGTH L = 16 ==>
+    L = [EL 0 L; EL 1 L; EL 2 L; EL 3 L; EL 4 L; EL 5 L; EL 6 L; EL 7 L;
+         EL 8 L; EL 9 L; EL 10 L; EL 11 L; EL 12 L; EL 13 L; EL 14 L;
+         EL 15 L]`,
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o MATCH_MP LENGTH_16_CONS) THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN REFL_TAC);;
+
+(* RECONSTRUCT_BLOCK_TAC: with `ALL (\bl. LENGTH bl = 16) blocks` and        *)
+(* w0..w15 abbreviations in scope, derive `EL ii blocks = [w0;...;w15]`.    *)
+
+let RECONSTRUCT_BLOCK_TAC =
+  SUBGOAL_THEN
+    `EL ii blocks = [w0:int32;w1;w2;w3;w4;w5;w6;w7;
+                     w8;w9;w10;w11;w12;w13;w14;w15]`
+  ASSUME_TAC THENL
+   [MAP_EVERY EXPAND_TAC
+      ["w0";"w1";"w2";"w3";"w4";"w5";"w6";"w7";
+       "w8";"w9";"w10";"w11";"w12";"w13";"w14";"w15"] THEN
+    MATCH_MP_TAC LIST_16_EL THEN
+    UNDISCH_TAC `ALL (\bl:int32 list. LENGTH bl = 16) blocks` THEN
+    REWRITE_TAC[GSYM ALL_EL] THEN
+    DISCH_THEN(MP_TAC o SPEC `ii:num`) THEN
+    ASM_REWRITE_TAC[] THEN SIMP_TAC[];
+    ALL_TAC];;
+
+(* EXPAND_K_TAC: from the universal K-table assumption (j < 4 ==> ...),     *)
+(* materialise four concrete K-band assumptions on Q16/Q17/Q18/Q19.        *)
+
+let EXPAND_K_TAC =
+  FIRST_ASSUM(fun th ->
+    if can (find_term (fun t ->
+      try fst(dest_const t) = "sha1_K" with _ -> false)) (concl th)
+    then
+      MAP_EVERY (fun i ->
+        let spec = SPEC (mk_small_numeral i) th in
+        let mp = MP spec (prove(lhand(concl spec), ARITH_TAC)) in
+        ASSUME_TAC(CONV_RULE
+          (DEPTH_CONV NUM_MULT_CONV THENC DEPTH_CONV NUM_ADD_CONV) mp))
+        (0--3)
+    else FAIL_TAC "");;
+
+(* EXPAND_DATA_TAC: specialise the quantified data-memory assumption at     *)
+(* j = ii. Mirrors SHA-256's, but matches on word_bytereverse.              *)
+
+let EXPAND_DATA_TAC =
+  FIRST_ASSUM(fun th ->
+    if can (find_term (fun t ->
+      try fst(dest_const t) = "word_bytereverse" with _ -> false)) (concl th)
+    then
+      MP_TAC(SPEC `ii:num` th) THEN ANTS_TAC THENL
+       [ASM_ARITH_TAC; ALL_TAC]
+    else FAIL_TAC "");;
+
+(* REV32_BITBLAST_TAC: after REV32 fires on Q4/Q5/Q6/Q7, replace its         *)
+(* assumption with the canonical word_join4(EL k blocks_word) form via       *)
+(* bitblast (double byte-reversal cancels). Same shape as SHA-256.          *)
+
+let REV32_BITBLAST_TAC qpat qtm =
+  let is_wj4_rhs th =
+    try fst(dest_const(fst(strip_comb(rand(concl th))))) = "word_join4"
+    with _ -> false in
+  SUBGOAL_THEN qtm
+    (fun th -> RULE_ASSUM_TAC(fun asm ->
+      if can (term_match [] qpat) (concl asm) && not(is_wj4_rhs asm)
+      then th else asm))
+  THENL
+   [ASM_REWRITE_TAC[] THEN REWRITE_TAC[word_join4] THEN
+    BITBLAST_THEN (K ALL_TAC) THEN CONV_TAC TAUT; ALL_TAC];;
