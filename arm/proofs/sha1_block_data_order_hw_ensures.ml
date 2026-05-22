@@ -362,22 +362,10 @@ let SHA1_HW_CORRECT = prove
     THENL
      [MATCH_MP_TAC LENGTH_SHA1_HASH_BLOCKS THEN
       REWRITE_TAC[LENGTH] THEN ARITH_TAC; ALL_TAC] THEN
-    (* Unfold one step of sha1_hash_blocks at ii+1 and substitute             *)
-    (* EL ii blocks = [w0..w15] and W = sha1_message_schedule 64 [w0..w15].   *)
-    SUBGOAL_THEN
-      `sha1_hash_blocks (ii + 1) blocks [a:int32;b;c;d;e] =
-       MAP2 word_add
-         (sha1_compress 80 W (sha1_hash_blocks ii blocks [a;b;c;d;e]))
-         (sha1_hash_blocks ii blocks [a;b;c;d;e])`
-      ASSUME_TAC
-    THENL
-     [REWRITE_TAC[sha1_hash_blocks; sha1_block_compress;
-                  sha1_block_message_schedule] THEN
-      ASM_REWRITE_TAC[] THEN
-      CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-      ASM_REWRITE_TAC[];
-      ALL_TAC] THEN
-    (* Per-lane: EL k of MAP2 word_add = word_add (EL k a) (EL k b)          *)
+    (* Derive 5 lane facts via SHA1_BLOCK_COMPRESS_EL.                        *)
+    (*   sha1_hash_blocks (ii+1) ... = sha1_block_compress (EL ii blocks) H_ii *)
+    (* and EL ii blocks = [w0..w15] from RECONSTRUCT_BLOCK_TAC. Then           *)
+    (* SHA1_BLOCK_COMPRESS_EL gives EL k = word_add (EL k sha1_compress) ...   *)
     SUBGOAL_THEN
       `!k. k < 5 ==>
         EL k (sha1_hash_blocks (ii + 1) blocks [a:int32;b;c;d;e]) =
@@ -386,12 +374,16 @@ let SHA1_HW_CORRECT = prove
           (EL k (sha1_hash_blocks ii blocks [a;b;c;d;e]))`
       (LABEL_TAC "lanef")
     THENL
-     [REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
-      MATCH_MP_TAC EL_MAP2 THEN
-      MP_TAC(SPECL [`80:num`; `W:int32 list`;
-                    `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]`]
-                   LENGTH_SHA1_COMPRESS) THEN
-      ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+     [REPEAT STRIP_TAC THEN
+      ONCE_REWRITE_TAC[ARITH_RULE `ii + 1 = SUC ii`] THEN
+      REWRITE_TAC[sha1_hash_blocks; ARITH_RULE `SUC n = n + 1`] THEN
+      ASM_REWRITE_TAC[] THEN
+      MP_TAC(SPECL [`[w0:int32;w1;w2;w3;w4;w5;w6;w7;
+                       w8;w9;w10;w11;w12;w13;w14;w15]`;
+                     `sha1_hash_blocks ii blocks [a:int32;b;c;d;e]`]
+                    SHA1_BLOCK_COMPRESS_EL) THEN
+      ASM_REWRITE_TAC[] THEN
+      DISCH_THEN(fun th -> ASM_REWRITE_TAC[MATCH_MP th (ASSUME `k < 5`)]);
       ALL_TAC] THEN
     (* Specialise the lane-fold quantifier to k = 0, 1, 2, 3, 4.             *)
     USE_THEN
