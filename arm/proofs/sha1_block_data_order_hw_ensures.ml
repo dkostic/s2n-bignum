@@ -443,15 +443,7 @@ let SHA1_HW_CORRECT = prove
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-    (* EXIT closer is a known TAC_PROOF: Unsolved goals failure under loadt
-       when run through CONJ_TAC THENL [REFL_TAC; IMP_REWRITE_TAC[WORD_ZX_ZX;
-       DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]] (the canonical agent-guide
-       pattern). The same closer succeeds on a synthetic copy of the
-       residual goal and worked when run interactively on a CHEAT-stubbed
-       proof. The discrepancy under loadt is unexplained — see session-017
-       notes. CHEAT_TAC unblocks downstream validation; remove once root
-       cause is found. *)
-    CHEAT_TAC
+    IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]
   ]);;
 
 (* ========================================================================= *)
