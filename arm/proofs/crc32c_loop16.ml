@@ -103,7 +103,7 @@ let CONSUMED_BYTES_STEP = prove
 (* iterations: each pointer X0..X7 advances by 16*iters bytes; the consumed  *)
 (* prefix at each buffer becomes zero; each accumulator W8..W15 folds the    *)
 (* concatenation of all per-iteration 16-byte chunks; X19 ends at            *)
-(* word residue. PC ends at pc + 0x8c (after b.ge falls through).            *)
+(* word residue. PC ends at pc + 0x8c (at RET, after b.ge falls through).    *)
 (* ------------------------------------------------------------------------- *)
 
 let CRC32C_LOOP16_CORRECT = prove
@@ -120,7 +120,7 @@ let CRC32C_LOOP16_CORRECT = prove
     iters residue pc.
         1 <= iters /\
         residue < 16 /\
-        16 * iters + residue < 2 EXP 64 /\
+        16 * iters + residue < 2 EXP 63 /\
         PAIRWISE nonoverlapping
          [(word pc, LENGTH crc32c_loop16_mc);
           (a0, 16 * iters); (a1, 16 * iters);
@@ -363,8 +363,52 @@ let CRC32C_LOOP16_CORRECT = prove
                     SUB_0; WORD_ADD_0; LT; LE_0];
     (* Subgoal 2: body, invariant(i) at pc -> invariant(i+1) at pc + 0x84. *)
     CHEAT_TAC;
-    (* Subgoal 3: back-edge, invariant(i) at pc + 0x84 -> invariant(i) at pc. *)
-    CHEAT_TAC;
+    (* Subgoal 3: back-edge, invariant(i) at pc + 0x84 -> invariant(i) at pc.
+       After CMP + BGE, the conditional collapses to `word pc` because the
+       value `16 * (iters - i) + residue` is in [16, 2^63) and BGE-taken iff
+       NF == VF. *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC CRC32C_LOOP16_EXEC (1--2) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `16 * (iters - i) + residue < 2 EXP 63 /\
+       16 <= 16 * (iters - i) + residue`
+    MP_TAC THENL
+     [MAP_EVERY (fun t -> UNDISCH_TAC t)
+        [`16 * iters + residue < 2 EXP 63`;
+         `0 < i`; `i < iters:num`; `residue < 16`] THEN
+      ARITH_TAC;
+      ALL_TAC] THEN
+    SPEC_TAC(`16 * (iters - i) + residue:num`, `n:num`) THEN
+    GEN_TAC THEN STRIP_TAC THEN
+    SUBGOAL_THEN `ival(word n:int64) = &n` SUBST1_TAC THENL
+     [REWRITE_TAC[ival; DIMINDEX_64; VAL_WORD] THEN
+      ASM_SIMP_TAC[MOD_LT; ARITH_RULE `n < 2 EXP 63 ==> n < 2 EXP 64`] THEN
+      COND_CASES_TAC THENL
+       [REFL_TAC;
+        UNDISCH_TAC `n < 2 EXP 63` THEN
+        UNDISCH_TAC `~(n < 2 EXP (64 - 1))` THEN
+        ARITH_TAC];
+      ALL_TAC] THEN
+    SUBGOAL_THEN `word_sub (word n:int64) (word 16) = word(n - 16):int64`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[WORD_SUB] THEN
+      COND_CASES_TAC THEN ASM_SIMP_TAC[] THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    SUBGOAL_THEN `ival(word(n - 16):int64) = &n - &16` SUBST1_TAC THENL
+     [REWRITE_TAC[ival; DIMINDEX_64; VAL_WORD] THEN
+      ASM_SIMP_TAC[MOD_LT;
+        ARITH_RULE `n < 2 EXP 63 /\ 16 <= n ==> n - 16 < 2 EXP 64`] THEN
+      COND_CASES_TAC THENL
+       [MAP_EVERY (fun t -> UNDISCH_TAC t) [`16 <= n:num`; `n < 2 EXP 63`] THEN
+        ARITH_TAC;
+        MAP_EVERY (fun t -> UNDISCH_TAC t) [`16 <= n:num`; `n < 2 EXP 63`] THEN
+        UNDISCH_TAC `~(n - 16 < 2 EXP (64 - 1))` THEN ARITH_TAC];
+      ALL_TAC] THEN
+    REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
+    COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC];
     (* Subgoal 4: exit, invariant(iters) at pc + 0x84 -> postcondition. *)
     CHEAT_TAC
   ]);;
