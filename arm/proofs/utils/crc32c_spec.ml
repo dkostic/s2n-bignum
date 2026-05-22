@@ -83,8 +83,8 @@ let crc32c_bytes = define
 (* ------------------------------------------------------------------------- *)
 
 let crc32c_buffer = new_definition
- `crc32c_buffer (bytes:byte list) : int32 =
-    word_not (crc32c_bytes (word 0xFFFFFFFF) bytes)`;;
+ `crc32c_buffer (bs:byte list) : int32 =
+    word_not (crc32c_bytes (word 0xFFFFFFFF) bs)`;;
 
 (* ------------------------------------------------------------------------- *)
 (* Structural lemmas. crc32c_bytes_NIL is just the first conjunct of         *)
