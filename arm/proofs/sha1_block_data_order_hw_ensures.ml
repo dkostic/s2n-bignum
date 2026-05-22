@@ -167,6 +167,8 @@ let SHA1_HW_CORRECT = prove
     (* ================================================================= *)
     GHOST_INTRO_TAC `q1_init:int128` `read Q1` THEN
     ENSURES_INIT_TAC "s0" THEN
+    EXPAND_K_TAC THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[WORD_ADD_0]) THEN
     ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--7) THEN
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[sha1_hash_blocks; WORD_ADD_0; MULT_CLAUSES; SUB_0] THEN
