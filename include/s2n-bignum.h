@@ -1220,6 +1220,12 @@ extern void sha3_keccak4_f1600_alt(uint64_t a[S2N_BIGNUM_STATIC 100],const uint6
 #endif
 extern void sha3_keccak4_f1600_alt2(uint64_t a[S2N_BIGNUM_STATIC 100],const uint64_t rc[S2N_BIGNUM_STATIC 24]);
 
+// SHA-1 hardware-accelerated block compression
+// Inputs state[5], data[64*num_blocks], num_blocks, k[16]; output state[5]
+// k is a packed K-constant table: 4 lanes each of the four FIPS K constants
+// in band order (K0=0x5a827999, K1=0x6ed9eba1, K2=0x8f1bbcdc, K3=0xca62c1d6).
+extern void sha1_block_data_order_hw(uint32_t state[S2N_BIGNUM_STATIC 5],const uint8_t *data,uint64_t num_blocks,const uint32_t k[S2N_BIGNUM_STATIC 16]);
+
 // Point addition on CC curve SM2 in Montgomery-Jacobian coordinates
 // Inputs p1[12], p2[12]; output p3[12]
 extern void sm2_montjadd(uint64_t p3[S2N_BIGNUM_STATIC 12],const uint64_t p1[S2N_BIGNUM_STATIC 12],const uint64_t p2[S2N_BIGNUM_STATIC 12]);

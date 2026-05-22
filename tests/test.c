@@ -3122,6 +3122,53 @@ void reference_mldsa_inverse_ntt_spec(int32_t a[256])
     }
 }
 
+// SHA-1 reference implementation (FIPS 180-4 §6.1.2).
+
+static const uint32_t sha1_IV[5] = {
+  0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0
+};
+
+// Packed K table for sha1_block_data_order_hw: 4 lanes per K constant,
+// in band order. The HW expects 16 32-bit words at the K pointer.
+static const uint32_t sha1_K_table[16] = {
+  0x5a827999, 0x5a827999, 0x5a827999, 0x5a827999,
+  0x6ed9eba1, 0x6ed9eba1, 0x6ed9eba1, 0x6ed9eba1,
+  0x8f1bbcdc, 0x8f1bbcdc, 0x8f1bbcdc, 0x8f1bbcdc,
+  0xca62c1d6, 0xca62c1d6, 0xca62c1d6, 0xca62c1d6
+};
+
+static uint32_t sha1_rotl(uint32_t x, int n)
+{ return (x << n) | (x >> (32 - n)); }
+
+static uint32_t sha1_f(int t, uint32_t x, uint32_t y, uint32_t z)
+{ if (t < 20) return (x & y) ^ (~x & z);
+  else if (t < 40) return x ^ y ^ z;
+  else if (t < 60) return (x & y) ^ (x & z) ^ (y & z);
+  else return x ^ y ^ z;
+}
+
+static uint32_t sha1_round_K(int t)
+{ if (t < 20) return 0x5a827999;
+  else if (t < 40) return 0x6ed9eba1;
+  else if (t < 60) return 0x8f1bbcdc;
+  else return 0xca62c1d6;
+}
+
+static void reference_sha1_block(uint32_t state[5],
+                                 const uint32_t block[16])
+{ uint32_t W[80], a, b, c, d, e;
+  int t;
+  for (t = 0; t < 16; ++t) W[t] = block[t];
+  for (t = 16; t < 80; ++t)
+    W[t] = sha1_rotl(W[t-3] ^ W[t-8] ^ W[t-14] ^ W[t-16], 1);
+  a = state[0]; b = state[1]; c = state[2]; d = state[3]; e = state[4];
+  for (t = 0; t < 80; ++t)
+   { uint32_t T = sha1_rotl(a,5) + sha1_f(t,b,c,d) + e + sha1_round_K(t) + W[t];
+     e = d; d = c; c = sha1_rotl(b,30); b = a; a = T;
+   }
+  state[0] += a; state[1] += b; state[2] += c; state[3] += d; state[4] += e;
+}
+
 // Keccak-f1600 reference.
 // https://keccak.team/files/Keccak-reference-3.0.pdf
 
@@ -14823,6 +14870,143 @@ int test_secp256k1_jmixadd_alt(void)
   return 0;
 }
 
+int test_sha1_block_data_order_hw(void)
+{
+#ifdef __x86_64__
+  return 1;
+#else
+  uint64_t t;
+  int i, j;
+  uint32_t ref_state[5], asm_state[5], block[16];
+  uint8_t data[64];
+  printf("Testing sha1_block_data_order_hw with %d cases\n",tests);
+
+  // Test 1: NIST FIPS 180-4 Appendix A.1 — sha1("abc") (single padded block)
+  // "abc" + padding: 0x61626380, then zeros, length = 24 bits = 0x00000018.
+  { uint32_t msg[16] = {0};
+    uint32_t expected[5] =
+      {0xa9993e36, 0x4706816a, 0xba3e2571, 0x7850c26c, 0x9cd0d89d};
+    msg[0] = 0x61626380;
+    msg[15] = 0x00000018;
+    for (i = 0; i < 5; ++i) ref_state[i] = sha1_IV[i];
+    reference_sha1_block(ref_state, msg);
+    for (i = 0; i < 5; ++i)
+     { if (ref_state[i] != expected[i])
+        { printf("Error: reference SHA-1(\"abc\") mismatch at [%d]: "
+                 "got 0x%08x, expected 0x%08x\n", i, ref_state[i], expected[i]);
+          return 1;
+        }
+     }
+    for (i = 0; i < 5; ++i) asm_state[i] = sha1_IV[i];
+    // Convert msg (big-endian uint32s) to byte order in memory: the assembly
+    // loads bytes in memory order and applies REV32 to obtain big-endian
+    // 32-bit words. So the bytes are the standard big-endian byte layout
+    // of msg[i].
+    for (i = 0; i < 16; ++i)
+     { data[4*i+0] = (msg[i] >> 24) & 0xff;
+       data[4*i+1] = (msg[i] >> 16) & 0xff;
+       data[4*i+2] = (msg[i] >>  8) & 0xff;
+       data[4*i+3] = (msg[i]      ) & 0xff;
+     }
+    sha1_block_data_order_hw(asm_state, data, 1, sha1_K_table);
+    for (i = 0; i < 5; ++i)
+     { if (asm_state[i] != expected[i])
+        { printf("Error: SHA-1 HW(\"abc\") mismatch at [%d]: "
+                 "got 0x%08x, expected 0x%08x\n", i, asm_state[i], expected[i]);
+          return 1;
+        }
+     }
+    if (VERBOSE) printf("OK: SHA-1(\"abc\") = a9993e36...\n");
+  }
+
+  // Test 2: random single-block (initial state random, block random,
+  // compare reference vs asm).
+  for (t = 0; t < tests; ++t)
+   { for (i = 0; i < 2; ++i)
+      { uint64_t r;
+        random_bignum(1, &r);
+        ref_state[2*i]   = (uint32_t)(r >> 32);
+        ref_state[2*i+1] = (uint32_t)(r);
+      }
+     { uint64_t r;
+       random_bignum(1, &r);
+       ref_state[4] = (uint32_t)(r >> 32);
+     }
+     for (i = 0; i < 5; ++i) asm_state[i] = ref_state[i];
+     for (i = 0; i < 8; ++i)
+      { uint64_t r;
+        random_bignum(1, &r);
+        block[2*i]   = (uint32_t)(r >> 32);
+        block[2*i+1] = (uint32_t)(r);
+      }
+     reference_sha1_block(ref_state, block);
+     for (i = 0; i < 16; ++i)
+      { data[4*i+0] = (block[i] >> 24) & 0xff;
+        data[4*i+1] = (block[i] >> 16) & 0xff;
+        data[4*i+2] = (block[i] >>  8) & 0xff;
+        data[4*i+3] = (block[i]      ) & 0xff;
+      }
+     sha1_block_data_order_hw(asm_state, data, 1, sha1_K_table);
+     for (i = 0; i < 5; ++i)
+      { if (asm_state[i] != ref_state[i])
+         { printf("Error in sha1_block_data_order_hw at state[%d]: "
+                  "asm=0x%08x ref=0x%08x\n", i, asm_state[i], ref_state[i]);
+           return 1;
+         }
+      }
+     if (VERBOSE)
+       printf("OK: sha1_block(0x%08x%08x...) => 0x%08x%08x...\n",
+              block[0],block[1], asm_state[0],asm_state[1]);
+   }
+
+  // Test 3: random 2-block message.
+  for (t = 0; t < tests; ++t)
+   { uint8_t data2[128];
+     uint32_t blocks2[2][16];
+     for (i = 0; i < 2; ++i)
+      { uint64_t r;
+        random_bignum(1, &r);
+        ref_state[2*i]   = (uint32_t)(r >> 32);
+        ref_state[2*i+1] = (uint32_t)(r);
+      }
+     { uint64_t r;
+       random_bignum(1, &r);
+       ref_state[4] = (uint32_t)(r >> 32);
+     }
+     for (i = 0; i < 5; ++i) asm_state[i] = ref_state[i];
+     for (j = 0; j < 2; ++j)
+      { for (i = 0; i < 8; ++i)
+         { uint64_t r;
+           random_bignum(1, &r);
+           blocks2[j][2*i]   = (uint32_t)(r >> 32);
+           blocks2[j][2*i+1] = (uint32_t)(r);
+         }
+        reference_sha1_block(ref_state, blocks2[j]);
+        for (i = 0; i < 16; ++i)
+         { data2[64*j+4*i+0] = (blocks2[j][i] >> 24) & 0xff;
+           data2[64*j+4*i+1] = (blocks2[j][i] >> 16) & 0xff;
+           data2[64*j+4*i+2] = (blocks2[j][i] >>  8) & 0xff;
+           data2[64*j+4*i+3] = (blocks2[j][i]      ) & 0xff;
+         }
+      }
+     sha1_block_data_order_hw(asm_state, data2, 2, sha1_K_table);
+     for (i = 0; i < 5; ++i)
+      { if (asm_state[i] != ref_state[i])
+         { printf("Error in sha1_block_data_order_hw (2-block) at state[%d]: "
+                  "asm=0x%08x ref=0x%08x\n", i, asm_state[i], ref_state[i]);
+           return 1;
+         }
+      }
+     if (VERBOSE)
+       printf("OK: sha1_2block => 0x%08x%08x...\n",
+              asm_state[0],asm_state[1]);
+   }
+
+  printf("All OK\n");
+  return 0;
+#endif
+}
+
 int test_sha3_keccak_f1600(void)
 { uint64_t t, i;
   uint64_t a[25], b[25], c[25];
@@ -16861,6 +17045,7 @@ int main(int argc, char *argv[])
     functionaltest(sha3,"sha3_keccak2_f1600",test_sha3_keccak2_f1600);
     functionaltest(sha3,"sha3_keccak2_f1600_alt",test_sha3_keccak2_f1600_alt);
     functionaltest(sha3,"sha3_keccak4_f1600_alt2",test_sha3_keccak4_f1600_alt2);
+    functionaltest(arm,"sha1_block_data_order_hw",test_sha1_block_data_order_hw);
     functionaltest(aes,"aes_xts_encrypt",test_aes_xts_encrypt);
     functionaltest(aes,"aes_xts_decrypt",test_aes_xts_decrypt);
     functionaltest(aes,"aes_xts_roundtrip",test_aes_xts_roundtrip);
