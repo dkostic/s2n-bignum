@@ -17,6 +17,7 @@
 
 needs "arm/proofs/base.ml";;
 needs "arm/proofs/utils/sha1_bridge.ml";;
+needs "arm/proofs/sha1_block_core.ml";;
 
 (* ------------------------------------------------------------------------- *)
 (* The full sha1_block_data_order_hw machine-code constant.                  *)
@@ -244,3 +245,60 @@ let SHA1_KLOAD_REG_CORRECT = prove
   ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--4) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 round-group-0 ensures (SHA1C band).                               *)
+(*                                                                           *)
+(* Slice covers four instructions starting at PC pc+0x50:                    *)
+(*   sha1h   s3, s0          (* Q3 := SHA1H Q0           *)                  *)
+(*   sha1c   q0, s1, v20.4s  (* Q0 := SHA1C Q0 Q1 Q20    *)                  *)
+(*   add     v20.4s, v16.4s, v6.4s  (* Q20 := K0+w8..w11 *)                  *)
+(*   sha1su0 v4.4s, v5.4s, v6.4s    (* Q4 := SU0 schedule extension *)       *)
+(*                                                                           *)
+(* The output is a per-round-group cut-point invariant in the form expected  *)
+(* by GEN_CUT_POINT_TAC: Q0 = first four lanes of sha1_compress 4 W H,       *)
+(* and Q3 = (5th lane, 0, 0, 0). The bridge through the 4-round block is     *)
+(* GROUP_BRIDGE_C.(0) (SHA1C band) plus SHA1H_BRIDGE for Q3.                 *)
+(*                                                                           *)
+(* Inputs:                                                                   *)
+(*   Q0  = word_join4 a b c d (the four-lane abcd state)                     *)
+(*   Q1  = word_join4 e_lane (word 0) (word 0) (word 0) (e in low 32 bits)   *)
+(*   Q4  = word_join4 w0 w1 w2 w3                                            *)
+(*   Q5  = word_join4 w4 w5 w6 w7                                            *)
+(*   Q6  = word_join4 w8 w9 w10 w11                                          *)
+(*   Q16 = K0 broadcast (rounds 0..19)                                       *)
+(*   Q20 = word_join4 (K0+w0) (K0+w1) (K0+w2) (K0+w3)                        *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA1_RG0_REG_CORRECT = prove
+ (`!(a:int32) b c d (e_lane:int32)
+    (w0:int32) w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
+    W pc.
+    sha1_message_schedule 64
+      [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W
+    ==> ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word (pc + 0x50) /\
+          read Q0 s = word_join4 a b c d /\
+          read Q1 s = word_join4 e_lane (word 0) (word 0) (word 0) /\
+          read Q4 s = word_join4 w0 w1 w2 w3 /\
+          read Q5 s = word_join4 w4 w5 w6 w7 /\
+          read Q6 s = word_join4 w8 w9 w10 w11 /\
+          read Q16 s =
+            word_join4 (sha1_K 0) (sha1_K 0) (sha1_K 0) (sha1_K 0) /\
+          read Q20 s =
+            word_join4
+              (word_add (sha1_K 0) w0) (word_add (sha1_K 1) w1)
+              (word_add (sha1_K 2) w2) (word_add (sha1_K 3) w3))
+     (\s. read PC s = word (pc + 0x60) /\
+          (let st = sha1_compress 4 W [a;b;c;d;e_lane] in
+           read Q0 s = word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) /\
+           read Q3 s = word_join4 (EL 4 st) (word 0) (word 0) (word 0)))
+     (MAYCHANGE [PC] ,, MAYCHANGE [Q0; Q3; Q4; Q20] ,,
+      MAYCHANGE [events])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--4) THEN
+  GEN_CUT_POINT_TAC `[a:int32;b;c;d;e_lane]` 0 `s4:armstate` THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
