@@ -437,7 +437,7 @@ let SHA1_HW_CORRECT = prove
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
-    CONV_TAC WORD_BLAST
+    IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]
   ]);;
 
 (* ========================================================================= *)
