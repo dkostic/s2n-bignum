@@ -409,6 +409,50 @@ let CRC32C_LOOP16_CORRECT = prove
       ALL_TAC] THEN
     REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
     COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC];
-    (* Subgoal 4: exit, invariant(iters) at pc + 0x84 -> postcondition. *)
-    CHEAT_TAC
+    (* Subgoal 4: exit, invariant(iters) at pc + 0x84 -> postcondition.
+       At i = iters, X19 = word residue. After CMP + BGE, BGE is NOT taken
+       (since residue < 16) so PC falls through to pc + 0x8c. *)
+    SUBGOAL_THEN `iters - iters = 0` (fun th -> REWRITE_TAC[th]) THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC CRC32C_LOOP16_EXEC (1--2) THEN
+    SUBGOAL_THEN
+      `(if ival(word_sub (word residue:int64) (word 16)) < &0 <=>
+         ~(ival(word residue:int64) - &16 =
+           ival(word_sub (word residue:int64) (word 16)))
+        then (word pc:int64)
+        else word(pc + 140)) =
+       word(pc + 140)`
+    (fun th -> RULE_ASSUM_TAC(REWRITE_RULE[th])) THENL
+     [SUBGOAL_THEN `word_sub (word residue:int64) (word 16) = iword(&residue - &16):int64`
+      SUBST1_TAC THENL
+       [REWRITE_TAC[GSYM WORD_IWORD; IWORD_INT_SUB; INT_OF_NUM_LE] THEN
+        REFL_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN `ival(iword(&residue - &16):int64) = &residue - &16`
+      SUBST1_TAC THENL
+       [MATCH_MP_TAC IVAL_IWORD THEN REWRITE_TAC[DIMINDEX_64] THEN
+        CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV THEN
+        MP_TAC(SPEC `residue:num` INT_POS) THEN
+        UNDISCH_TAC `residue < 16` THEN
+        REWRITE_TAC[GSYM INT_OF_NUM_LT] THEN INT_ARITH_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN `ival(word residue:int64) = &residue` SUBST1_TAC THENL
+       [REWRITE_TAC[ival; DIMINDEX_64; VAL_WORD] THEN
+        ASM_SIMP_TAC[MOD_LT; ARITH_RULE `residue < 16 ==> residue < 2 EXP 64`] THEN
+        COND_CASES_TAC THENL
+         [REFL_TAC;
+          UNDISCH_TAC `residue < 16` THEN
+          UNDISCH_TAC `~(residue < 2 EXP (64 - 1))` THEN
+          ARITH_TAC];
+        ALL_TAC] THEN
+      SUBGOAL_THEN `&residue - &16:int < &0` ASSUME_TAC THENL
+       [REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
+        ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      ASM_REWRITE_TAC[];
+      ALL_TAC] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[]
   ]);;
