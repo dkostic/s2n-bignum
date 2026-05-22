@@ -302,3 +302,171 @@ let SHA1_RG0_REG_CORRECT = prove
   GEN_CUT_POINT_TAC `[a:int32;b;c;d;e_lane]` 0 `s4:armstate` THEN
   ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
   CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 sanity-check: round-group-5 ensures (P_LO band).                  *)
+(*                                                                           *)
+(* Validates GEN_CUT_POINT_TAC + GROUP_BRIDGE_P_LO.(0) on real ARM_STEPS     *)
+(* output. The slice covers 5 instructions starting at PC pc+0xb0:           *)
+(*   sha1h   s2, s0                                                          *)
+(*   sha1p   q0, s3, v21.4s                                                  *)
+(*   add     v21.4s, v17.4s, v7.4s                                           *)
+(*   sha1su1 v4.4s, v7.4s                                                    *)
+(*   sha1su0 v5.4s, v6.4s, v7.4s                                             *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA1_RG5_REG_CORRECT = prove
+ (`!(h0:int32) h1 h2 h3 h4
+    (q4_in:int128) (q5_in:int128) (q6_in:int128) (q7_in:int128)
+    (w0:int32) w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 W pc.
+    sha1_message_schedule 64
+      [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W
+    ==> ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word (pc + 0xb0) /\
+          read Q0 s =
+            word_join4
+              (EL 0 (sha1_compress 20 W [h0;h1;h2;h3;h4]))
+              (EL 1 (sha1_compress 20 W [h0;h1;h2;h3;h4]))
+              (EL 2 (sha1_compress 20 W [h0;h1;h2;h3;h4]))
+              (EL 3 (sha1_compress 20 W [h0;h1;h2;h3;h4])) /\
+          read Q3 s =
+            word_join4
+              (EL 4 (sha1_compress 20 W [h0;h1;h2;h3;h4]))
+              (word 0) (word 0) (word 0) /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5_in /\
+          read Q6 s = q6_in /\
+          read Q7 s = q7_in /\
+          read Q17 s =
+            word_join4 (sha1_K 20) (sha1_K 20) (sha1_K 20) (sha1_K 20) /\
+          read Q21 s =
+            word_join4
+              (word_add (sha1_K 20) (EL 20 W))
+              (word_add (sha1_K 21) (EL 21 W))
+              (word_add (sha1_K 22) (EL 22 W))
+              (word_add (sha1_K 23) (EL 23 W)))
+     (\s. read PC s = word (pc + 0xc4) /\
+          (let st = sha1_compress 24 W [h0;h1;h2;h3;h4] in
+           read Q0 s = word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) /\
+           read Q2 s = word_join4 (EL 4 st) (word 0) (word 0) (word 0)))
+     (MAYCHANGE [PC] ,, MAYCHANGE [Q0; Q2; Q4; Q5; Q21] ,,
+      MAYCHANGE [events])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--5) THEN
+  GEN_CUT_POINT_TAC `[h0:int32;h1;h2;h3;h4]` 5 `s5:armstate` THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 sanity-check: round-group-10 ensures (M band).                    *)
+(*                                                                           *)
+(* Validates GEN_CUT_POINT_TAC + GROUP_BRIDGE_M.(0) on real ARM_STEPS        *)
+(* output. The slice covers 5 instructions starting at PC pc+0x114:          *)
+(*   sha1h   s3, s0                                                          *)
+(*   sha1m   q0, s2, v20.4s                                                  *)
+(*   add     v20.4s, v18.4s, v4.4s                                           *)
+(*   sha1su1 v5.4s, v4.4s                                                    *)
+(*   sha1su0 v6.4s, v7.4s, v4.4s                                             *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA1_RG10_REG_CORRECT = prove
+ (`!(h0:int32) h1 h2 h3 h4
+    (q4_in:int128) (q5_in:int128) (q6_in:int128) (q7_in:int128)
+    (w0:int32) w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 W pc.
+    sha1_message_schedule 64
+      [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W
+    ==> ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word (pc + 0x114) /\
+          read Q0 s =
+            word_join4
+              (EL 0 (sha1_compress 40 W [h0;h1;h2;h3;h4]))
+              (EL 1 (sha1_compress 40 W [h0;h1;h2;h3;h4]))
+              (EL 2 (sha1_compress 40 W [h0;h1;h2;h3;h4]))
+              (EL 3 (sha1_compress 40 W [h0;h1;h2;h3;h4])) /\
+          read Q2 s =
+            word_join4
+              (EL 4 (sha1_compress 40 W [h0;h1;h2;h3;h4]))
+              (word 0) (word 0) (word 0) /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5_in /\
+          read Q6 s = q6_in /\
+          read Q7 s = q7_in /\
+          read Q18 s =
+            word_join4 (sha1_K 40) (sha1_K 40) (sha1_K 40) (sha1_K 40) /\
+          read Q20 s =
+            word_join4
+              (word_add (sha1_K 40) (EL 40 W))
+              (word_add (sha1_K 41) (EL 41 W))
+              (word_add (sha1_K 42) (EL 42 W))
+              (word_add (sha1_K 43) (EL 43 W)))
+     (\s. read PC s = word (pc + 0x128) /\
+          (let st = sha1_compress 44 W [h0;h1;h2;h3;h4] in
+           read Q0 s = word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) /\
+           read Q3 s = word_join4 (EL 4 st) (word 0) (word 0) (word 0)))
+     (MAYCHANGE [PC] ,, MAYCHANGE [Q0; Q3; Q5; Q6; Q20] ,,
+      MAYCHANGE [events])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--5) THEN
+  GEN_CUT_POINT_TAC `[h0:int32;h1;h2;h3;h4]` 10 `s5:armstate` THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 sanity-check: round-group-15 ensures (P_HI band).                 *)
+(*                                                                           *)
+(* Validates GEN_CUT_POINT_TAC + GROUP_BRIDGE_P_HI.(0) on real ARM_STEPS     *)
+(* output. The slice covers 5 instructions starting at PC pc+0x178:          *)
+(*   sha1h   s2, s0                                                          *)
+(*   sha1p   q0, s3, v21.4s                                                  *)
+(*   add     v21.4s, v19.4s, v5.4s                                           *)
+(*   sha1su1 v6.4s, v5.4s                                                    *)
+(*   sha1su0 v7.4s, v4.4s, v5.4s                                             *)
+(* ------------------------------------------------------------------------- *)
+
+let SHA1_RG15_REG_CORRECT = prove
+ (`!(h0:int32) h1 h2 h3 h4
+    (q4_in:int128) (q5_in:int128) (q6_in:int128) (q7_in:int128)
+    (w0:int32) w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 W pc.
+    sha1_message_schedule 64
+      [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] = W
+    ==> ensures arm
+     (\s. aligned_bytes_loaded s (word pc) sha1_block_data_order_hw_mc /\
+          read PC s = word (pc + 0x178) /\
+          read Q0 s =
+            word_join4
+              (EL 0 (sha1_compress 60 W [h0;h1;h2;h3;h4]))
+              (EL 1 (sha1_compress 60 W [h0;h1;h2;h3;h4]))
+              (EL 2 (sha1_compress 60 W [h0;h1;h2;h3;h4]))
+              (EL 3 (sha1_compress 60 W [h0;h1;h2;h3;h4])) /\
+          read Q3 s =
+            word_join4
+              (EL 4 (sha1_compress 60 W [h0;h1;h2;h3;h4]))
+              (word 0) (word 0) (word 0) /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5_in /\
+          read Q6 s = q6_in /\
+          read Q7 s = q7_in /\
+          read Q19 s =
+            word_join4 (sha1_K 60) (sha1_K 60) (sha1_K 60) (sha1_K 60) /\
+          read Q21 s =
+            word_join4
+              (word_add (sha1_K 60) (EL 60 W))
+              (word_add (sha1_K 61) (EL 61 W))
+              (word_add (sha1_K 62) (EL 62 W))
+              (word_add (sha1_K 63) (EL 63 W)))
+     (\s. read PC s = word (pc + 0x18c) /\
+          (let st = sha1_compress 64 W [h0;h1;h2;h3;h4] in
+           read Q0 s = word_join4 (EL 0 st) (EL 1 st) (EL 2 st) (EL 3 st) /\
+           read Q2 s = word_join4 (EL 4 st) (word 0) (word 0) (word 0)))
+     (MAYCHANGE [PC] ,, MAYCHANGE [Q0; Q2; Q6; Q7; Q21] ,,
+      MAYCHANGE [events])`,
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC SHA1_BLOCK_DATA_ORDER_HW_EXEC (1--5) THEN
+  GEN_CUT_POINT_TAC `[h0:int32;h1;h2;h3;h4]` 15 `s5:armstate` THEN
+  ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC let_CONV THEN CONJ_TAC THEN REFL_TAC);;
