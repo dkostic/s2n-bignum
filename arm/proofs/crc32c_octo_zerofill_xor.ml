@@ -253,8 +253,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                   read X4 s = a4 /\ read X5 s = a5 /\
                   read X6 s = a6 /\ read X7 s = a7 /\
                   read X19 s = init_x19 /\
-                  read (memory :> bytes64 (word_add sp_in (word 8))) s =
-                    word len /\
+                  read (memory :> bytes64 sp_in) s = word len /\
                   read (memory :> bytelist (a0, len)) s = bs0 /\
                   read (memory :> bytelist (a1, len)) s = bs1 /\
                   read (memory :> bytelist (a2, len)) s = bs2 /\
