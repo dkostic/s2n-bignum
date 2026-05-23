@@ -80,7 +80,13 @@ Lloop16:
         cmp     x19, #16
         b.ge    Lloop16
 
-        CFI_RET
+// No trailing RET: this kernel is an internal proof artifact and is never
+// called as a subroutine from C. Phase 9 (the top-level kernel proof)
+// inlines this kernel as a true byte-prefix of crc32c_octo_zerofill_xor_mc;
+// keeping a RET here would inject an unreachable byte that disagrees with
+// the surrounding kernel's first tail-block instruction.
+
+        .cfi_endproc
 
 S2N_BN_SIZE_DIRECTIVE(crc32c_loop16)
 

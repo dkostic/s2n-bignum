@@ -54,8 +54,7 @@ let crc32c_loop16_mc = define_assert_from_elf
   0xa8817cff;       (* arm_STP XZR XZR X7 (Postimmediate_Offset (iword (&16))) *)
   0xd1004273;       (* arm_SUB X19 X19 (rvalue (word 16)) *)
   0xf100427f;       (* arm_CMP X19 (rvalue (word 16)) *)
-  0x54fffbca;       (* arm_BGE (word 2097044) *)
-  0xd65f03c0        (* arm_RET X30 *)
+  0x54fffbca        (* arm_BGE (word 2097044) *)
 ];;
 
 let CRC32C_LOOP16_EXEC = ARM_MK_EXEC_RULE crc32c_loop16_mc;;
