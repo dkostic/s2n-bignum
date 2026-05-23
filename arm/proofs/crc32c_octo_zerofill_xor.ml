@@ -287,7 +287,30 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                       memory :> bytes(a5, len);
                       memory :> bytes(a6, len);
                       memory :> bytes(a7, len)])`,
-  CHEAT_TAC);;
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; PAIRWISE; ALL] THEN
+  REWRITE_TAC[fst CRC32C_OCTO_ZERO_FILL_XOR_EXEC] THEN
+  STRIP_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  (* First cut-point: 8 MOVN W{8..15} init instructions, pc+8 to pc+0x28.    *)
+  ENSURES_SEQUENCE_TAC `pc + 0x28`
+   `\s. read SP s = sp_in /\
+        read X0 s = a0 /\ read X1 s = a1 /\
+        read X2 s = a2 /\ read X3 s = a3 /\
+        read X4 s = a4 /\ read X5 s = a5 /\
+        read X6 s = a6 /\ read X7 s = a7 /\
+        read X19 s = word len /\
+        read (memory :> bytelist (a0,len)) s = bs0 /\
+        read (memory :> bytelist (a1,len)) s = bs1 /\
+        read (memory :> bytelist (a2,len)) s = bs2 /\
+        read (memory :> bytelist (a3,len)) s = bs3 /\
+        read (memory :> bytelist (a4,len)) s = bs4 /\
+        read (memory :> bytelist (a5,len)) s = bs5 /\
+        read (memory :> bytelist (a6,len)) s = bs6 /\
+        read (memory :> bytelist (a7,len)) s = bs7` THEN
+  CONJ_TAC THENL
+   [ARM_SIM_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--8);
+    CHEAT_TAC]);;
 
 (* ------------------------------------------------------------------------- *)
 (* Top-level correctness theorem (Phase 9).                                   *)
