@@ -222,8 +222,8 @@ let crc32c_xor8 = define
 (* CORE covers PC range [pc + 8, pc + 0x268), i.e. starting after the         *)
 (* 2-instruction prologue (str x19, [sp,#-16]!; ldr x19, [sp,#16]) and        *)
 (* ending just before the 2-instruction epilogue (ldr x19,[sp],#16; ret).     *)
-(* The wrapper CRC32C_OCTO_ZERO_FILL_XOR_CORRECT below adds the prologue/     *)
-(* epilogue via ARM_ADD_RETURN_STACK_TAC.                                     *)
+(* The wrapper CRC32C_OCTO_ZERO_FILL_XOR_SUBROUTINE_CORRECT below adds the    *)
+(* prologue/epilogue via ARM_ADD_RETURN_STACK_TAC.                            *)
 (*                                                                           *)
 (* CORE precondition assumes: SP = sp_in, X19 = word len (already loaded by   *)
 (* the wrapper-handled prologue's ldr x19, [sp,#16]). Body is CHEAT_TAC for   *)
@@ -231,7 +231,7 @@ let crc32c_xor8 = define
 (* guard, LOOP16 BIGSTEP, tail blocks, XOR reduction).                        *)
 (* ------------------------------------------------------------------------- *)
 
-let CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT = prove
+let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
  (`!a0 a1 a2 a3 a4 a5 a6 a7
     (bs0:byte list) (bs1:byte list) (bs2:byte list) (bs3:byte list)
     (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
@@ -298,10 +298,10 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT = prove
 (* Postcondition:                                                            *)
 (*   - W0 = crc32c_xor8 (initial bytes of all 8 buffers).                     *)
 (*   - All 8 buffers are zero-filled (len bytes each).                        *)
-(*   - x19 is restored.                                                       *)
+(*   - x19 is preserved (implicit via X19 not in MAYCHANGE).                  *)
 (* ------------------------------------------------------------------------- *)
 
-let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
+let CRC32C_OCTO_ZERO_FILL_XOR_SUBROUTINE_CORRECT = prove
  (`!a0 a1 a2 a3 a4 a5 a6 a7
     (bs0:byte list) (bs1:byte list) (bs2:byte list) (bs3:byte list)
     (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
@@ -360,5 +360,5 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                       memory :> bytes(a7, len);
                       memory :> bytes(word_sub sp_in (word 16), 16)])`,
   ARM_ADD_RETURN_STACK_TAC ~pre_post_nsteps:(2,0)
-    CRC32C_OCTO_ZERO_FILL_XOR_EXEC CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT
+    CRC32C_OCTO_ZERO_FILL_XOR_EXEC CRC32C_OCTO_ZERO_FILL_XOR_CORRECT
     `[X19]` 16);;
