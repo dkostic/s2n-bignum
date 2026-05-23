@@ -361,8 +361,84 @@ let CRC32C_LOOP16_CORRECT = prove
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[consumed_bytes; crc32c_bytes_NIL; MULT_CLAUSES;
                     SUB_0; WORD_ADD_0; LT; LE_0];
-    (* Subgoal 2: body, invariant(i) at pc -> invariant(i+1) at pc + 0x84. *)
-    CHEAT_TAC;
+    (* Subgoal 2: body, invariant(i) at pc -> invariant(i+1) at pc + 0x84.
+
+       Tactical structure (validated session 014):
+       1. `FIRST_ASSUM (MP_TAC o C MATCH_MP (ASSUME `i<=i /\ i<iters`))`
+          specializes the s0 forall over `i <= j /\ j < iters` to `j = i`,
+          giving 16 specific `read mem s0 = m_*_lo/hi i` facts. Crucially,
+          this is FIRST_ASSUM not FIRST_X, so the original forall is
+          PRESERVED in context.
+       2. `ARM_STEPS_TAC EXEC (1--33)` runs all 33 instructions. The s0
+          parametric forall over `i <= j` cannot be lifted through writes
+          (its antecedent includes `j = i`, the write target — the
+          orthogonality conv fails, mapfilter drops it). However, the
+          stepping infrastructure DOES preserve a NEW forall whose
+          antecedent excludes the write target (`forall j. i+1 <= j /\
+          j < iters ==> read mem s33 = m_*_lo/hi j`) and the zeroed-prefix
+          forall (`forall j. j < i ==> read mem s33 = word 0`).
+       3. After ENSURES_FINAL_STATE_TAC + ASM_REWRITE_TAC, the suffix
+          forall `i+1 <= j ==> read = m_*` discharges by literal
+          assumption matching. Remaining conjuncts: 8 pointer advances,
+          8 hw_step bridges, X19 word_sub, prefix forall.
+       4. The prefix forall `j < i + 1 ==> read = word 0` is closed by
+          case-split: `j < i` (use surviving zeroed-prefix forall) /
+          `j = i` (use STP-derived `read mem s33 = word 0` specific
+          facts already in context). *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    SUBGOAL_THEN `(i:num) <= i /\ i < iters` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[fst CRC32C_LOOP16_EXEC]) THEN
+    FIRST_ASSUM (MP_TAC o C MATCH_MP (ASSUME `(i:num) <= i /\ i < iters`)) THEN
+    STRIP_TAC THEN
+    ARM_STEPS_TAC CRC32C_LOOP16_EXEC (1--33) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    REPEAT CONJ_TAC THENL
+     [CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      CONV_TAC WORD_RULE;
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH;
+                      CRC32CX_BRIDGE; GSYM crc32c_bytes_APPEND; APPEND] THEN
+      REWRITE_TAC[CONSUMED_BYTES_STEP; chunk16_bytes];
+      SUBGOAL_THEN
+        `16 * (iters - i) + residue = 16 * (iters - (i + 1)) + residue + 16`
+        SUBST1_TAC THENL
+       [MAP_EVERY UNDISCH_TAC [`i < iters:num`] THEN ARITH_TAC; ALL_TAC] THEN
+      CONV_TAC WORD_RULE;
+      X_GEN_TAC `j:num` THEN STRIP_TAC THEN
+      ASM_CASES_TAC `j:num < i` THENL
+       [FIRST_X_ASSUM (MP_TAC o SPEC `j:num`) THEN ASM_REWRITE_TAC[];
+        SUBGOAL_THEN `j:num = i` SUBST1_TAC THENL
+         [ASM_ARITH_TAC; ALL_TAC] THEN
+        ASM_REWRITE_TAC[]]];
     (* Subgoal 3: back-edge, invariant(i) at pc + 0x84 -> invariant(i) at pc.
        After CMP + BGE, the conditional collapses to `word pc` because the
        value `16 * (iters - i) + residue` is in [16, 2^63) and BGE-taken iff
