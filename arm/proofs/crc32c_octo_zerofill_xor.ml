@@ -299,6 +299,14 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
         read X2 s = a2 /\ read X3 s = a3 /\
         read X4 s = a4 /\ read X5 s = a5 /\
         read X6 s = a6 /\ read X7 s = a7 /\
+        read X8 s = word 0xFFFFFFFF /\
+        read X9 s = word 0xFFFFFFFF /\
+        read X10 s = word 0xFFFFFFFF /\
+        read X11 s = word 0xFFFFFFFF /\
+        read X12 s = word 0xFFFFFFFF /\
+        read X13 s = word 0xFFFFFFFF /\
+        read X14 s = word 0xFFFFFFFF /\
+        read X15 s = word 0xFFFFFFFF /\
         read X19 s = word len /\
         read (memory :> bytelist (a0,len)) s = bs0 /\
         read (memory :> bytelist (a1,len)) s = bs1 /\
