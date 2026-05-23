@@ -13764,6 +13764,144 @@ let MD5_COMPRESS_32_G_VALUES = prove
   REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* EL-form retrofit of MD5_COMPRESS_32_G_VALUES.                              *)
+(* Same chain hypotheses; conclusion uses EL k (md5_compress 32 W [a;b;c;d])  *)
+(* so callers (e.g. R2->R3 bridge) can match ROUND3's pre-condition without   *)
+(* unrolling the let-form list literal in the cut predicate.                  *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_COMPRESS_32_G_EL_VALUES = prove
+ (`!(W:int32 list) (a:int32) b c d
+        w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
+        na0 nd1 nc2 nb3 na4 nd5 nc6 nb7
+        na8 nd9 nc10 nb11 na12 nd13 nc14 nb15
+        na16 nd17 nc18 nb19 na20 nd21 nc22 nb23
+        na24 nd25 nc26 nb27 na28 nd29 nc30 nb31.
+        LENGTH W = 16 /\
+        w0 = EL 0 W /\ w1 = EL 1 W /\ w2 = EL 2 W /\ w3 = EL 3 W /\
+        w4 = EL 4 W /\ w5 = EL 5 W /\ w6 = EL 6 W /\ w7 = EL 7 W /\
+        w8 = EL 8 W /\ w9 = EL 9 W /\ w10 = EL 10 W /\ w11 = EL 11 W /\
+        w12 = EL 12 W /\ w13 = EL 13 W /\ w14 = EL 14 W /\ w15 = EL 15 W /\
+        na0 = word_add b
+               (word_rol (word_add (word_add a (md5_F b c d))
+                                   (word_add w0 (EL 0 md5_T))) 7) /\
+        nd1 = word_add na0
+               (word_rol (word_add (word_add d (md5_F na0 b c))
+                                   (word_add w1 (EL 1 md5_T))) 12) /\
+        nc2 = word_add nd1
+               (word_rol (word_add (word_add c (md5_F nd1 na0 b))
+                                   (word_add w2 (EL 2 md5_T))) 17) /\
+        nb3 = word_add nc2
+               (word_rol (word_add (word_add b (md5_F nc2 nd1 na0))
+                                   (word_add w3 (EL 3 md5_T))) 22) /\
+        na4 = word_add nb3
+               (word_rol (word_add (word_add na0 (md5_F nb3 nc2 nd1))
+                                   (word_add w4 (EL 4 md5_T))) 7) /\
+        nd5 = word_add na4
+               (word_rol (word_add (word_add nd1 (md5_F na4 nb3 nc2))
+                                   (word_add w5 (EL 5 md5_T))) 12) /\
+        nc6 = word_add nd5
+               (word_rol (word_add (word_add nc2 (md5_F nd5 na4 nb3))
+                                   (word_add w6 (EL 6 md5_T))) 17) /\
+        nb7 = word_add nc6
+               (word_rol (word_add (word_add nb3 (md5_F nc6 nd5 na4))
+                                   (word_add w7 (EL 7 md5_T))) 22) /\
+        na8 = word_add nb7
+               (word_rol (word_add (word_add na4 (md5_F nb7 nc6 nd5))
+                                   (word_add w8 (EL 8 md5_T))) 7) /\
+        nd9 = word_add na8
+               (word_rol (word_add (word_add nd5 (md5_F na8 nb7 nc6))
+                                   (word_add w9 (EL 9 md5_T))) 12) /\
+        nc10 = word_add nd9
+               (word_rol (word_add (word_add nc6 (md5_F nd9 na8 nb7))
+                                   (word_add w10 (EL 10 md5_T))) 17) /\
+        nb11 = word_add nc10
+               (word_rol (word_add (word_add nb7 (md5_F nc10 nd9 na8))
+                                   (word_add w11 (EL 11 md5_T))) 22) /\
+        na12 = word_add nb11
+               (word_rol (word_add (word_add na8 (md5_F nb11 nc10 nd9))
+                                   (word_add w12 (EL 12 md5_T))) 7) /\
+        nd13 = word_add na12
+               (word_rol (word_add (word_add nd9 (md5_F na12 nb11 nc10))
+                                   (word_add w13 (EL 13 md5_T))) 12) /\
+        nc14 = word_add nd13
+               (word_rol (word_add (word_add nc10 (md5_F nd13 na12 nb11))
+                                   (word_add w14 (EL 14 md5_T))) 17) /\
+        nb15 = word_add nc14
+               (word_rol (word_add (word_add nb11 (md5_F nc14 nd13 na12))
+                                   (word_add w15 (EL 15 md5_T))) 22) /\
+        na16 = word_add nb15
+               (word_rol (word_add (word_add na12 (md5_G nb15 nc14 nd13))
+                                   (word_add w1 (EL 16 md5_T))) 5) /\
+        nd17 = word_add na16
+               (word_rol (word_add (word_add nd13 (md5_G na16 nb15 nc14))
+                                   (word_add w6 (EL 17 md5_T))) 9) /\
+        nc18 = word_add nd17
+               (word_rol (word_add (word_add nc14 (md5_G nd17 na16 nb15))
+                                   (word_add w11 (EL 18 md5_T))) 14) /\
+        nb19 = word_add nc18
+               (word_rol (word_add (word_add nb15 (md5_G nc18 nd17 na16))
+                                   (word_add w0 (EL 19 md5_T))) 20) /\
+        na20 = word_add nb19
+               (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17))
+                                   (word_add w5 (EL 20 md5_T))) 5) /\
+        nd21 = word_add na20
+               (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18))
+                                   (word_add w10 (EL 21 md5_T))) 9) /\
+        nc22 = word_add nd21
+               (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19))
+                                   (word_add w15 (EL 22 md5_T))) 14) /\
+        nb23 = word_add nc22
+               (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20))
+                                   (word_add w4 (EL 23 md5_T))) 20) /\
+        na24 = word_add nb23
+               (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21))
+                                   (word_add w9 (EL 24 md5_T))) 5) /\
+        nd25 = word_add na24
+               (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22))
+                                   (word_add w14 (EL 25 md5_T))) 9) /\
+        nc26 = word_add nd25
+               (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23))
+                                   (word_add w3 (EL 26 md5_T))) 14) /\
+        nb27 = word_add nc26
+               (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24))
+                                   (word_add w8 (EL 27 md5_T))) 20) /\
+        na28 = word_add nb27
+               (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25))
+                                   (word_add w13 (EL 28 md5_T))) 5) /\
+        nd29 = word_add na28
+               (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26))
+                                   (word_add w2 (EL 29 md5_T))) 9) /\
+        nc30 = word_add nd29
+               (word_rol (word_add (word_add nc26 (md5_G nd29 na28 nb27))
+                                   (word_add w7 (EL 30 md5_T))) 14) /\
+        nb31 = word_add nc30
+               (word_rol (word_add (word_add nb27 (md5_G nc30 nd29 na28))
+                                   (word_add w12 (EL 31 md5_T))) 20)
+        ==> EL 0 (md5_compress 32 W [a;b;c;d]) = na28 /\
+            EL 1 (md5_compress 32 W [a;b;c;d]) = nb31 /\
+            EL 2 (md5_compress 32 W [a;b;c;d]) = nc30 /\
+            EL 3 (md5_compress 32 W [a;b;c;d]) = nd29`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC (SPECL
+    [`W:int32 list`; `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+     `w0:int32`; `w1:int32`; `w2:int32`; `w3:int32`; `w4:int32`;
+     `w5:int32`; `w6:int32`; `w7:int32`; `w8:int32`; `w9:int32`;
+     `w10:int32`; `w11:int32`; `w12:int32`; `w13:int32`; `w14:int32`; `w15:int32`;
+     `na0:int32`; `nd1:int32`; `nc2:int32`; `nb3:int32`;
+     `na4:int32`; `nd5:int32`; `nc6:int32`; `nb7:int32`;
+     `na8:int32`; `nd9:int32`; `nc10:int32`; `nb11:int32`;
+     `na12:int32`; `nd13:int32`; `nc14:int32`; `nb15:int32`;
+     `na16:int32`; `nd17:int32`; `nc18:int32`; `nb19:int32`;
+     `na20:int32`; `nd21:int32`; `nc22:int32`; `nb23:int32`;
+     `na24:int32`; `nd25:int32`; `nc26:int32`; `nb27:int32`;
+     `na28:int32`; `nd29:int32`; `nc30:int32`; `nb31:int32`]
+    MD5_COMPRESS_32_G_VALUES) THEN
+  ANTS_TAC THENL [POP_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Spec-form retrofit (rounds 1-3): md5_compress 48 W [a;b;c;d] =             *)
 (*                               [na44; nb47; nc46; nd45].                   *)
 (*                                                                            *)
