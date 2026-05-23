@@ -16500,3 +16500,253 @@ let MD5_BLOCK_BODY_TEST_R1_R2 = prove
     ]
   ]);;
 
+(* ------------------------------------------------------------------------- *)
+(* MD5_BLOCK_BODY_TEST_R1_R2_R3: PRELUDE + ROUND1 + ROUND2 + ROUND3 fragment *)
+(* for [pc+40, pc+1654).  Composes MD5_BLOCK_BODY_TEST_R1_R2 with            *)
+(* MD5_ROUND3_CORRECT via a single ENSURES_SEQUENCE_TAC cut at pc+1185 in    *)
+(* EL-form (using MD5_G_LET_TO_EL_4WAY bridge for the 32-let R2 chain).      *)
+(* Phase-9 stepping stone toward MD5_BLOCK_BODY_CORRECT.                     *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_BLOCK_BODY_TEST_R1_R2_R3 = prove
+ (`!pc data_ptr (a:int32) (b:int32) (c:int32) (d:int32)
+        (w0:int32) (w1:int32) (w2:int32) (w3:int32) (w4:int32)
+        (w5:int32) (w6:int32) (w7:int32) (w8:int32) (w9:int32)
+        (w10:int32) (w11:int32) (w12:int32) (w13:int32) (w14:int32) (w15:int32).
+       nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                      (data_ptr:int64,64)
+       ==> ensures x86
+             (\s. bytes_loaded s (word pc)
+                    (BUTLAST md5_block_asm_data_order_tmc) /\
+                  read RIP s = word(pc + 40) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx a /\
+                  read RBX s = word_zx b /\
+                  read RCX s = word_zx c /\
+                  read RDX s = word_zx d /\
+                  read (memory :> bytes32 data_ptr) s = w0 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 4))) s = w1 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 20))) s = w5 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 24))) s = w6 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 40))) s = w10 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 44))) s = w11 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 60))) s = w15)
+             (\s. read RIP s = word(pc + 1654) /\
+                  read RSI s = data_ptr /\
+                  read RAX s =
+                    word_zx
+                      (
+                      let na32 = word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (word_rol (word_add (word_add (EL 0 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w5 (EL 32 md5_T))) 4) in
+                      let nd33 = word_add na32 (word_rol (word_add (word_add (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w8 (EL 33 md5_T))) 11) in
+                      let nc34 = word_add nd33 (word_rol (word_add (word_add (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nd33 na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w11 (EL 34 md5_T))) 16) in
+                      let nb35 = word_add nc34 (word_rol (word_add (word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T))) 23) in
+                      let na36 = word_add nb35 (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T))) 4) in
+                      let nd37 = word_add na36 (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T))) 11) in
+                      let nc38 = word_add nd37 (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T))) 16) in
+                      let nb39 = word_add nc38 (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T))) 23) in
+                      let na40 = word_add nb39 (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T))) 4) in
+                      let nd41 = word_add na40 (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T))) 11) in
+                      let nc42 = word_add nd41 (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T))) 16) in
+                      let nb43 = word_add nc42 (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T))) 23) in
+                      let na44 = word_add nb43 (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T))) 4) in
+                      na44) /\
+                  read RDX s =
+                    word_zx
+                      (
+                      let na32 = word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (word_rol (word_add (word_add (EL 0 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w5 (EL 32 md5_T))) 4) in
+                      let nd33 = word_add na32 (word_rol (word_add (word_add (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w8 (EL 33 md5_T))) 11) in
+                      let nc34 = word_add nd33 (word_rol (word_add (word_add (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nd33 na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w11 (EL 34 md5_T))) 16) in
+                      let nb35 = word_add nc34 (word_rol (word_add (word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T))) 23) in
+                      let na36 = word_add nb35 (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T))) 4) in
+                      let nd37 = word_add na36 (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T))) 11) in
+                      let nc38 = word_add nd37 (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T))) 16) in
+                      let nb39 = word_add nc38 (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T))) 23) in
+                      let na40 = word_add nb39 (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T))) 4) in
+                      let nd41 = word_add na40 (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T))) 11) in
+                      let nc42 = word_add nd41 (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T))) 16) in
+                      let nb43 = word_add nc42 (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T))) 23) in
+                      let na44 = word_add nb43 (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T))) 4) in
+                      let nd45 = word_add na44 (word_rol (word_add (word_add nd41 (md5_H na44 nb43 nc42)) (word_add w12 (EL 45 md5_T))) 11) in
+                      nd45) /\
+                  read RCX s =
+                    word_zx
+                      (
+                      let na32 = word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (word_rol (word_add (word_add (EL 0 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w5 (EL 32 md5_T))) 4) in
+                      let nd33 = word_add na32 (word_rol (word_add (word_add (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w8 (EL 33 md5_T))) 11) in
+                      let nc34 = word_add nd33 (word_rol (word_add (word_add (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nd33 na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w11 (EL 34 md5_T))) 16) in
+                      let nb35 = word_add nc34 (word_rol (word_add (word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T))) 23) in
+                      let na36 = word_add nb35 (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T))) 4) in
+                      let nd37 = word_add na36 (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T))) 11) in
+                      let nc38 = word_add nd37 (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T))) 16) in
+                      let nb39 = word_add nc38 (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T))) 23) in
+                      let na40 = word_add nb39 (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T))) 4) in
+                      let nd41 = word_add na40 (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T))) 11) in
+                      let nc42 = word_add nd41 (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T))) 16) in
+                      let nb43 = word_add nc42 (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T))) 23) in
+                      let na44 = word_add nb43 (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T))) 4) in
+                      let nd45 = word_add na44 (word_rol (word_add (word_add nd41 (md5_H na44 nb43 nc42)) (word_add w12 (EL 45 md5_T))) 11) in
+                      let nc46 = word_add nd45 (word_rol (word_add (word_add nc42 (md5_H nd45 na44 nb43)) (word_add w15 (EL 46 md5_T))) 16) in
+                      nc46) /\
+                  read RBX s =
+                    word_zx
+                      (
+                      let na32 = word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (word_rol (word_add (word_add (EL 0 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w5 (EL 32 md5_T))) 4) in
+                      let nd33 = word_add na32 (word_rol (word_add (word_add (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w8 (EL 33 md5_T))) 11) in
+                      let nc34 = word_add nd33 (word_rol (word_add (word_add (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nd33 na32 (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])))) (word_add w11 (EL 34 md5_T))) 16) in
+                      let nb35 = word_add nc34 (word_rol (word_add (word_add (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d])) (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T))) 23) in
+                      let na36 = word_add nb35 (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T))) 4) in
+                      let nd37 = word_add na36 (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T))) 11) in
+                      let nc38 = word_add nd37 (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T))) 16) in
+                      let nb39 = word_add nc38 (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T))) 23) in
+                      let na40 = word_add nb39 (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T))) 4) in
+                      let nd41 = word_add na40 (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T))) 11) in
+                      let nc42 = word_add nd41 (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T))) 16) in
+                      let nb43 = word_add nc42 (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T))) 23) in
+                      let na44 = word_add nb43 (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T))) 4) in
+                      let nd45 = word_add na44 (word_rol (word_add (word_add nd41 (md5_H na44 nb43 nc42)) (word_add w12 (EL 45 md5_T))) 11) in
+                      let nc46 = word_add nd45 (word_rol (word_add (word_add nc42 (md5_H nd45 na44 nb43)) (word_add w15 (EL 46 md5_T))) 16) in
+                      let nb47 = word_add nc46 (word_rol (word_add (word_add nb43 (md5_H nc46 nd45 na44)) (word_add w2 (EL 47 md5_T))) 23) in
+                      nb47) /\
+                  read R10 s = (word_zx:int32->int64) (w0:int32) /\
+                  read R11 s = read RCX s /\
+                  read R8 s = word_zx (a:int32) /\
+                  read R9 s = word_zx (b:int32) /\
+                  read R14 s = word_zx (c:int32) /\
+                  read R15 s = word_zx (d:int32) /\
+                  read (memory :> bytes32 data_ptr) s = w0 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 4))) s = w1 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 20))) s = w5 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 24))) s = w6 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 40))) s = w10 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 44))) s = w11 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 60))) s = w15)
+             (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+              MAYCHANGE [RAX; RBX; RCX; RDX; R8; R9; R10; R11; R12; R14; R15] ,,
+              MAYCHANGE SOME_FLAGS)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_SEQUENCE_TAC `pc + 1185`
+    `\s. read RSI s = data_ptr /\
+         read RAX s = word_zx (EL 0 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) /\
+         read RBX s = word_zx (EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) /\
+         read RCX s = word_zx (EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) /\
+         read RDX s = word_zx (EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) /\
+         read R10 s = (word_zx:int32->int64) (w0:int32) /\
+         read R11 s = read RDX s /\
+         read R8 s = word_zx (a:int32) /\
+         read R9 s = word_zx (b:int32) /\
+         read R14 s = word_zx (c:int32) /\
+         read R15 s = word_zx (d:int32) /\
+         read (memory :> bytes32 data_ptr) s = w0 /\
+         read (memory :> bytes32 (word_add data_ptr (word 4))) s = w1 /\
+         read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+         read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+         read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4 /\
+         read (memory :> bytes32 (word_add data_ptr (word 20))) s = w5 /\
+         read (memory :> bytes32 (word_add data_ptr (word 24))) s = w6 /\
+         read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+         read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+         read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+         read (memory :> bytes32 (word_add data_ptr (word 40))) s = w10 /\
+         read (memory :> bytes32 (word_add data_ptr (word 44))) s = w11 /\
+         read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+         read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+         read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14 /\
+         read (memory :> bytes32 (word_add data_ptr (word 60))) s = w15` THEN
+  CONJ_TAC THENL [
+    (* Segment 1: pc+40..pc+1185 — use TEST_R1_R2 (let-form post) and weaken to EL-form via 4WAY G bridge. *)
+    MP_TAC(SPECL
+      [`pc:num`; `data_ptr:int64`;
+       `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+       `w0:int32`; `w1:int32`; `w2:int32`; `w3:int32`; `w4:int32`;
+       `w5:int32`; `w6:int32`; `w7:int32`; `w8:int32`; `w9:int32`;
+       `w10:int32`; `w11:int32`; `w12:int32`; `w13:int32`; `w14:int32`; `w15:int32`]
+      MD5_BLOCK_BODY_TEST_R1_R2) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+      (* SUB_T1: pre weakening *)
+      REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[];
+      (* SUB_T2: MAYCHANGE *)
+      REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+      (* SUB_T3: post weakening — TEST_R1_R2 boilerplate then let-32→EL via 4WAY G bridge. *)
+      REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN
+      REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN
+      PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+      REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN
+      RULE_ASSUM_TAC BETA_RULE THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN
+      ASSUMPTION_STATE_UPDATE_TAC THEN
+      DISCH_THEN(K ALL_TAC) THEN
+      REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+      MP_TAC(SPECL
+        [`s':x86state`;
+         `a:int32`;`b:int32`;`c:int32`;`d:int32`;
+         `w0:int32`;`w1:int32`;`w2:int32`;`w3:int32`;
+         `w4:int32`;`w5:int32`;`w6:int32`;`w7:int32`;
+         `w8:int32`;`w9:int32`;`w10:int32`;`w11:int32`;
+         `w12:int32`;`w13:int32`;`w14:int32`;`w15:int32`]
+        MD5_G_LET_TO_EL_4WAY_V2) THEN
+      ANTS_TAC THENL [ASM_REWRITE_TAC[];
+                      STRIP_TAC THEN REPEAT CONJ_TAC THEN
+                      TRY (FIRST_X_ASSUM ACCEPT_TAC) THEN
+                      TRY (ASM_REWRITE_TAC[])];
+      (* SUB_T3 ends *)
+    ];
+    (* Segment 2: pc+1185..pc+1654 — use ROUND3_CORRECT specialized to EL_i. *)
+    MP_TAC(SPECL
+      [`pc:num`; `data_ptr:int64`;
+       `EL 0 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32`;
+       `EL 1 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32`;
+       `EL 2 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32`;
+       `EL 3 (md5_compress 32 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32`;
+       `w0:int32`; `w1:int32`; `w2:int32`; `w3:int32`; `w4:int32`;
+       `w5:int32`; `w6:int32`; `w7:int32`; `w8:int32`; `w9:int32`;
+       `w10:int32`; `w11:int32`; `w12:int32`; `w13:int32`; `w14:int32`; `w15:int32`]
+      MD5_ROUND3_CORRECT) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+      (* SUB_T1 (seg-2): pre weakening — match cut predicate to ROUND3 pre. *)
+      REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+      POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+      REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+      SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64;
+               ARITH_RULE `32 <= 64`; LE_REFL];
+      (* SUB_T2 (seg-2): MAYCHANGE *)
+      REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+      (* SUB_T3 (seg-2): post — ROUND3's post matches our outer post. *)
+      REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN
+      REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN
+      PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+      REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN
+      RULE_ASSUM_TAC BETA_RULE THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN
+      ASSUMPTION_STATE_UPDATE_TAC THEN
+      DISCH_THEN(K ALL_TAC) THEN
+      ASM_REWRITE_TAC[] THEN
+      CONV_TAC(DEPTH_CONV let_CONV) THEN
+      REWRITE_TAC[WORD_ZX_TRIVIAL] THEN ASM_REWRITE_TAC[]
+    ]
+  ]);;
+
