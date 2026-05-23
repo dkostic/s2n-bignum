@@ -12815,6 +12815,89 @@ let MD5_COMPRESS_16_F_VALUES = prove
   REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* EL-form retrofit of MD5_COMPRESS_16_F_VALUES.                              *)
+(* Same chain hypotheses; conclusion uses EL k (md5_compress 16 W [a;b;c;d])  *)
+(* so callers (e.g. R1->R2 bridge) can match ROUND2's pre-condition without   *)
+(* unrolling the let-form list literal in the cut predicate.                  *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_COMPRESS_16_F_EL_VALUES = prove
+ (`!(W:int32 list) (a:int32) b c d
+    w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15
+    na0 nd1 nc2 nb3 na4 nd5 nc6 nb7 na8 nd9 nc10 nb11 na12 nd13 nc14 nb15.
+        LENGTH W = 16 /\
+        w0 = EL 0 W /\ w1 = EL 1 W /\ w2 = EL 2 W /\ w3 = EL 3 W /\
+        w4 = EL 4 W /\ w5 = EL 5 W /\ w6 = EL 6 W /\ w7 = EL 7 W /\
+        w8 = EL 8 W /\ w9 = EL 9 W /\ w10 = EL 10 W /\ w11 = EL 11 W /\
+        w12 = EL 12 W /\ w13 = EL 13 W /\ w14 = EL 14 W /\ w15 = EL 15 W /\
+        na0 = word_add b
+               (word_rol (word_add (word_add a (md5_F b c d))
+                                   (word_add w0 (EL 0 md5_T))) 7) /\
+        nd1 = word_add na0
+               (word_rol (word_add (word_add d (md5_F na0 b c))
+                                   (word_add w1 (EL 1 md5_T))) 12) /\
+        nc2 = word_add nd1
+               (word_rol (word_add (word_add c (md5_F nd1 na0 b))
+                                   (word_add w2 (EL 2 md5_T))) 17) /\
+        nb3 = word_add nc2
+               (word_rol (word_add (word_add b (md5_F nc2 nd1 na0))
+                                   (word_add w3 (EL 3 md5_T))) 22) /\
+        na4 = word_add nb3
+               (word_rol (word_add (word_add na0 (md5_F nb3 nc2 nd1))
+                                   (word_add w4 (EL 4 md5_T))) 7) /\
+        nd5 = word_add na4
+               (word_rol (word_add (word_add nd1 (md5_F na4 nb3 nc2))
+                                   (word_add w5 (EL 5 md5_T))) 12) /\
+        nc6 = word_add nd5
+               (word_rol (word_add (word_add nc2 (md5_F nd5 na4 nb3))
+                                   (word_add w6 (EL 6 md5_T))) 17) /\
+        nb7 = word_add nc6
+               (word_rol (word_add (word_add nb3 (md5_F nc6 nd5 na4))
+                                   (word_add w7 (EL 7 md5_T))) 22) /\
+        na8 = word_add nb7
+               (word_rol (word_add (word_add na4 (md5_F nb7 nc6 nd5))
+                                   (word_add w8 (EL 8 md5_T))) 7) /\
+        nd9 = word_add na8
+               (word_rol (word_add (word_add nd5 (md5_F na8 nb7 nc6))
+                                   (word_add w9 (EL 9 md5_T))) 12) /\
+        nc10 = word_add nd9
+               (word_rol (word_add (word_add nc6 (md5_F nd9 na8 nb7))
+                                   (word_add w10 (EL 10 md5_T))) 17) /\
+        nb11 = word_add nc10
+               (word_rol (word_add (word_add nb7 (md5_F nc10 nd9 na8))
+                                   (word_add w11 (EL 11 md5_T))) 22) /\
+        na12 = word_add nb11
+               (word_rol (word_add (word_add na8 (md5_F nb11 nc10 nd9))
+                                   (word_add w12 (EL 12 md5_T))) 7) /\
+        nd13 = word_add na12
+               (word_rol (word_add (word_add nd9 (md5_F na12 nb11 nc10))
+                                   (word_add w13 (EL 13 md5_T))) 12) /\
+        nc14 = word_add nd13
+               (word_rol (word_add (word_add nc10 (md5_F nd13 na12 nb11))
+                                   (word_add w14 (EL 14 md5_T))) 17) /\
+        nb15 = word_add nc14
+               (word_rol (word_add (word_add nb11 (md5_F nc14 nd13 na12))
+                                   (word_add w15 (EL 15 md5_T))) 22)
+        ==> EL 0 (md5_compress 16 W [a;b;c;d]) = na12 /\
+            EL 1 (md5_compress 16 W [a;b;c;d]) = nb15 /\
+            EL 2 (md5_compress 16 W [a;b;c;d]) = nc14 /\
+            EL 3 (md5_compress 16 W [a;b;c;d]) = nd13`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC (SPECL
+    [`W:int32 list`; `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+     `w0:int32`; `w1:int32`; `w2:int32`; `w3:int32`; `w4:int32`;
+     `w5:int32`; `w6:int32`; `w7:int32`; `w8:int32`; `w9:int32`;
+     `w10:int32`; `w11:int32`; `w12:int32`; `w13:int32`; `w14:int32`; `w15:int32`;
+     `na0:int32`; `nd1:int32`; `nc2:int32`; `nb3:int32`;
+     `na4:int32`; `nd5:int32`; `nc6:int32`; `nb7:int32`;
+     `na8:int32`; `nd9:int32`; `nc10:int32`; `nb11:int32`;
+     `na12:int32`; `nd13:int32`; `nc14:int32`; `nb15:int32`]
+    MD5_COMPRESS_16_F_VALUES) THEN
+  ANTS_TAC THENL [POP_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Spec-form retrofit (rounds 1-2): md5_compress 32 W [a;b;c;d] =             *)
 (*                               [na28; nb31; nc30; nd29].                   *)
 (*                                                                            *)
