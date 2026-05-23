@@ -406,9 +406,17 @@ let SHA1_HW_CORRECT = prove
     ASM_REWRITE_TAC[WORD_ADVANCE_64] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
+    REMARK_TAC "S020_GOAL_BEFORE_ASM_REWRITE" THEN
+    PRINT_GOAL_TAC THEN
     ASM_REWRITE_TAC[] THEN
+    REMARK_TAC "S020_GOAL_AFTER_ASM_REWRITE" THEN
+    PRINT_GOAL_TAC THEN
     (TRY (CONV_TAC WORD_BLAST)) THEN
+    REMARK_TAC "S020_GOAL_AFTER_WORD_BLAST" THEN
+    PRINT_GOAL_TAC THEN
     (TRY ASM_ARITH_TAC) THEN
+    REMARK_TAC "S020_GOAL_AFTER_ASM_ARITH" THEN
+    PRINT_GOAL_TAC THEN
     (* Diagnostic: if subgoals leak past TRYs above, force a clear failure
        instead of letting them propagate to the outer prove call where they
        manifest as a confusing "TAC_PROOF: Unsolved goals". CHEAT_TAC catches
