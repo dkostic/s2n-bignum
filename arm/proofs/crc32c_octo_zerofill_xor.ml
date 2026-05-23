@@ -318,7 +318,125 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
         read (memory :> bytelist (a7,len)) s = bs7` THEN
   CONJ_TAC THENL
    [ARM_SIM_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--8);
-    CHEAT_TAC]);;
+    ALL_TAC] THEN
+  (* Second cut-point: cmp x19, #16 ; b.lt <pc+0xbc> at pc+0x28..pc+0x2c.       *)
+  (* Case-split on len < 16: in the first branch b.lt is taken (jump to tail    *)
+  (* at pc+0xbc), in the second branch b.lt falls through to loop entry         *)
+  (* pc+0x30. Tail and loop bodies remain CHEAT_TAC for later sessions.         *)
+  ASM_CASES_TAC `len:num < 16` THENL
+   [(* Branch A: len < 16, b.lt taken -> tail entry pc+0xbc.                    *)
+    ENSURES_SEQUENCE_TAC `pc + 0xbc`
+     `\s. read SP s = sp_in /\
+          read X0 s = a0 /\ read X1 s = a1 /\
+          read X2 s = a2 /\ read X3 s = a3 /\
+          read X4 s = a4 /\ read X5 s = a5 /\
+          read X6 s = a6 /\ read X7 s = a7 /\
+          read X8 s = word 0xFFFFFFFF /\
+          read X9 s = word 0xFFFFFFFF /\
+          read X10 s = word 0xFFFFFFFF /\
+          read X11 s = word 0xFFFFFFFF /\
+          read X12 s = word 0xFFFFFFFF /\
+          read X13 s = word 0xFFFFFFFF /\
+          read X14 s = word 0xFFFFFFFF /\
+          read X15 s = word 0xFFFFFFFF /\
+          read X19 s = word len /\
+          read (memory :> bytelist (a0,len)) s = bs0 /\
+          read (memory :> bytelist (a1,len)) s = bs1 /\
+          read (memory :> bytelist (a2,len)) s = bs2 /\
+          read (memory :> bytelist (a3,len)) s = bs3 /\
+          read (memory :> bytelist (a4,len)) s = bs4 /\
+          read (memory :> bytelist (a5,len)) s = bs5 /\
+          read (memory :> bytelist (a6,len)) s = bs6 /\
+          read (memory :> bytelist (a7,len)) s = bs7` THEN
+    CONJ_TAC THENL
+     [ENSURES_INIT_TAC "s0" THEN
+      ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--2) THEN
+      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+      SUBGOAL_THEN `ival(word len:int64) = &len` SUBST1_TAC THENL
+       [REWRITE_TAC[ival; DIMINDEX_64; VAL_WORD] THEN
+        ASM_SIMP_TAC[MOD_LT;
+          ARITH_RULE `len < 2 EXP 63 ==> len < 2 EXP 64`] THEN
+        COND_CASES_TAC THENL
+         [REFL_TAC;
+          UNDISCH_TAC `len < 2 EXP 63` THEN
+          UNDISCH_TAC `~(len < 2 EXP (64 - 1))` THEN
+          ARITH_TAC];
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `word_sub (word len:int64) (word 16) = iword(&len - &16):int64`
+      SUBST1_TAC THENL
+       [REWRITE_TAC[GSYM WORD_IWORD; IWORD_INT_SUB; INT_OF_NUM_LE] THEN
+        REFL_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN `ival(iword(&len - &16):int64) = &len - &16`
+      SUBST1_TAC THENL
+       [MATCH_MP_TAC IVAL_IWORD THEN REWRITE_TAC[DIMINDEX_64] THEN
+        CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV THEN
+        MAP_EVERY (fun t -> UNDISCH_TAC t) [`len < 2 EXP 63`; `len < 16`] THEN
+        REWRITE_TAC[GSYM INT_OF_NUM_LT] THEN INT_ARITH_TAC;
+        ALL_TAC] THEN
+      REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
+      COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC];
+      CHEAT_TAC];
+    (* Branch B: ~(len < 16), b.lt not taken -> loop entry pc+0x30.             *)
+    RULE_ASSUM_TAC(REWRITE_RULE[NOT_LT]) THEN
+    ENSURES_SEQUENCE_TAC `pc + 0x30`
+     `\s. read SP s = sp_in /\
+          read X0 s = a0 /\ read X1 s = a1 /\
+          read X2 s = a2 /\ read X3 s = a3 /\
+          read X4 s = a4 /\ read X5 s = a5 /\
+          read X6 s = a6 /\ read X7 s = a7 /\
+          read X8 s = word 0xFFFFFFFF /\
+          read X9 s = word 0xFFFFFFFF /\
+          read X10 s = word 0xFFFFFFFF /\
+          read X11 s = word 0xFFFFFFFF /\
+          read X12 s = word 0xFFFFFFFF /\
+          read X13 s = word 0xFFFFFFFF /\
+          read X14 s = word 0xFFFFFFFF /\
+          read X15 s = word 0xFFFFFFFF /\
+          read X19 s = word len /\
+          read (memory :> bytelist (a0,len)) s = bs0 /\
+          read (memory :> bytelist (a1,len)) s = bs1 /\
+          read (memory :> bytelist (a2,len)) s = bs2 /\
+          read (memory :> bytelist (a3,len)) s = bs3 /\
+          read (memory :> bytelist (a4,len)) s = bs4 /\
+          read (memory :> bytelist (a5,len)) s = bs5 /\
+          read (memory :> bytelist (a6,len)) s = bs6 /\
+          read (memory :> bytelist (a7,len)) s = bs7` THEN
+    CONJ_TAC THENL
+     [ENSURES_INIT_TAC "s0" THEN
+      ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--2) THEN
+      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+      SUBGOAL_THEN `ival(word len:int64) = &len` SUBST1_TAC THENL
+       [REWRITE_TAC[ival; DIMINDEX_64; VAL_WORD] THEN
+        ASM_SIMP_TAC[MOD_LT;
+          ARITH_RULE `len < 2 EXP 63 ==> len < 2 EXP 64`] THEN
+        COND_CASES_TAC THENL
+         [REFL_TAC;
+          UNDISCH_TAC `len < 2 EXP 63` THEN
+          UNDISCH_TAC `~(len < 2 EXP (64 - 1))` THEN
+          ARITH_TAC];
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `word_sub (word len:int64) (word 16) = word(len - 16):int64`
+      SUBST1_TAC THENL
+       [REWRITE_TAC[WORD_SUB] THEN
+        COND_CASES_TAC THEN ASM_SIMP_TAC[] THEN ASM_ARITH_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN `ival(word(len - 16):int64) = &len - &16` SUBST1_TAC THENL
+       [REWRITE_TAC[ival; DIMINDEX_64; VAL_WORD] THEN
+        ASM_SIMP_TAC[MOD_LT;
+          ARITH_RULE `len < 2 EXP 63 /\ 16 <= len ==> len - 16 < 2 EXP 64`] THEN
+        COND_CASES_TAC THENL
+         [MAP_EVERY (fun t -> UNDISCH_TAC t)
+            [`16 <= len:num`; `len < 2 EXP 63`] THEN ARITH_TAC;
+          MAP_EVERY (fun t -> UNDISCH_TAC t)
+            [`16 <= len:num`; `len < 2 EXP 63`] THEN
+          UNDISCH_TAC `~(len - 16 < 2 EXP (64 - 1))` THEN ARITH_TAC];
+        ALL_TAC] THEN
+      REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
+      COND_CASES_TAC THENL [ASM_ARITH_TAC; REFL_TAC];
+      CHEAT_TAC]]);;
 
 (* ------------------------------------------------------------------------- *)
 (* Top-level correctness theorem (Phase 9).                                   *)
