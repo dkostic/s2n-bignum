@@ -232,10 +232,10 @@ let crc32c_xor8 = define
 (* ------------------------------------------------------------------------- *)
 
 let CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT = prove
- (`!a0 a1 a2 a3 a4 a5 a6 a7 sp_in
+ (`!a0 a1 a2 a3 a4 a5 a6 a7
     (bs0:byte list) (bs1:byte list) (bs2:byte list) (bs3:byte list)
     (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
-    len pc.
+    len pc sp_in.
         len < 2 EXP 63 /\
         aligned 16 sp_in /\
         LENGTH bs0 = len /\ LENGTH bs1 = len /\
@@ -302,10 +302,10 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT = prove
 (* ------------------------------------------------------------------------- *)
 
 let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
- (`!a0 a1 a2 a3 a4 a5 a6 a7 sp_in init_x19
+ (`!a0 a1 a2 a3 a4 a5 a6 a7
     (bs0:byte list) (bs1:byte list) (bs2:byte list) (bs3:byte list)
     (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
-    len pc.
+    len pc sp_in.
         len < 2 EXP 63 /\
         aligned 16 sp_in /\
         LENGTH bs0 = len /\ LENGTH bs1 = len /\
@@ -326,7 +326,6 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                   read X2 s = a2 /\ read X3 s = a3 /\
                   read X4 s = a4 /\ read X5 s = a5 /\
                   read X6 s = a6 /\ read X7 s = a7 /\
-                  read X19 s = init_x19 /\
                   read (memory :> bytes64 sp_in) s = word len /\
                   read (memory :> bytelist (a0, len)) s = bs0 /\
                   read (memory :> bytelist (a1, len)) s = bs1 /\
@@ -338,7 +337,6 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                   read (memory :> bytelist (a7, len)) s = bs7)
              (\s. read PC s = word(pc + 0x26c) /\
                   read W0 s = crc32c_xor8 bs0 bs1 bs2 bs3 bs4 bs5 bs6 bs7 /\
-                  read X19 s = init_x19 /\
                   read SP s = sp_in /\
                   read (memory :> bytelist (a0, len)) s = REPLICATE len (word 0) /\
                   read (memory :> bytelist (a1, len)) s = REPLICATE len (word 0) /\
@@ -350,7 +348,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                   read (memory :> bytelist (a7, len)) s = REPLICATE len (word 0))
           (MAYCHANGE [PC; X0; X1; X2; X3; X4; X5; X6; X7;
                       X8; X9; X10; X11; X12; X13; X14; X15;
-                      X16; X17; X19] ,,
+                      X16; X17] ,,
            MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
            MAYCHANGE [memory :> bytes(a0, len);
                       memory :> bytes(a1, len);
@@ -361,4 +359,6 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                       memory :> bytes(a6, len);
                       memory :> bytes(a7, len);
                       memory :> bytes(word_sub sp_in (word 16), 16)])`,
-  CHEAT_TAC);;
+  ARM_ADD_RETURN_STACK_TAC ~pre_post_nsteps:(2,0)
+    CRC32C_OCTO_ZERO_FILL_XOR_EXEC CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT
+    `[X19]` 16);;
