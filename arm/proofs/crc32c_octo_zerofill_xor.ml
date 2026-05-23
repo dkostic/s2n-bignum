@@ -217,6 +217,79 @@ let crc32c_xor8 = define
              (crc32c_buffer bs7)))))))`;;
 
 (* ------------------------------------------------------------------------- *)
+(* CORE correctness theorem (Phase 9 — body proof, post-prologue).            *)
+(*                                                                           *)
+(* CORE covers PC range [pc + 8, pc + 0x268), i.e. starting after the         *)
+(* 2-instruction prologue (str x19, [sp,#-16]!; ldr x19, [sp,#16]) and        *)
+(* ending just before the 2-instruction epilogue (ldr x19,[sp],#16; ret).     *)
+(* The wrapper CRC32C_OCTO_ZERO_FILL_XOR_CORRECT below adds the prologue/     *)
+(* epilogue via ARM_ADD_RETURN_STACK_TAC.                                     *)
+(*                                                                           *)
+(* CORE precondition assumes: SP = sp_in, X19 = word len (already loaded by   *)
+(* the wrapper-handled prologue's ldr x19, [sp,#16]). Body is CHEAT_TAC for   *)
+(* now — subsequent sessions attack body cut-points (init MOVs, loop entry    *)
+(* guard, LOOP16 BIGSTEP, tail blocks, XOR reduction).                        *)
+(* ------------------------------------------------------------------------- *)
+
+let CRC32C_OCTO_ZERO_FILL_XOR_CORE_CORRECT = prove
+ (`!a0 a1 a2 a3 a4 a5 a6 a7 sp_in
+    (bs0:byte list) (bs1:byte list) (bs2:byte list) (bs3:byte list)
+    (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
+    len pc.
+        len < 2 EXP 63 /\
+        aligned 16 sp_in /\
+        LENGTH bs0 = len /\ LENGTH bs1 = len /\
+        LENGTH bs2 = len /\ LENGTH bs3 = len /\
+        LENGTH bs4 = len /\ LENGTH bs5 = len /\
+        LENGTH bs6 = len /\ LENGTH bs7 = len /\
+        PAIRWISE nonoverlapping
+         [(word pc, LENGTH crc32c_octo_zerofill_xor_mc);
+          (a0, len); (a1, len); (a2, len); (a3, len);
+          (a4, len); (a5, len); (a6, len); (a7, len)]
+        ==> ensures arm
+             (\s. aligned_bytes_loaded s (word pc)
+                    crc32c_octo_zerofill_xor_mc /\
+                  read PC s = word(pc + 8) /\
+                  read SP s = sp_in /\
+                  read X0 s = a0 /\ read X1 s = a1 /\
+                  read X2 s = a2 /\ read X3 s = a3 /\
+                  read X4 s = a4 /\ read X5 s = a5 /\
+                  read X6 s = a6 /\ read X7 s = a7 /\
+                  read X19 s = word len /\
+                  read (memory :> bytelist (a0, len)) s = bs0 /\
+                  read (memory :> bytelist (a1, len)) s = bs1 /\
+                  read (memory :> bytelist (a2, len)) s = bs2 /\
+                  read (memory :> bytelist (a3, len)) s = bs3 /\
+                  read (memory :> bytelist (a4, len)) s = bs4 /\
+                  read (memory :> bytelist (a5, len)) s = bs5 /\
+                  read (memory :> bytelist (a6, len)) s = bs6 /\
+                  read (memory :> bytelist (a7, len)) s = bs7)
+             (\s. read PC s = word(pc + 0x268) /\
+                  read W0 s = crc32c_xor8 bs0 bs1 bs2 bs3 bs4 bs5 bs6 bs7 /\
+                  read SP s = sp_in /\
+                  read (memory :> bytelist (a0, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a1, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a2, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a3, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a4, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a5, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a6, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a7, len)) s = REPLICATE len (word 0))
+          (MAYCHANGE [PC; X0; X1; X2; X3; X4; X5; X6; X7;
+                      X8; X9; X10; X11; X12; X13; X14; X15;
+                      X16; X17; X19] ,,
+           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+           MAYCHANGE [memory :> bytes(a0, len);
+                      memory :> bytes(a1, len);
+                      memory :> bytes(a2, len);
+                      memory :> bytes(a3, len);
+                      memory :> bytes(a4, len);
+                      memory :> bytes(a5, len);
+                      memory :> bytes(a6, len);
+                      memory :> bytes(a7, len)])`,
+  CHEAT_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Top-level correctness theorem (Phase 9).                                   *)
 (*                                                                           *)
 (* Inputs: 8 buffer pointers a0..a7, each pointing to a buffer of length     *)
