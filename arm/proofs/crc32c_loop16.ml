@@ -369,19 +369,22 @@ let CRC32C_LOOP16_CORRECT = prove
           giving 16 specific `read mem s0 = m_*_lo/hi i` facts. Crucially,
           this is FIRST_ASSUM not FIRST_X, so the original forall is
           PRESERVED in context.
-       2. `ARM_STEPS_TAC EXEC (1--33)` runs all 33 instructions. The s0
-          parametric forall over `i <= j` cannot be lifted through writes
-          (its antecedent includes `j = i`, the write target — the
-          orthogonality conv fails, mapfilter drops it). However, the
-          stepping infrastructure DOES preserve a NEW forall whose
-          antecedent excludes the write target (`forall j. i+1 <= j /\
-          j < iters ==> read mem s33 = m_*_lo/hi j`) and the zeroed-prefix
-          forall (`forall j. j < i ==> read mem s33 = word 0`).
-       3. After ENSURES_FINAL_STATE_TAC + ASM_REWRITE_TAC, the suffix
+       2. SUBGOAL_THEN derives a REDUCED suffix forall over
+          `i + 1 <= j /\ j < iters ==> read mem s0 = m_*_lo/hi j`. The
+          original forall (`i <= j /\ j < iters`) cannot be lifted through
+          writes by ARM_STEPS_TAC because its antecedent includes the write
+          target j=i (the orthogonality conv fails, mapfilter drops it).
+          But the reduced forall WILL survive ARM_STEPS_TAC because its
+          antecedent excludes j=i.
+       3. `ARM_STEPS_TAC EXEC (1--33)` runs all 33 instructions. The
+          original forall is dropped, but the reduced suffix forall and
+          the zeroed-prefix forall (`forall j. j < i ==> read = word 0`)
+          both survive.
+       4. After ENSURES_FINAL_STATE_TAC + ASM_REWRITE_TAC, the suffix
           forall `i+1 <= j ==> read = m_*` discharges by literal
           assumption matching. Remaining conjuncts: 8 pointer advances,
           8 hw_step bridges, X19 word_sub, prefix forall.
-       4. The prefix forall `j < i + 1 ==> read = word 0` is closed by
+       5. The prefix forall `j < i + 1 ==> read = word 0` is closed by
           case-split: `j < i` (use surviving zeroed-prefix forall) /
           `j = i` (use STP-derived `read mem s33 = word 0` specific
           facts already in context). *)
@@ -392,6 +395,29 @@ let CRC32C_LOOP16_CORRECT = prove
     RULE_ASSUM_TAC(REWRITE_RULE[fst CRC32C_LOOP16_EXEC]) THEN
     FIRST_ASSUM (MP_TAC o C MATCH_MP (ASSUME `(i:num) <= i /\ i < iters`)) THEN
     STRIP_TAC THEN
+    SUBGOAL_THEN
+      `!j. i + 1 <= j /\ j < iters
+        ==> read (memory :> bytes64 (word_add a0 (word(16 * j)))) s0 = m0_lo j /\
+            read (memory :> bytes64 (word_add a0 (word(16 * j + 8)))) s0 = m0_hi j /\
+            read (memory :> bytes64 (word_add a1 (word(16 * j)))) s0 = m1_lo j /\
+            read (memory :> bytes64 (word_add a1 (word(16 * j + 8)))) s0 = m1_hi j /\
+            read (memory :> bytes64 (word_add a2 (word(16 * j)))) s0 = m2_lo j /\
+            read (memory :> bytes64 (word_add a2 (word(16 * j + 8)))) s0 = m2_hi j /\
+            read (memory :> bytes64 (word_add a3 (word(16 * j)))) s0 = m3_lo j /\
+            read (memory :> bytes64 (word_add a3 (word(16 * j + 8)))) s0 = m3_hi j /\
+            read (memory :> bytes64 (word_add a4 (word(16 * j)))) s0 = m4_lo j /\
+            read (memory :> bytes64 (word_add a4 (word(16 * j + 8)))) s0 = m4_hi j /\
+            read (memory :> bytes64 (word_add a5 (word(16 * j)))) s0 = m5_lo j /\
+            read (memory :> bytes64 (word_add a5 (word(16 * j + 8)))) s0 = m5_hi j /\
+            read (memory :> bytes64 (word_add a6 (word(16 * j)))) s0 = m6_lo j /\
+            read (memory :> bytes64 (word_add a6 (word(16 * j + 8)))) s0 = m6_hi j /\
+            read (memory :> bytes64 (word_add a7 (word(16 * j)))) s0 = m7_lo j /\
+            read (memory :> bytes64 (word_add a7 (word(16 * j + 8)))) s0 = m7_hi j`
+      ASSUME_TAC THENL
+     [X_GEN_TAC `j:num` THEN STRIP_TAC THEN
+      FIRST_X_ASSUM (MP_TAC o SPEC `j:num`) THEN
+      ANTS_TAC THENL [ASM_ARITH_TAC; STRIP_TAC THEN ASM_REWRITE_TAC[]];
+      ALL_TAC] THEN
     ARM_STEPS_TAC CRC32C_LOOP16_EXEC (1--33) THEN
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
