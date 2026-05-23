@@ -234,6 +234,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
     (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
     len pc.
         len < 2 EXP 63 /\
+        aligned 16 sp_in /\
         LENGTH bs0 = len /\ LENGTH bs1 = len /\
         LENGTH bs2 = len /\ LENGTH bs3 = len /\
         LENGTH bs4 = len /\ LENGTH bs5 = len /\
