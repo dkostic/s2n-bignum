@@ -406,71 +406,26 @@ let SHA1_HW_CORRECT = prove
     ASM_REWRITE_TAC[WORD_ADVANCE_64] THEN
     CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
-    REMARK_TAC "S020_GOAL_BEFORE_ASM_REWRITE" THEN
-    PRINT_GOAL_TAC THEN
     ASM_REWRITE_TAC[] THEN
-    REMARK_TAC "S020_GOAL_AFTER_ASM_REWRITE" THEN
-    PRINT_GOAL_TAC THEN
     (TRY (CONV_TAC WORD_BLAST)) THEN
-    REMARK_TAC "S020_GOAL_AFTER_WORD_BLAST" THEN
-    PRINT_GOAL_TAC THEN
     (TRY ASM_ARITH_TAC) THEN
-    REMARK_TAC "S020_GOAL_AFTER_ASM_ARITH" THEN
-    PRINT_GOAL_TAC THEN
-    (* Diagnostic: if subgoals leak past TRYs above, force a clear failure
-       instead of letting them propagate to the outer prove call where they
-       manifest as a confusing "TAC_PROOF: Unsolved goals". CHEAT_TAC catches
-       any straggler so the file loads.
-
-       Session 018 characterised the surviving subgoal (per axioms() dump
-       on s018a, which captures the loadt-time conclusion via mk_thm) as the
-       Q1 lane-0 invariant residual:
+    (* Q1 lane-0 invariant residual (per session 020 PRINT_GOAL_TAC dump):
          word_subword
-           (word_join4 (word_add (word_subword q1_lane_init (0,32)) e_compress)
-                       (word_add (word_subword q1_lane_init (32,32)) (word 0))
-                       (word_add (word_subword q1_lane_init (64,32)) (word 0))
-                       (word_add (word_subword q1_lane_init (96,32)) (word 0)))
+           (word_join4 (word_add (word_subword q1_lane_init (0,32)) c) ...)
            (0,32)
-         = word_add e_compress (EL 4 (sha1_hash_blocks ii blocks [a;b;c;d;e]))
-       where e_compress = EL 4 (sha1_compress 80 W (sha1_hash_blocks ii ...)).
-
-       Synthetic-goal closers (validated INTERACTIVELY on s018a/s018b but
-       FAILING under loadt — see session 019 below):
-         REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN ASM_REWRITE_TAC[WORD_ADD_AC]
-         ASM_REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN MATCH_ACCEPT_TAC WORD_ADD_SYM
-
-       Session 019: replaced CHEAT_TAC with the MATCH_ACCEPT_TAC variant.
-       Fresh-load loadt failed at SHA1_HW_CORRECT BODY (last logged stepping
-       progress: state s105, the last instruction of BODY's ARM_STEPS_TAC
-       phase; failure surfaced shortly after, in the closer chain) with:
-         1 basis elements and 0 critical pairs
-         Exception: Failure "ACCEPT_TAC".
-         Error in included file ...sha1_block_data_order_hw_ensures.ml
-       The KB-pollution hypothesis from session 018 is FALSIFIED by this
-       run: KB completion ("1 basis elements and 0 critical pairs") still
-       triggers from CONV_TAC WORD_BLAST inside the TRY at line 410,
-       INDEPENDENTLY of the closer choice (so it can't be why EXIT
-       regressed in session 018 either). Real root cause: the synthetic
-       goal extracted from the s018a `axioms()` dump does NOT match the
-       actual loadt-time residual at line 429. Both interactive-validated
-       closers fail under loadt because the goal shape they expect is
-       different at loadt time. ACCEPT_TAC's failure means MATCH_ACCEPT_TAC
-       reduced the goal to a shape that was NOT `forall x y. word_add x y =
-       word_add y x` — i.e. our ASM_REWRITE_TAC[WORD_JOIN4_SUBWORD] did
-       not collapse the loadt-time residual to the expected shape.
-       Diagnostic next step (mandatory for next session — STATE.md has
-       called for this since session 016 and it's been deferred 4×):
-       insert PRINT_GOAL_TAC inside the closer chain, e.g.
-         ASM_REWRITE_TAC[] THEN
-         PRINT_GOAL_TAC THEN
-         (TRY (CONV_TAC WORD_BLAST)) THEN
-         PRINT_GOAL_TAC THEN
-         (TRY ASM_ARITH_TAC) THEN
-         PRINT_GOAL_TAC THEN
-         CHEAT_TAC
-       to capture the actual loadt-time goal at each step in the holctl
-       redirect log; compare to the synthetic version. *)
-    CHEAT_TAC;
+         = word_add c (EL 4 (sha1_hash_blocks ii blocks [a;b;c;d;e]))
+       where c = EL 4 (sha1_compress 80 W (sha1_hash_blocks ii ...)).
+       The hypothesis word_subword q1_lane_init (0,32) = EL 4 (sha1_hash_blocks
+       ii ...) is consumed by the destructive RULE_ASSUM_TAC at line 248-250
+       (which rewrites it to T-valued assumption 16). It is still in the
+       THM-level hypothesis set of every assumption rewritten there, so
+       reintroducing it via ASSUME does not add a fresh hypothesis to the
+       proof: it merely surfaces a hypothesis that's already present. *)
+    REWRITE_TAC[WORD_JOIN4_SUBWORD] THEN
+    ONCE_REWRITE_TAC[ASSUME
+      `word_subword (q1_lane_init:int128) (0,32):int32 =
+       EL 4 (sha1_hash_blocks ii blocks [a:int32;b;c;d;e])`] THEN
+    MATCH_ACCEPT_TAC WORD_ADD_SYM;
 
     (* ================================================================= *)
     (* Subgoal 3: BACK-EDGE -- invariant(i) at pc+0x1c0 ==>              *)
