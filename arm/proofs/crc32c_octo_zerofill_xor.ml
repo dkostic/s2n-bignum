@@ -436,7 +436,87 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
         ALL_TAC] THEN
       REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
       COND_CASES_TAC THENL [ASM_ARITH_TAC; REFL_TAC];
-      CHEAT_TAC]]);;
+      (* Branch B body: pc + 0x30 (loop entry) -> pc + 0x268 (post-XOR).        *)
+      (* Strategy: cut at pc + 0xbc (tail entry, post-loop16) and apply         *)
+      (* CRC32C_LOOP16_CORRECT for the BIGSTEP. The cut-state at pc+0xbc        *)
+      (* describes the post-loop16 state: pointers advanced by 16*iters bytes,  *)
+      (* X19 = word(len mod 16), W8..W15 each holding the per-buffer            *)
+      (* `crc32c_bytes (word 0xFFFFFFFF) (TAKE (16*iters) bs_i)` value, and     *)
+      (* the first 16*iters bytes of each buffer zeroed (suffix bytes           *)
+      (* unchanged). Tail+XOR (pc+0xbc..pc+0x268) remains for the next session. *)
+      ENSURES_SEQUENCE_TAC `pc + 0xbc`
+       `\s. read SP s = sp_in /\
+            read X0 s = word_add a0 (word(16 * (len DIV 16))) /\
+            read X1 s = word_add a1 (word(16 * (len DIV 16))) /\
+            read X2 s = word_add a2 (word(16 * (len DIV 16))) /\
+            read X3 s = word_add a3 (word(16 * (len DIV 16))) /\
+            read X4 s = word_add a4 (word(16 * (len DIV 16))) /\
+            read X5 s = word_add a5 (word(16 * (len DIV 16))) /\
+            read X6 s = word_add a6 (word(16 * (len DIV 16))) /\
+            read X7 s = word_add a7 (word(16 * (len DIV 16))) /\
+            read X8 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs0)) /\
+            read X9 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs1)) /\
+            read X10 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs2)) /\
+            read X11 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs3)) /\
+            read X12 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs4)) /\
+            read X13 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs5)) /\
+            read X14 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs6)) /\
+            read X15 s = word_zx (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                  (SUB_LIST (0, 16 * (len DIV 16)) bs7)) /\
+            read X19 s = word(len MOD 16) /\
+            read (memory :> bytelist (a0, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a1, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a2, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a3, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a4, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a5, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a6, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist (a7, 16 * (len DIV 16))) s =
+              REPLICATE (16 * (len DIV 16)) (word 0) /\
+            read (memory :> bytelist
+                  (word_add a0 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs0 /\
+            read (memory :> bytelist
+                  (word_add a1 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs1 /\
+            read (memory :> bytelist
+                  (word_add a2 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs2 /\
+            read (memory :> bytelist
+                  (word_add a3 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs3 /\
+            read (memory :> bytelist
+                  (word_add a4 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs4 /\
+            read (memory :> bytelist
+                  (word_add a5 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs5 /\
+            read (memory :> bytelist
+                  (word_add a6 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs6 /\
+            read (memory :> bytelist
+                  (word_add a7 (word(16 * (len DIV 16))), len MOD 16)) s =
+              SUB_LIST (16 * (len DIV 16), len MOD 16) bs7` THEN
+      CONJ_TAC THENL
+       [(* Subgoal 1: pc+0x30 -> pc+0xbc, BIGSTEP via CRC32C_LOOP16_CORRECT.    *)
+        (* TODO(next session): apply CRC32C_LOOP16_CORRECT.                      *)
+        CHEAT_TAC;
+        (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
+        CHEAT_TAC]]]);;
 
 (* ------------------------------------------------------------------------- *)
 (* Top-level correctness theorem (Phase 9).                                   *)
