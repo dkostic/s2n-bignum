@@ -17740,3 +17740,422 @@ let MD5_BLOCK_BODY_TEST_R1_R2_R3_R4_FULL = prove
     ]
   ]);;
 
+(* ------------------------------------------------------------------------- *)
+(* MD5_BLOCK_BODY_CORRECT: the full body of md5_block_asm_data_order over    *)
+(* [pc+40, pc+2237). Composes MD5_BLOCK_BODY_TEST_R1_R2_R3_R4_FULL with     *)
+(* MD5_BLOCK_BODY_WRITEBACK via a single ENSURES_SEQUENCE_TAC cut at        *)
+(* pc+2225.  The post is in spec form using `EL i (md5_compress 64 ...)`.   *)
+(* The bridge from let-chain to spec form is via MD5_COMPRESS_64_VALUES;    *)
+(* segment-1 SUB_T3 also uses MD5_COMPRESS_48_H_EL_VALUES to rewrite the    *)
+(* EL i (md5_compress 48 ...) atoms in FULL's let-chain.                    *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_BLOCK_BODY_CORRECT = prove
+ (`!pc data_ptr (a:int32) (b:int32) (c:int32) (d:int32)
+        (w0:int32) (w1:int32) (w2:int32) (w3:int32) (w4:int32)
+        (w5:int32) (w6:int32) (w7:int32) (w8:int32) (w9:int32)
+        (w10:int32) (w11:int32) (w12:int32) (w13:int32) (w14:int32) (w15:int32).
+       nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                      (data_ptr:int64,64)
+       ==> ensures x86
+             (\s. bytes_loaded s (word pc)
+                    (BUTLAST md5_block_asm_data_order_tmc) /\
+                  read RIP s = word(pc + 40) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx a /\
+                  read RBX s = word_zx b /\
+                  read RCX s = word_zx c /\
+                  read RDX s = word_zx d /\
+                  read (memory :> bytes32 data_ptr) s = w0 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 4))) s = w1 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 8))) s = w2 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 12))) s = w3 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 16))) s = w4 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 20))) s = w5 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 24))) s = w6 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 28))) s = w7 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 32))) s = w8 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 36))) s = w9 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 40))) s = w10 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 44))) s = w11 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 48))) s = w12 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 52))) s = w13 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 56))) s = w14 /\
+                  read (memory :> bytes32 (word_add data_ptr (word 60))) s = w15)
+             (\s. read RIP s = word(pc + 2237) /\
+                  read RSI s = data_ptr /\
+                  read RAX s = word_zx (word_add (EL 0 (md5_compress 64 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) a) /\
+                  read RBX s = word_zx (word_add (EL 1 (md5_compress 64 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) b) /\
+                  read RCX s = word_zx (word_add (EL 2 (md5_compress 64 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) c) /\
+                  read RDX s = word_zx (word_add (EL 3 (md5_compress 64 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]):int32) d))
+             (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+              MAYCHANGE [RAX; RBX; RCX; RDX; R8; R9; R10; R11; R12; R14; R15] ,,
+              MAYCHANGE SOME_FLAGS)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  (* Phase 1: ABBREV all 64 step values na0, nd1, ..., nb63.  This lets us *)
+  (* state the cut predicate at pc+2225 in terms of these abbreviations.   *)
+  ABBREV_TAC `na0 = word_add ((b:int32):int32) (word_rol (word_add (word_add a (md5_F b c d)) (word_add w0 (EL 0 md5_T))) 7)` THEN
+  ABBREV_TAC `nd1 = word_add (na0:int32) (word_rol (word_add (word_add d (md5_F na0 b c)) (word_add w1 (EL 1 md5_T))) 12)` THEN
+  ABBREV_TAC `nc2 = word_add (nd1:int32) (word_rol (word_add (word_add c (md5_F nd1 na0 b)) (word_add w2 (EL 2 md5_T))) 17)` THEN
+  ABBREV_TAC `nb3 = word_add (nc2:int32) (word_rol (word_add (word_add b (md5_F nc2 nd1 na0)) (word_add w3 (EL 3 md5_T))) 22)` THEN
+  ABBREV_TAC `na4 = word_add (nb3:int32) (word_rol (word_add (word_add na0 (md5_F nb3 nc2 nd1)) (word_add w4 (EL 4 md5_T))) 7)` THEN
+  ABBREV_TAC `nd5 = word_add (na4:int32) (word_rol (word_add (word_add nd1 (md5_F na4 nb3 nc2)) (word_add w5 (EL 5 md5_T))) 12)` THEN
+  ABBREV_TAC `nc6 = word_add (nd5:int32) (word_rol (word_add (word_add nc2 (md5_F nd5 na4 nb3)) (word_add w6 (EL 6 md5_T))) 17)` THEN
+  ABBREV_TAC `nb7 = word_add (nc6:int32) (word_rol (word_add (word_add nb3 (md5_F nc6 nd5 na4)) (word_add w7 (EL 7 md5_T))) 22)` THEN
+  ABBREV_TAC `na8 = word_add (nb7:int32) (word_rol (word_add (word_add na4 (md5_F nb7 nc6 nd5)) (word_add w8 (EL 8 md5_T))) 7)` THEN
+  ABBREV_TAC `nd9 = word_add (na8:int32) (word_rol (word_add (word_add nd5 (md5_F na8 nb7 nc6)) (word_add w9 (EL 9 md5_T))) 12)` THEN
+  ABBREV_TAC `nc10 = word_add (nd9:int32) (word_rol (word_add (word_add nc6 (md5_F nd9 na8 nb7)) (word_add w10 (EL 10 md5_T))) 17)` THEN
+  ABBREV_TAC `nb11 = word_add (nc10:int32) (word_rol (word_add (word_add nb7 (md5_F nc10 nd9 na8)) (word_add w11 (EL 11 md5_T))) 22)` THEN
+  ABBREV_TAC `na12 = word_add (nb11:int32) (word_rol (word_add (word_add na8 (md5_F nb11 nc10 nd9)) (word_add w12 (EL 12 md5_T))) 7)` THEN
+  ABBREV_TAC `nd13 = word_add (na12:int32) (word_rol (word_add (word_add nd9 (md5_F na12 nb11 nc10)) (word_add w13 (EL 13 md5_T))) 12)` THEN
+  ABBREV_TAC `nc14 = word_add (nd13:int32) (word_rol (word_add (word_add nc10 (md5_F nd13 na12 nb11)) (word_add w14 (EL 14 md5_T))) 17)` THEN
+  ABBREV_TAC `nb15 = word_add (nc14:int32) (word_rol (word_add (word_add nb11 (md5_F nc14 nd13 na12)) (word_add w15 (EL 15 md5_T))) 22)` THEN
+  ABBREV_TAC `na16 = word_add (nb15:int32) (word_rol (word_add (word_add na12 (md5_G nb15 nc14 nd13)) (word_add w1 (EL 16 md5_T))) 5)` THEN
+  ABBREV_TAC `nd17 = word_add (na16:int32) (word_rol (word_add (word_add nd13 (md5_G na16 nb15 nc14)) (word_add w6 (EL 17 md5_T))) 9)` THEN
+  ABBREV_TAC `nc18 = word_add (nd17:int32) (word_rol (word_add (word_add nc14 (md5_G nd17 na16 nb15)) (word_add w11 (EL 18 md5_T))) 14)` THEN
+  ABBREV_TAC `nb19 = word_add (nc18:int32) (word_rol (word_add (word_add nb15 (md5_G nc18 nd17 na16)) (word_add w0 (EL 19 md5_T))) 20)` THEN
+  ABBREV_TAC `na20 = word_add (nb19:int32) (word_rol (word_add (word_add na16 (md5_G nb19 nc18 nd17)) (word_add w5 (EL 20 md5_T))) 5)` THEN
+  ABBREV_TAC `nd21 = word_add (na20:int32) (word_rol (word_add (word_add nd17 (md5_G na20 nb19 nc18)) (word_add w10 (EL 21 md5_T))) 9)` THEN
+  ABBREV_TAC `nc22 = word_add (nd21:int32) (word_rol (word_add (word_add nc18 (md5_G nd21 na20 nb19)) (word_add w15 (EL 22 md5_T))) 14)` THEN
+  ABBREV_TAC `nb23 = word_add (nc22:int32) (word_rol (word_add (word_add nb19 (md5_G nc22 nd21 na20)) (word_add w4 (EL 23 md5_T))) 20)` THEN
+  ABBREV_TAC `na24 = word_add (nb23:int32) (word_rol (word_add (word_add na20 (md5_G nb23 nc22 nd21)) (word_add w9 (EL 24 md5_T))) 5)` THEN
+  ABBREV_TAC `nd25 = word_add (na24:int32) (word_rol (word_add (word_add nd21 (md5_G na24 nb23 nc22)) (word_add w14 (EL 25 md5_T))) 9)` THEN
+  ABBREV_TAC `nc26 = word_add (nd25:int32) (word_rol (word_add (word_add nc22 (md5_G nd25 na24 nb23)) (word_add w3 (EL 26 md5_T))) 14)` THEN
+  ABBREV_TAC `nb27 = word_add (nc26:int32) (word_rol (word_add (word_add nb23 (md5_G nc26 nd25 na24)) (word_add w8 (EL 27 md5_T))) 20)` THEN
+  ABBREV_TAC `na28 = word_add (nb27:int32) (word_rol (word_add (word_add na24 (md5_G nb27 nc26 nd25)) (word_add w13 (EL 28 md5_T))) 5)` THEN
+  ABBREV_TAC `nd29 = word_add (na28:int32) (word_rol (word_add (word_add nd25 (md5_G na28 nb27 nc26)) (word_add w2 (EL 29 md5_T))) 9)` THEN
+  ABBREV_TAC `nc30 = word_add (nd29:int32) (word_rol (word_add (word_add nc26 (md5_G nd29 na28 nb27)) (word_add w7 (EL 30 md5_T))) 14)` THEN
+  ABBREV_TAC `nb31 = word_add (nc30:int32) (word_rol (word_add (word_add nb27 (md5_G nc30 nd29 na28)) (word_add w12 (EL 31 md5_T))) 20)` THEN
+  ABBREV_TAC `na32 = word_add (nb31:int32) (word_rol (word_add (word_add na28 (md5_H nb31 nc30 nd29)) (word_add w5 (EL 32 md5_T))) 4)` THEN
+  ABBREV_TAC `nd33 = word_add (na32:int32) (word_rol (word_add (word_add nd29 (md5_H na32 nb31 nc30)) (word_add w8 (EL 33 md5_T))) 11)` THEN
+  ABBREV_TAC `nc34 = word_add (nd33:int32) (word_rol (word_add (word_add nc30 (md5_H nd33 na32 nb31)) (word_add w11 (EL 34 md5_T))) 16)` THEN
+  ABBREV_TAC `nb35 = word_add (nc34:int32) (word_rol (word_add (word_add nb31 (md5_H nc34 nd33 na32)) (word_add w14 (EL 35 md5_T))) 23)` THEN
+  ABBREV_TAC `na36 = word_add (nb35:int32) (word_rol (word_add (word_add na32 (md5_H nb35 nc34 nd33)) (word_add w1 (EL 36 md5_T))) 4)` THEN
+  ABBREV_TAC `nd37 = word_add (na36:int32) (word_rol (word_add (word_add nd33 (md5_H na36 nb35 nc34)) (word_add w4 (EL 37 md5_T))) 11)` THEN
+  ABBREV_TAC `nc38 = word_add (nd37:int32) (word_rol (word_add (word_add nc34 (md5_H nd37 na36 nb35)) (word_add w7 (EL 38 md5_T))) 16)` THEN
+  ABBREV_TAC `nb39 = word_add (nc38:int32) (word_rol (word_add (word_add nb35 (md5_H nc38 nd37 na36)) (word_add w10 (EL 39 md5_T))) 23)` THEN
+  ABBREV_TAC `na40 = word_add (nb39:int32) (word_rol (word_add (word_add na36 (md5_H nb39 nc38 nd37)) (word_add w13 (EL 40 md5_T))) 4)` THEN
+  ABBREV_TAC `nd41 = word_add (na40:int32) (word_rol (word_add (word_add nd37 (md5_H na40 nb39 nc38)) (word_add w0 (EL 41 md5_T))) 11)` THEN
+  ABBREV_TAC `nc42 = word_add (nd41:int32) (word_rol (word_add (word_add nc38 (md5_H nd41 na40 nb39)) (word_add w3 (EL 42 md5_T))) 16)` THEN
+  ABBREV_TAC `nb43 = word_add (nc42:int32) (word_rol (word_add (word_add nb39 (md5_H nc42 nd41 na40)) (word_add w6 (EL 43 md5_T))) 23)` THEN
+  ABBREV_TAC `na44 = word_add (nb43:int32) (word_rol (word_add (word_add na40 (md5_H nb43 nc42 nd41)) (word_add w9 (EL 44 md5_T))) 4)` THEN
+  ABBREV_TAC `nd45 = word_add (na44:int32) (word_rol (word_add (word_add nd41 (md5_H na44 nb43 nc42)) (word_add w12 (EL 45 md5_T))) 11)` THEN
+  ABBREV_TAC `nc46 = word_add (nd45:int32) (word_rol (word_add (word_add nc42 (md5_H nd45 na44 nb43)) (word_add w15 (EL 46 md5_T))) 16)` THEN
+  ABBREV_TAC `nb47 = word_add (nc46:int32) (word_rol (word_add (word_add nb43 (md5_H nc46 nd45 na44)) (word_add w2 (EL 47 md5_T))) 23)` THEN
+  ABBREV_TAC `na48 = word_add (nb47:int32) (word_rol (word_add (word_add na44 (md5_I nb47 nc46 nd45)) (word_add w0 (EL 48 md5_T))) 6)` THEN
+  ABBREV_TAC `nd49 = word_add (na48:int32) (word_rol (word_add (word_add nd45 (md5_I na48 nb47 nc46)) (word_add w7 (EL 49 md5_T))) 10)` THEN
+  ABBREV_TAC `nc50 = word_add (nd49:int32) (word_rol (word_add (word_add nc46 (md5_I nd49 na48 nb47)) (word_add w14 (EL 50 md5_T))) 15)` THEN
+  ABBREV_TAC `nb51 = word_add (nc50:int32) (word_rol (word_add (word_add nb47 (md5_I nc50 nd49 na48)) (word_add w5 (EL 51 md5_T))) 21)` THEN
+  ABBREV_TAC `na52 = word_add (nb51:int32) (word_rol (word_add (word_add na48 (md5_I nb51 nc50 nd49)) (word_add w12 (EL 52 md5_T))) 6)` THEN
+  ABBREV_TAC `nd53 = word_add (na52:int32) (word_rol (word_add (word_add nd49 (md5_I na52 nb51 nc50)) (word_add w3 (EL 53 md5_T))) 10)` THEN
+  ABBREV_TAC `nc54 = word_add (nd53:int32) (word_rol (word_add (word_add nc50 (md5_I nd53 na52 nb51)) (word_add w10 (EL 54 md5_T))) 15)` THEN
+  ABBREV_TAC `nb55 = word_add (nc54:int32) (word_rol (word_add (word_add nb51 (md5_I nc54 nd53 na52)) (word_add w1 (EL 55 md5_T))) 21)` THEN
+  ABBREV_TAC `na56 = word_add (nb55:int32) (word_rol (word_add (word_add na52 (md5_I nb55 nc54 nd53)) (word_add w8 (EL 56 md5_T))) 6)` THEN
+  ABBREV_TAC `nd57 = word_add (na56:int32) (word_rol (word_add (word_add nd53 (md5_I na56 nb55 nc54)) (word_add w15 (EL 57 md5_T))) 10)` THEN
+  ABBREV_TAC `nc58 = word_add (nd57:int32) (word_rol (word_add (word_add nc54 (md5_I nd57 na56 nb55)) (word_add w6 (EL 58 md5_T))) 15)` THEN
+  ABBREV_TAC `nb59 = word_add (nc58:int32) (word_rol (word_add (word_add nb55 (md5_I nc58 nd57 na56)) (word_add w13 (EL 59 md5_T))) 21)` THEN
+  ABBREV_TAC `na60 = word_add (nb59:int32) (word_rol (word_add (word_add na56 (md5_I nb59 nc58 nd57)) (word_add w4 (EL 60 md5_T))) 6)` THEN
+  ABBREV_TAC `nd61 = word_add (na60:int32) (word_rol (word_add (word_add nd57 (md5_I na60 nb59 nc58)) (word_add w11 (EL 61 md5_T))) 10)` THEN
+  ABBREV_TAC `nc62 = word_add (nd61:int32) (word_rol (word_add (word_add nc58 (md5_I nd61 na60 nb59)) (word_add w2 (EL 62 md5_T))) 15)` THEN
+  ABBREV_TAC `nb63 = word_add (nc62:int32) (word_rol (word_add (word_add nb59 (md5_I nc62 nd61 na60)) (word_add w9 (EL 63 md5_T))) 21)` THEN
+
+  (* SUBGOAL 2: md5_compress 64 ... = [na60; nb63; nc62; nd61] via MD5_COMPRESS_64_VALUES. *)
+  (* Proven first: its hypothesis has list-RHS, so EXPAND_TAC in SUBGOAL 1 will not see *)
+  (* a competing var-RHS hyp.  The reverse order would break EXPAND_TAC name lookups.   *)
+  SUBGOAL_THEN
+   `md5_compress 64 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d] =
+    [na60; nb63; nc62; nd61]`
+   ASSUME_TAC THENL
+   [MP_TAC(SPECL
+      [`[w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15]:int32 list`;
+       `a:int32`;`b:int32`;`c:int32`;`d:int32`;
+       `w0:int32`;`w1:int32`;`w2:int32`;`w3:int32`;
+       `w4:int32`;`w5:int32`;`w6:int32`;`w7:int32`;
+       `w8:int32`;`w9:int32`;`w10:int32`;`w11:int32`;
+       `w12:int32`;`w13:int32`;`w14:int32`;`w15:int32`;
+       `na0:int32`;`nd1:int32`;`nc2:int32`;`nb3:int32`;
+       `na4:int32`;`nd5:int32`;`nc6:int32`;`nb7:int32`;
+       `na8:int32`;`nd9:int32`;`nc10:int32`;`nb11:int32`;
+       `na12:int32`;`nd13:int32`;`nc14:int32`;`nb15:int32`;
+       `na16:int32`;`nd17:int32`;`nc18:int32`;`nb19:int32`;
+       `na20:int32`;`nd21:int32`;`nc22:int32`;`nb23:int32`;
+       `na24:int32`;`nd25:int32`;`nc26:int32`;`nb27:int32`;
+       `na28:int32`;`nd29:int32`;`nc30:int32`;`nb31:int32`;
+       `na32:int32`;`nd33:int32`;`nc34:int32`;`nb35:int32`;
+       `na36:int32`;`nd37:int32`;`nc38:int32`;`nb39:int32`;
+       `na40:int32`;`nd41:int32`;`nc42:int32`;`nb43:int32`;
+       `na44:int32`;`nd45:int32`;`nc46:int32`;`nb47:int32`;
+       `na48:int32`;`nd49:int32`;`nc50:int32`;`nb51:int32`;
+       `na52:int32`;`nd53:int32`;`nc54:int32`;`nb55:int32`;
+       `na56:int32`;`nd57:int32`;`nc58:int32`;`nb59:int32`;
+       `na60:int32`;`nd61:int32`;`nc62:int32`;`nb63:int32`]
+      MD5_COMPRESS_64_VALUES) THEN
+    ANTS_TAC THENL
+     [REWRITE_TAC[LENGTH;ARITH] THEN
+      REPEAT CONJ_TAC THENL
+       [
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      EXPAND_TAC "na0" THEN REFL_TAC;
+      EXPAND_TAC "nd1" THEN REFL_TAC;
+      EXPAND_TAC "nc2" THEN REFL_TAC;
+      EXPAND_TAC "nb3" THEN REFL_TAC;
+      EXPAND_TAC "na4" THEN REFL_TAC;
+      EXPAND_TAC "nd5" THEN REFL_TAC;
+      EXPAND_TAC "nc6" THEN REFL_TAC;
+      EXPAND_TAC "nb7" THEN REFL_TAC;
+      EXPAND_TAC "na8" THEN REFL_TAC;
+      EXPAND_TAC "nd9" THEN REFL_TAC;
+      EXPAND_TAC "nc10" THEN REFL_TAC;
+      EXPAND_TAC "nb11" THEN REFL_TAC;
+      EXPAND_TAC "na12" THEN REFL_TAC;
+      EXPAND_TAC "nd13" THEN REFL_TAC;
+      EXPAND_TAC "nc14" THEN REFL_TAC;
+      EXPAND_TAC "nb15" THEN REFL_TAC;
+      EXPAND_TAC "na16" THEN REFL_TAC;
+      EXPAND_TAC "nd17" THEN REFL_TAC;
+      EXPAND_TAC "nc18" THEN REFL_TAC;
+      EXPAND_TAC "nb19" THEN REFL_TAC;
+      EXPAND_TAC "na20" THEN REFL_TAC;
+      EXPAND_TAC "nd21" THEN REFL_TAC;
+      EXPAND_TAC "nc22" THEN REFL_TAC;
+      EXPAND_TAC "nb23" THEN REFL_TAC;
+      EXPAND_TAC "na24" THEN REFL_TAC;
+      EXPAND_TAC "nd25" THEN REFL_TAC;
+      EXPAND_TAC "nc26" THEN REFL_TAC;
+      EXPAND_TAC "nb27" THEN REFL_TAC;
+      EXPAND_TAC "na28" THEN REFL_TAC;
+      EXPAND_TAC "nd29" THEN REFL_TAC;
+      EXPAND_TAC "nc30" THEN REFL_TAC;
+      EXPAND_TAC "nb31" THEN REFL_TAC;
+      EXPAND_TAC "na32" THEN REFL_TAC;
+      EXPAND_TAC "nd33" THEN REFL_TAC;
+      EXPAND_TAC "nc34" THEN REFL_TAC;
+      EXPAND_TAC "nb35" THEN REFL_TAC;
+      EXPAND_TAC "na36" THEN REFL_TAC;
+      EXPAND_TAC "nd37" THEN REFL_TAC;
+      EXPAND_TAC "nc38" THEN REFL_TAC;
+      EXPAND_TAC "nb39" THEN REFL_TAC;
+      EXPAND_TAC "na40" THEN REFL_TAC;
+      EXPAND_TAC "nd41" THEN REFL_TAC;
+      EXPAND_TAC "nc42" THEN REFL_TAC;
+      EXPAND_TAC "nb43" THEN REFL_TAC;
+      EXPAND_TAC "na44" THEN REFL_TAC;
+      EXPAND_TAC "nd45" THEN REFL_TAC;
+      EXPAND_TAC "nc46" THEN REFL_TAC;
+      EXPAND_TAC "nb47" THEN REFL_TAC;
+      EXPAND_TAC "na48" THEN REFL_TAC;
+      EXPAND_TAC "nd49" THEN REFL_TAC;
+      EXPAND_TAC "nc50" THEN REFL_TAC;
+      EXPAND_TAC "nb51" THEN REFL_TAC;
+      EXPAND_TAC "na52" THEN REFL_TAC;
+      EXPAND_TAC "nd53" THEN REFL_TAC;
+      EXPAND_TAC "nc54" THEN REFL_TAC;
+      EXPAND_TAC "nb55" THEN REFL_TAC;
+      EXPAND_TAC "na56" THEN REFL_TAC;
+      EXPAND_TAC "nd57" THEN REFL_TAC;
+      EXPAND_TAC "nc58" THEN REFL_TAC;
+      EXPAND_TAC "nb59" THEN REFL_TAC;
+      EXPAND_TAC "na60" THEN REFL_TAC;
+      EXPAND_TAC "nd61" THEN REFL_TAC;
+      EXPAND_TAC "nc62" THEN REFL_TAC;
+      EXPAND_TAC "nb63" THEN REFL_TAC];
+      STRIP_TAC THEN ASM_REWRITE_TAC[]];
+    ALL_TAC] THEN
+
+  (* SUBGOAL 1: EL i (md5_compress 48 ...) = na44/nb47/nc46/nd45 via MD5_COMPRESS_48_H_EL_VALUES. *)
+  (* Proven AFTER SUBGOAL 2 — the SUBGOAL 1 hyps add `EL i (md5_compress 48 ...) = naXX` *)
+  (* to context, which would cause SUBGOAL 2's EXPAND_TAC "naXX" calls to pick up the    *)
+  (* wrong hyp (FIRST_ASSUM matches) if SUBGOAL 1 ran first.                              *)
+  SUBGOAL_THEN
+   `EL 0 (md5_compress 48 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]) = na44 /\
+    EL 1 (md5_compress 48 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]) = nb47 /\
+    EL 2 (md5_compress 48 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]) = nc46 /\
+    EL 3 (md5_compress 48 [w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15] [a;b;c;d]) = nd45`
+   STRIP_ASSUME_TAC THENL
+   [MP_TAC(SPECL
+      [`[w0;w1;w2;w3;w4;w5;w6;w7;w8;w9;w10;w11;w12;w13;w14;w15]:int32 list`;
+       `a:int32`;`b:int32`;`c:int32`;`d:int32`;
+       `w0:int32`;`w1:int32`;`w2:int32`;`w3:int32`;
+       `w4:int32`;`w5:int32`;`w6:int32`;`w7:int32`;
+       `w8:int32`;`w9:int32`;`w10:int32`;`w11:int32`;
+       `w12:int32`;`w13:int32`;`w14:int32`;`w15:int32`;
+       `na0:int32`;`nd1:int32`;`nc2:int32`;`nb3:int32`;
+       `na4:int32`;`nd5:int32`;`nc6:int32`;`nb7:int32`;
+       `na8:int32`;`nd9:int32`;`nc10:int32`;`nb11:int32`;
+       `na12:int32`;`nd13:int32`;`nc14:int32`;`nb15:int32`;
+       `na16:int32`;`nd17:int32`;`nc18:int32`;`nb19:int32`;
+       `na20:int32`;`nd21:int32`;`nc22:int32`;`nb23:int32`;
+       `na24:int32`;`nd25:int32`;`nc26:int32`;`nb27:int32`;
+       `na28:int32`;`nd29:int32`;`nc30:int32`;`nb31:int32`;
+       `na32:int32`;`nd33:int32`;`nc34:int32`;`nb35:int32`;
+       `na36:int32`;`nd37:int32`;`nc38:int32`;`nb39:int32`;
+       `na40:int32`;`nd41:int32`;`nc42:int32`;`nb43:int32`;
+       `na44:int32`;`nd45:int32`;`nc46:int32`;`nb47:int32`]
+      MD5_COMPRESS_48_H_EL_VALUES) THEN
+    ANTS_TAC THENL
+     [REWRITE_TAC[LENGTH;ARITH] THEN
+      REPEAT CONJ_TAC THENL
+       [
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      CONV_TAC(RAND_CONV EL_CONV) THEN REFL_TAC;
+      EXPAND_TAC "na0" THEN REFL_TAC;
+      EXPAND_TAC "nd1" THEN REFL_TAC;
+      EXPAND_TAC "nc2" THEN REFL_TAC;
+      EXPAND_TAC "nb3" THEN REFL_TAC;
+      EXPAND_TAC "na4" THEN REFL_TAC;
+      EXPAND_TAC "nd5" THEN REFL_TAC;
+      EXPAND_TAC "nc6" THEN REFL_TAC;
+      EXPAND_TAC "nb7" THEN REFL_TAC;
+      EXPAND_TAC "na8" THEN REFL_TAC;
+      EXPAND_TAC "nd9" THEN REFL_TAC;
+      EXPAND_TAC "nc10" THEN REFL_TAC;
+      EXPAND_TAC "nb11" THEN REFL_TAC;
+      EXPAND_TAC "na12" THEN REFL_TAC;
+      EXPAND_TAC "nd13" THEN REFL_TAC;
+      EXPAND_TAC "nc14" THEN REFL_TAC;
+      EXPAND_TAC "nb15" THEN REFL_TAC;
+      EXPAND_TAC "na16" THEN REFL_TAC;
+      EXPAND_TAC "nd17" THEN REFL_TAC;
+      EXPAND_TAC "nc18" THEN REFL_TAC;
+      EXPAND_TAC "nb19" THEN REFL_TAC;
+      EXPAND_TAC "na20" THEN REFL_TAC;
+      EXPAND_TAC "nd21" THEN REFL_TAC;
+      EXPAND_TAC "nc22" THEN REFL_TAC;
+      EXPAND_TAC "nb23" THEN REFL_TAC;
+      EXPAND_TAC "na24" THEN REFL_TAC;
+      EXPAND_TAC "nd25" THEN REFL_TAC;
+      EXPAND_TAC "nc26" THEN REFL_TAC;
+      EXPAND_TAC "nb27" THEN REFL_TAC;
+      EXPAND_TAC "na28" THEN REFL_TAC;
+      EXPAND_TAC "nd29" THEN REFL_TAC;
+      EXPAND_TAC "nc30" THEN REFL_TAC;
+      EXPAND_TAC "nb31" THEN REFL_TAC;
+      EXPAND_TAC "na32" THEN REFL_TAC;
+      EXPAND_TAC "nd33" THEN REFL_TAC;
+      EXPAND_TAC "nc34" THEN REFL_TAC;
+      EXPAND_TAC "nb35" THEN REFL_TAC;
+      EXPAND_TAC "na36" THEN REFL_TAC;
+      EXPAND_TAC "nd37" THEN REFL_TAC;
+      EXPAND_TAC "nc38" THEN REFL_TAC;
+      EXPAND_TAC "nb39" THEN REFL_TAC;
+      EXPAND_TAC "na40" THEN REFL_TAC;
+      EXPAND_TAC "nd41" THEN REFL_TAC;
+      EXPAND_TAC "nc42" THEN REFL_TAC;
+      EXPAND_TAC "nb43" THEN REFL_TAC;
+      EXPAND_TAC "na44" THEN REFL_TAC;
+      EXPAND_TAC "nd45" THEN REFL_TAC;
+      EXPAND_TAC "nc46" THEN REFL_TAC;
+      EXPAND_TAC "nb47" THEN REFL_TAC];
+      STRIP_TAC THEN ASM_REWRITE_TAC[]];
+    ALL_TAC] THEN
+
+  (* Compose PRELUDE+R1+R2+R3+R4_FULL with WRITEBACK at pc+2225. *)
+  ENSURES_SEQUENCE_TAC `pc + 2225`
+    `\s. read RSI s = data_ptr /\
+         read RAX s = word_zx (na60:int32) /\
+         read RBX s = word_zx (nb63:int32) /\
+         read RCX s = word_zx (nc62:int32) /\
+         read RDX s = word_zx (nd61:int32) /\
+         read R8 s = word_zx (a:int32) /\
+         read R9 s = word_zx (b:int32) /\
+         read R14 s = word_zx (c:int32) /\
+         read R15 s = word_zx (d:int32)` THEN
+  CONJ_TAC THENL [
+    (* Segment 1: pc+40..pc+2225 — use FULL, weaken let-chain post -> ABBREVs. *)
+    MP_TAC(SPECL
+      [`pc:num`; `data_ptr:int64`;
+       `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+       `w0:int32`; `w1:int32`; `w2:int32`; `w3:int32`; `w4:int32`;
+       `w5:int32`; `w6:int32`; `w7:int32`; `w8:int32`; `w9:int32`;
+       `w10:int32`; `w11:int32`; `w12:int32`; `w13:int32`; `w14:int32`; `w15:int32`]
+      MD5_BLOCK_BODY_TEST_R1_R2_R3_R4_FULL) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+      (* SUB_T1: pre weakening — outer pre matches FULL pre directly. *)
+      REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[];
+      (* SUB_T2: MAYCHANGE *)
+      REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+      (* SUB_T3: post weakening — FULL let-chain post -> ABBREV-form cut.   *)
+      (* The let-chain in FULL's post references EL i (md5_compress 48 ...)*)
+      (* (i=0..3) which we rewrite to na44/nb47/nc46/nd45 via SUBGOAL 1's   *)
+      (* assumptions.  Then DEPTH_CONV let_CONV expands the chain to a     *)
+      (* nested expression matching our outer ABBREV chain (na48..na60 in *)
+      (* terms of nb47/nc46/nd45/na44).  REPEAT GSYM-substitution folds it *)
+      (* back to na60 / nb63 / nc62 / nd61.                                 *)
+      REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN
+      REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN
+      PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+      REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN
+      RULE_ASSUM_TAC BETA_RULE THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN
+      ASSUMPTION_STATE_UPDATE_TAC THEN
+      DISCH_THEN(K ALL_TAC) THEN
+      ASM_REWRITE_TAC[] THEN
+      CONV_TAC(DEPTH_CONV let_CONV) THEN
+      REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+      ASM_REWRITE_TAC[]
+    ];
+    (* Segment 2: pc+2225..pc+2237 — use WRITEBACK with a4/b4/c4/d4 := na60/nb63/nc62/nd61. *)
+    MP_TAC(SPECL
+      [`pc:num`; `data_ptr:int64`;
+       `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+       `na60:int32`; `nb63:int32`; `nc62:int32`; `nd61:int32`]
+      MD5_BLOCK_BODY_WRITEBACK) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN REPEAT CONJ_TAC THENL [
+      (* SUB_T1 (seg-2): pre weakening — match cut to WRITEBACK pre. *)
+      REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[];
+      (* SUB_T2 (seg-2): MAYCHANGE *)
+      REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+      (* SUB_T3 (seg-2): post — WRITEBACK gives word_add a4 a where a4 = na60. *)
+      (* Outer post: word_add (EL 0 (md5_compress 64 ...)) a.                  *)
+      (* Use SUBGOAL 2's assumption md5_compress 64 ... = [na60;nb63;nc62;nd61]*)
+      (* and EL i (h::t) reduction to derive equality.                          *)
+      REPEAT GEN_TAC THEN REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN
+      REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN
+      PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+      REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN
+      RULE_ASSUM_TAC BETA_RULE THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+      NONSELFMODIFYING_STATE_UPDATE_TAC (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN
+      ASSUMPTION_STATE_UPDATE_TAC THEN
+      DISCH_THEN(K ALL_TAC) THEN
+      ASM_REWRITE_TAC[] THEN
+      CONV_TAC (ONCE_DEPTH_CONV EL_CONV) THEN
+      REPEAT CONJ_TAC THEN REFL_TAC
+    ]
+  ]);;
+
