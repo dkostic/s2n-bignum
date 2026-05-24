@@ -513,7 +513,47 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
               SUB_LIST (16 * (len DIV 16), len MOD 16) bs7` THEN
       CONJ_TAC THENL
        [(* Subgoal 1: pc+0x30 -> pc+0xbc, BIGSTEP via CRC32C_LOOP16_CORRECT.    *)
-        (* TODO(next session): apply CRC32C_LOOP16_CORRECT.                      *)
+        ABBREV_TAC `iters = len DIV 16` THEN
+        ABBREV_TAC `residue = len MOD 16` THEN
+        SUBGOAL_THEN
+          `1 <= iters /\ residue < 16 /\
+           16 * iters + residue = len /\
+           16 * iters + residue < 2 EXP 63 /\
+           16 * iters <= len`
+          STRIP_ASSUME_TAC THENL
+         [MAP_EVERY EXPAND_TAC ["iters"; "residue"] THEN
+          REPEAT CONJ_TAC THEN
+          REPEAT(FIRST_X_ASSUM(MP_TAC o check (fun th ->
+            let t = concl th in
+            t = `16 <= (len:num)` || t = `len < 2 EXP 63`))) THEN
+          ARITH_TAC;
+          ALL_TAC] THEN
+        ENSURES_INIT_TAC "s0" THEN
+        MP_TAC(SPECL
+         [`a0:int64`; `a1:int64`; `a2:int64`; `a3:int64`;
+          `a4:int64`; `a5:int64`; `a6:int64`; `a7:int64`;
+          `word 0xFFFFFFFF:int32`; `word 0xFFFFFFFF:int32`;
+          `word 0xFFFFFFFF:int32`; `word 0xFFFFFFFF:int32`;
+          `word 0xFFFFFFFF:int32`; `word 0xFFFFFFFF:int32`;
+          `word 0xFFFFFFFF:int32`; `word 0xFFFFFFFF:int32`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs0)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs0)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs1)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs1)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs2)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs2)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs3)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs3)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs4)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs4)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs5)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs5)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs6)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs6)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j, 8) bs7)):int64`;
+          `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs7)):int64`;
+          `iters:num`; `residue:num`; `pc + 0x30`]
+         CRC32C_LOOP16_CORRECT) THEN
         CHEAT_TAC;
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
