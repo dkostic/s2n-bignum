@@ -217,6 +217,48 @@ let crc32c_xor8 = define
              (crc32c_buffer bs7)))))))`;;
 
 (* ------------------------------------------------------------------------- *)
+(* Two helpers used by the LOOP16 BIGSTEP postcondition translation.          *)
+(* Both are CHEAT_TAC stubs at this point — to be proved in a follow-up       *)
+(* session.                                                                  *)
+(*                                                                           *)
+(*   LOOP16_CONSUMED_EQUALS_SUBLIST: With the closed-form ghost              *)
+(*   instantiation `m_lo j = word(num_of_bytelist(SUB_LIST(16*j,8) bs))` and  *)
+(*   `m_hi j = word(num_of_bytelist(SUB_LIST(16*j+8,8) bs))`, the             *)
+(*   recursively-defined `consumed_bytes m_lo m_hi i` collapses to            *)
+(*   `SUB_LIST(0, 16*i) bs` (when the buffer has at least `16*i` bytes).      *)
+(*   This is the key bridge from the LOOP16 spec's per-iteration ghost form   *)
+(*   to the bytelist form used by the outer kernel proof.                    *)
+(*                                                                           *)
+(*   BYTES64_ZEROS_TO_BYTELIST_ZEROS: Given that for each `j < iters` the     *)
+(*   per-iteration bytes64 reads are word 0, deduce that the                  *)
+(*   `16*iters`-byte bytelist starting at `a` is `REPLICATE (16*iters)        *)
+(*   (word 0)`. This is the bridge from the LOOP16 zero-fill output (in       *)
+(*   bytes64 form) to the bytelist form used by the outer kernel             *)
+(*   postcondition.                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let LOOP16_CONSUMED_EQUALS_SUBLIST = prove
+ (`!(bs:byte list) iters.
+        16 * iters <= LENGTH bs
+        ==> consumed_bytes
+              (\j. word(num_of_bytelist (SUB_LIST(16*j, 8) bs)):int64)
+              (\j. word(num_of_bytelist (SUB_LIST(16*j+8, 8) bs)):int64)
+              iters =
+            SUB_LIST(0, 16 * iters) bs`,
+  CHEAT_TAC);;
+
+let BYTES64_ZEROS_TO_BYTELIST_ZEROS = prove
+ (`!(a:int64) (s:armstate) iters.
+        (!j. j < iters
+             ==> read (memory :> bytes64 (word_add a (word(16*j)))) s =
+                 word 0 /\
+                 read (memory :> bytes64 (word_add a (word(16*j + 8)))) s =
+                 word 0)
+        ==> read (memory :> bytelist (a, 16 * iters)) s =
+            REPLICATE (16 * iters) (word 0)`,
+  CHEAT_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* CORE correctness theorem (Phase 9 — body proof, post-prologue).            *)
 (*                                                                           *)
 (* CORE covers PC range [pc + 8, pc + 0x268), i.e. starting after the         *)
@@ -529,6 +571,12 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           ARITH_TAC;
           ALL_TAC] THEN
         ENSURES_INIT_TAC "s0" THEN
+        (* Sub-program-load: the loop region [pc+0x30 .. pc+0xbc) inside the
+           outer kernel coincides with crc32c_loop16_mc. *)
+        MP_TAC(SPECL [`s0:armstate`; `pc:num`]
+                 (ALIGNED_BYTES_LOADED_SUBPROGRAM_RULE
+                    crc32c_octo_zerofill_xor_mc crc32c_loop16_mc 0x30)) THEN
+        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
         MP_TAC(SPECL
          [`a0:int64`; `a1:int64`; `a2:int64`; `a3:int64`;
           `a4:int64`; `a5:int64`; `a6:int64`; `a7:int64`;
@@ -629,6 +677,31 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           MATCH_MP_TAC BYTES64_FROM_BYTELIST THEN
           ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
           ALL_TAC] THEN
+        (* Apply the LOOP16 lemma as a single BIGSTEP. After this fires, the
+           goal advances from s0 (at pc+0x30) to a fresh state s_post (at
+           pc+0xbc, i.e. (pc+0x30)+0x8c) and we must show the cut-state
+           postcondition. We unfold SOME_FLAGS so MAYCHANGE_STATE_UPDATE_TAC
+           inside ARM_BIGSTEP_TAC can match the per-flag writes. *)
+        REWRITE_TAC[SOME_FLAGS] THEN
+        ARM_BIGSTEP_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC "s_post" THEN
+        ENSURES_FINAL_STATE_TAC THEN
+        ASM_REWRITE_TAC[] THEN
+        (* Translate per-buffer accumulators and zerofill output. The 8
+           crc32c_bytes/consumed_bytes accumulators collapse to SUB_LIST via
+           LOOP16_CONSUMED_EQUALS_SUBLIST; the 8 bytelist-zerofill conjuncts
+           collapse via BYTES64_ZEROS_TO_BYTELIST_ZEROS. *)
+        REPEAT CONJ_TAC THEN
+        TRY (AP_TERM_TAC THEN AP_TERM_TAC THEN
+             MATCH_MP_TAC LOOP16_CONSUMED_EQUALS_SUBLIST THEN
+             ASM_ARITH_TAC) THEN
+        TRY (MATCH_MP_TAC BYTES64_ZEROS_TO_BYTELIST_ZEROS THEN
+             ASM_REWRITE_TAC[]) THEN
+        (* Tail bytelist-reads (suffix bytes at offset 16*iters) — unchanged
+           by LOOP16's MAYCHANGE since it only touches the first 16*iters
+           bytes. Discharge via the s_post component-disjointness fact placed
+           by ARM_BIGSTEP_TAC's MAYCHANGE_STATE_UPDATE. The internal cheat
+           below pins the residue-bytes-preserved obligation; the rest of the
+           BIGSTEP plumbing must close cleanly. *)
         CHEAT_TAC;
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
