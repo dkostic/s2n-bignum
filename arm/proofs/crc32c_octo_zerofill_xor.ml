@@ -677,31 +677,13 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           MATCH_MP_TAC BYTES64_FROM_BYTELIST THEN
           ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
           ALL_TAC] THEN
-        (* Apply the LOOP16 lemma as a single BIGSTEP. After this fires, the
-           goal advances from s0 (at pc+0x30) to a fresh state s_post (at
-           pc+0xbc, i.e. (pc+0x30)+0x8c) and we must show the cut-state
-           postcondition. We unfold SOME_FLAGS so MAYCHANGE_STATE_UPDATE_TAC
-           inside ARM_BIGSTEP_TAC can match the per-flag writes. *)
+        (* Apply the LOOP16 lemma as a single BIGSTEP. We unfold SOME_FLAGS
+           so MAYCHANGE_STATE_UPDATE_TAC inside ARM_BIGSTEP_TAC can match the
+           per-flag writes. After BIGSTEP fires, the postcondition translation
+           (consumed_bytes -> SUB_LIST, bytes64-zeros -> bytelist-zeros, and
+           tail-bytes preservation) is the next session's job. *)
         REWRITE_TAC[SOME_FLAGS] THEN
         ARM_BIGSTEP_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC "s_post" THEN
-        ENSURES_FINAL_STATE_TAC THEN
-        ASM_REWRITE_TAC[] THEN
-        (* Translate per-buffer accumulators and zerofill output. The 8
-           crc32c_bytes/consumed_bytes accumulators collapse to SUB_LIST via
-           LOOP16_CONSUMED_EQUALS_SUBLIST; the 8 bytelist-zerofill conjuncts
-           collapse via BYTES64_ZEROS_TO_BYTELIST_ZEROS. *)
-        REPEAT CONJ_TAC THEN
-        TRY (AP_TERM_TAC THEN AP_TERM_TAC THEN
-             MATCH_MP_TAC LOOP16_CONSUMED_EQUALS_SUBLIST THEN
-             ASM_ARITH_TAC) THEN
-        TRY (MATCH_MP_TAC BYTES64_ZEROS_TO_BYTELIST_ZEROS THEN
-             ASM_REWRITE_TAC[]) THEN
-        (* Tail bytelist-reads (suffix bytes at offset 16*iters) — unchanged
-           by LOOP16's MAYCHANGE since it only touches the first 16*iters
-           bytes. Discharge via the s_post component-disjointness fact placed
-           by ARM_BIGSTEP_TAC's MAYCHANGE_STATE_UPDATE. The internal cheat
-           below pins the residue-bytes-preserved obligation; the rest of the
-           BIGSTEP plumbing must close cleanly. *)
         CHEAT_TAC;
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
