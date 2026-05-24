@@ -693,6 +693,11 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
              ASM_ARITH_TAC) THEN
         TRY (MATCH_MP_TAC BYTES64_ZEROS_TO_BYTELIST_ZEROS THEN
              ASM_REWRITE_TAC[]) THEN
+        (* Residual subgoals: the suffix bytelist reads at offset 16*iters.
+           These are preserved through LOOP16's MAYCHANGE since LOOP16 only
+           writes to bytes(a_i, 16*iters), and the suffix is at
+           [16*iters, len). Closure via NONOVERLAPPING + MAYCHANGE-frame
+           preservation is left to a follow-up session. *)
         CHEAT_TAC;
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
