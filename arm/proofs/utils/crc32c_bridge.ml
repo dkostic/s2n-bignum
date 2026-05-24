@@ -195,3 +195,38 @@ let NUM_OF_BYTELIST_SUB_LIST = prove
   SIMP_TAC[DIV_MULT_ADD; EXP_2_NE_0] THEN
   ASM_SIMP_TAC[DIV_LT; ADD_CLAUSES] THEN
   ASM_SIMP_TAC[MOD_MULT_ADD; MOD_LT]);;
+
+(* ------------------------------------------------------------------------- *)
+(* BYTES64_FROM_BYTELIST: extracts an 8-byte aligned sub-window from a       *)
+(* bytelist as a bytes64 (int64) read. This is the per-iteration bridge      *)
+(* used when applying CRC32C_LOOP16_CORRECT as a big-step inside an outer    *)
+(* proof that has the source buffer typed as a `bytelist`.                   *)
+(* ------------------------------------------------------------------------- *)
+
+let BYTES64_FROM_BYTELIST = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) n.
+        read (memory :> bytelist (a, LENGTH bs)) s = bs /\
+        n + 8 <= LENGTH bs
+        ==> read (memory :> bytes64 (word_add a (word n))) s =
+            word (num_of_bytelist (SUB_LIST(n, 8) bs))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[bytes64; READ_COMPONENT_COMPOSE; asword; through; read] THEN
+  AP_TERM_TAC THEN
+  SUBGOAL_THEN
+    `read (bytes (word_add (a:int64) (word n), 8)) (read memory s) =
+     (read (bytes (a, LENGTH (bs:byte list))) (read memory s) DIV 2 EXP (8 * n))
+     MOD 2 EXP (8 * 8)`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[READ_BYTES_DIV; READ_BYTES_MOD] THEN
+    SUBGOAL_THEN `MIN (LENGTH (bs:byte list) - n) 8 = 8` SUBST1_TAC THENL
+     [ASM_ARITH_TAC; REWRITE_TAC[]];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (bytes (a, LENGTH (bs:byte list))) (read memory s) = num_of_bytelist bs`
+  SUBST1_TAC THENL
+   [FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE I [READ_BYTELIST_EQ_BYTES]) THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE] THEN SIMP_TAC[];
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`bs:byte list`; `n:num`; `8:num`] NUM_OF_BYTELIST_SUB_LIST) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC);;
