@@ -684,6 +684,15 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
            tail-bytes preservation) is the next session's job. *)
         REWRITE_TAC[SOME_FLAGS] THEN
         ARM_BIGSTEP_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC "s_post" THEN
+        BETA_TAC THEN
+        ASM_REWRITE_TAC[] THEN
+        REPEAT CONJ_TAC THEN
+        TRY (FIRST_X_ASSUM ACCEPT_TAC) THEN
+        TRY (AP_TERM_TAC THEN AP_TERM_TAC THEN
+             MATCH_MP_TAC LOOP16_CONSUMED_EQUALS_SUBLIST THEN
+             ASM_ARITH_TAC) THEN
+        TRY (MATCH_MP_TAC BYTES64_ZEROS_TO_BYTELIST_ZEROS THEN
+             ASM_REWRITE_TAC[]) THEN
         CHEAT_TAC;
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
