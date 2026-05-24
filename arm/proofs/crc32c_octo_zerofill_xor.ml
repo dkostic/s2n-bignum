@@ -554,6 +554,81 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           `\j:num. word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs7)):int64`;
           `iters:num`; `residue:num`; `pc + 0x30`]
          CRC32C_LOOP16_CORRECT) THEN
+        ANTS_TAC THENL
+         [(* Discharge LOOP16 antecedents: 1<=iters, residue<16,
+             16*iters+residue<2^63, PAIRWISE nonoverlapping.
+             For the PAIRWISE conjunct, reduce LENGTH X_mc to numerals
+             on both sides so NONOVERLAPPING_TAC's drivers can shrink
+             the (word pc, 624)-region hyps to (word pc, 140)-region
+             goals. *)
+          REPEAT CONJ_TAC THENL
+           [ASM_REWRITE_TAC[];
+            ASM_REWRITE_TAC[];
+            ASM_REWRITE_TAC[];
+            REWRITE_TAC[PAIRWISE; ALL] THEN
+            CONV_TAC(REWRITE_CONV
+             [fst CRC32C_OCTO_ZERO_FILL_XOR_EXEC;
+              fst CRC32C_LOOP16_EXEC] THENC NUM_REDUCE_CONV) THEN
+            RULE_ASSUM_TAC(REWRITE_RULE[fst CRC32C_OCTO_ZERO_FILL_XOR_EXEC]) THEN
+            REPEAT CONJ_TAC THEN NONOVERLAPPING_TAC];
+          ALL_TAC] THEN
+        (* Pre-stage the 16 per-iteration `read bytes64 ...` conjuncts
+           from the LOOP16 precondition via BYTES64_FROM_BYTELIST. *)
+        SUBGOAL_THEN
+          `!j. j < iters
+                ==> read (memory :> bytes64
+                          (word_add a0 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs0)) /\
+                    read (memory :> bytes64
+                          (word_add a0 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs0)) /\
+                    read (memory :> bytes64
+                          (word_add a1 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs1)) /\
+                    read (memory :> bytes64
+                          (word_add a1 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs1)) /\
+                    read (memory :> bytes64
+                          (word_add a2 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs2)) /\
+                    read (memory :> bytes64
+                          (word_add a2 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs2)) /\
+                    read (memory :> bytes64
+                          (word_add a3 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs3)) /\
+                    read (memory :> bytes64
+                          (word_add a3 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs3)) /\
+                    read (memory :> bytes64
+                          (word_add a4 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs4)) /\
+                    read (memory :> bytes64
+                          (word_add a4 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs4)) /\
+                    read (memory :> bytes64
+                          (word_add a5 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs5)) /\
+                    read (memory :> bytes64
+                          (word_add a5 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs5)) /\
+                    read (memory :> bytes64
+                          (word_add a6 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs6)) /\
+                    read (memory :> bytes64
+                          (word_add a6 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs6)) /\
+                    read (memory :> bytes64
+                          (word_add a7 (word(16*j)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j, 8) bs7)) /\
+                    read (memory :> bytes64
+                          (word_add a7 (word(16*j+8)))) s0 =
+                    word(num_of_bytelist(SUB_LIST(16*j+8, 8) bs7))`
+          ASSUME_TAC THENL
+         [GEN_TAC THEN STRIP_TAC THEN REPEAT CONJ_TAC THEN
+          MATCH_MP_TAC BYTES64_FROM_BYTELIST THEN
+          ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+          ALL_TAC] THEN
         CHEAT_TAC;
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
