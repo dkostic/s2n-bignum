@@ -475,6 +475,40 @@ let BYTES64_ZEROS_TO_BYTELIST_ZEROS = prove
     MATCH_MP_TAC BYTES64_ZERO_TO_BYTELIST_8_ZEROS THEN
     ASM_REWRITE_TAC[]]);;
 
+(* If a (m+n)-byte bytelist read at `a` equals `bs`, then the m-byte prefix  *)
+(* read equals SUB_LIST(0,m) bs and the n-byte suffix read at offset m       *)
+(* equals SUB_LIST(m,n) bs.                                                   *)
+let MEMORY_BYTELIST_SPLIT = prove
+ (`!(a:int64) m n s bs.
+        read (memory :> bytelist (a, m + n)) s = bs
+        ==> read (memory :> bytelist (a, m)) s = SUB_LIST (0, m) bs /\
+            read (memory :> bytelist
+                  (word_add a (word m), n)) s =
+              SUB_LIST (m, n) bs`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  SUBGOAL_THEN `LENGTH (bs:byte list) = m + n` ASSUME_TAC THENL
+   [FIRST_ASSUM(MP_TAC o REWRITE_RULE[READ_BYTELIST_EQ_BYTES]) THEN
+    MESON_TAC[]; ALL_TAC] THEN
+  ABBREV_TAC `bs1 = SUB_LIST(0,m) (bs:byte list)` THEN
+  ABBREV_TAC `bs2 = SUB_LIST(m,n) (bs:byte list)` THEN
+  SUBGOAL_THEN `LENGTH (bs1:byte list) = m /\ LENGTH (bs2:byte list) = n`
+    STRIP_ASSUME_TAC THENL
+   [MAP_EVERY EXPAND_TAC ["bs1"; "bs2"] THEN
+    REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_REWRITE_TAC[] THEN
+    CONJ_TAC THEN ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `bs:byte list = APPEND bs1 bs2` ASSUME_TAC THENL
+   [MAP_EVERY EXPAND_TAC ["bs1"; "bs2"] THEN
+    MP_TAC(ISPECL [`bs:byte list`; `m:num`] SUB_LIST_TOPSPLIT) THEN
+    ASM_REWRITE_TAC[ARITH_RULE `(m+n) - m = n`] THEN MESON_TAC[];
+    ALL_TAC] THEN
+  UNDISCH_TAC `read (memory :> bytelist (a:int64, m + n)) s = bs` THEN
+  ONCE_ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN `m + n = LENGTH (APPEND (bs1:byte list) bs2)`
+    (fun th -> ONCE_REWRITE_TAC[th]) THENL
+   [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+  ASM_REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE]);;
+
 (* ------------------------------------------------------------------------- *)
 (* CORE correctness theorem (Phase 9 — body proof, post-prologue).            *)
 (*                                                                           *)
