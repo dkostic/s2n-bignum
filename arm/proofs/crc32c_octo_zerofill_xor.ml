@@ -369,6 +369,34 @@ let LOOP16_CONSUMED_EQUALS_SUBLIST = prove
   MATCH_MP_TAC DECODE_8_BYTES THEN
   REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC);;
 
+(* num_of_bytelist of a list of zero bytes is 0. *)
+let NUM_OF_BYTELIST_REPLICATE_ZERO = prove
+ (`!n:num. num_of_bytelist (REPLICATE n (word 0:byte)) = 0`,
+  INDUCT_TAC THEN
+  ASM_REWRITE_TAC[REPLICATE; num_of_bytelist; VAL_WORD_0;
+                  MULT_CLAUSES; ADD_CLAUSES]);;
+
+(* If a bytes64 read at `a` is word 0, then the 8-byte bytelist at `a` is     *)
+(* the all-zero list of length 8.                                            *)
+let BYTES64_ZERO_TO_BYTELIST_8_ZEROS = prove
+ (`!(a:int64) (s:armstate).
+        read (memory :> bytes64 a) s = word 0
+        ==> read (memory :> bytelist (a, 8)) s = REPLICATE 8 (word 0)`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[READ_BYTELIST_EQ_BYTES; LENGTH_REPLICATE;
+              NUM_OF_BYTELIST_REPLICATE_ZERO] THEN
+  UNDISCH_TAC `read (memory :> bytes64 a) s = word 0` THEN
+  REWRITE_TAC[bytes64; READ_COMPONENT_COMPOSE; asword; through; read] THEN
+  MP_TAC(ISPECL [`a:int64`; `8:num`; `read memory s :int64->byte`]
+                READ_BYTES_BOUND) THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  DISCH_TAC THEN
+  DISCH_THEN(MP_TAC o MATCH_MP
+    (MESON[WORD_EQ_0; DIMINDEX_64]
+       `word x:int64 = word 0 ==> x < 2 EXP 64 ==> x = 0`)) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN MATCH_MP_TAC THEN POP_ASSUM MP_TAC THEN ARITH_TAC);;
+
 let BYTES64_ZEROS_TO_BYTELIST_ZEROS = prove
  (`!(a:int64) (s:armstate) iters.
         (!j. j < iters
@@ -378,7 +406,74 @@ let BYTES64_ZEROS_TO_BYTELIST_ZEROS = prove
                  word 0)
         ==> read (memory :> bytelist (a, 16 * iters)) s =
             REPLICATE (16 * iters) (word 0)`,
-  CHEAT_TAC);;
+  GEN_TAC THEN GEN_TAC THEN INDUCT_TAC THENL
+   [STRIP_TAC THEN
+    REWRITE_TAC[MULT_CLAUSES; REPLICATE; READ_COMPONENT_COMPOSE;
+                bytelist_clauses];
+    ALL_TAC] THEN
+  DISCH_TAC THEN
+  REWRITE_TAC[ARITH_RULE `16 * SUC iters = 16 * iters + 16`] THEN
+  SUBGOAL_THEN
+    `!m. REPLICATE (m + 16) (word 0:byte) =
+         APPEND (REPLICATE m (word 0:byte)) (REPLICATE 16 (word 0:byte))`
+    (fun th -> REWRITE_TAC[th]) THENL
+   [INDUCT_TAC THEN ASM_REWRITE_TAC[REPLICATE; APPEND; ADD_CLAUSES];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `LENGTH (REPLICATE (16 * iters) (word 0:byte)) = 16 * iters /\
+     LENGTH (REPLICATE 16 (word 0:byte)) = 16 /\
+     LENGTH (APPEND (REPLICATE (16 * iters) (word 0:byte))
+                    (REPLICATE 16 (word 0:byte))) = 16 * iters + 16`
+    STRIP_ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH_REPLICATE; LENGTH_APPEND]; ALL_TAC] THEN
+  FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
+  REWRITE_TAC[GSYM bytes_loaded; bytes_loaded_append; LENGTH_REPLICATE] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[bytes_loaded; LENGTH_REPLICATE] THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN
+    REPEAT STRIP_TAC THEN
+    FIRST_X_ASSUM(MP_TAC o SPEC `j:num`) THEN
+    ASM_SIMP_TAC[ARITH_RULE `j < iters ==> j < SUC iters`];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (memory :> bytes64 (word_add a (word (16*iters)))) s = word 0 /\
+     read (memory :> bytes64 (word_add a (word (16*iters + 8)))) s = word 0`
+    MP_TAC THENL
+   [UNDISCH_TAC
+      `forall j. j < SUC iters
+                 ==> read (memory :> bytes64 (word_add a (word (16 * j)))) s =
+                     word 0 /\
+                     read (memory :> bytes64 (word_add a (word (16 * j + 8))))
+                     s = word 0` THEN
+    DISCH_THEN(MP_TAC o SPEC `iters:num`) THEN
+    REWRITE_TAC[LT];
+    ALL_TAC] THEN
+  STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(REPLICATE 16 (word 0:byte)) =
+     APPEND (REPLICATE 8 (word 0:byte)) (REPLICATE 8 (word 0:byte))`
+    SUBST1_TAC THENL
+   [CONV_TAC(LAND_CONV(REWRITE_CONV
+       [num_CONV `16`; num_CONV `15`; num_CONV `14`; num_CONV `13`;
+        num_CONV `12`; num_CONV `11`; num_CONV `10`; num_CONV `9`;
+        num_CONV `8`; num_CONV `7`; num_CONV `6`; num_CONV `5`;
+        num_CONV `4`; num_CONV `3`; num_CONV `2`; num_CONV `1`;
+        REPLICATE])) THEN
+    CONV_TAC(RAND_CONV(REWRITE_CONV
+       [num_CONV `8`; num_CONV `7`; num_CONV `6`; num_CONV `5`;
+        num_CONV `4`; num_CONV `3`; num_CONV `2`; num_CONV `1`;
+        REPLICATE; APPEND])) THEN
+    REFL_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[bytes_loaded_append; LENGTH_REPLICATE] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[bytes_loaded; LENGTH_REPLICATE] THEN
+    MATCH_MP_TAC BYTES64_ZERO_TO_BYTELIST_8_ZEROS THEN
+    ASM_REWRITE_TAC[];
+    REWRITE_TAC[GSYM WORD_ADD; GSYM WORD_ADD_ASSOC] THEN
+    REWRITE_TAC[bytes_loaded; LENGTH_REPLICATE] THEN
+    MATCH_MP_TAC BYTES64_ZERO_TO_BYTELIST_8_ZEROS THEN
+    ASM_REWRITE_TAC[]]);;
 
 (* ------------------------------------------------------------------------- *)
 (* CORE correctness theorem (Phase 9 — body proof, post-prologue).            *)
