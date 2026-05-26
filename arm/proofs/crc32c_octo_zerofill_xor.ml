@@ -1011,7 +1011,56 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
                ASM_REWRITE_TAC[])];
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
-        CHEAT_TAC]]]);;
+        (* Inner cut at pc+0x24c (post-tail, pre-XOR):                            *)
+        (*   - 8 partial CRCs in X8..X15 (full bs_i now consumed).                *)
+        (*   - 8 buffers fully zeroed (length len).                                *)
+        (*   - SP preserved.                                                       *)
+        ENSURES_SEQUENCE_TAC `pc + 0x24c`
+         `\s. read SP s = sp_in /\
+              read X8 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs0) /\
+              read X9 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs1) /\
+              read X10 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs2) /\
+              read X11 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs3) /\
+              read X12 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs4) /\
+              read X13 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs5) /\
+              read X14 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs6) /\
+              read X15 s =
+                word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs7) /\
+              read (memory :> bytelist (a0, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a1, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a2, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a3, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a4, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a5, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a6, len)) s =
+                REPLICATE len (word 0) /\
+              read (memory :> bytelist (a7, len)) s =
+                REPLICATE len (word 0)` THEN
+        CONJ_TAC THENL
+         [(* Sub-subgoal 1: pc+0xbc -> pc+0x24c, tail blocks (TBZ-gated).         *)
+          (* This is the residue<16 byte-by-byte CRC32C consumption across 4      *)
+          (* TBZ-gated blocks (8/4/2/1-byte). Deferred to a follow-up session.    *)
+          CHEAT_TAC;
+          (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
+          (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
+          (* w_i = crc32c_bytes 0xFFFFFFFF bs_i. The desired                       *)
+          (* `crc32c_xor8 = word_xor (word_not w_0) ... (word_not w_7)` equals     *)
+          (* the XOR of the unfinalised values because 8 copies of 0xFFFFFFFF     *)
+          (* XOR to zero.                                                          *)
+          CHEAT_TAC]]]]);;
 
 (* ------------------------------------------------------------------------- *)
 (* Top-level correctness theorem (Phase 9).                                   *)
