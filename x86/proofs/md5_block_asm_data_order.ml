@@ -18485,3 +18485,334 @@ let MD5_LOOP_CORRECT = prove
    ENSURES_INIT_TAC "s0" THEN
    X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC [1] THEN
    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Final correctness theorem for the core (post-prologue, pre-epilogue) span *)
+(* of md5_block_asm_data_order: [pc+8, pc+2262).                              *)
+(*                                                                           *)
+(* Composition:                                                              *)
+(*   - num_blocks = 0: prologue + JE-taken (9 steps), state untouched.       *)
+(*   - num_blocks > 0: prologue + JE-not-taken to pc+40, then                 *)
+(*                     MD5_LOOP_CORRECT to pc+2250, then 4-step writeback.   *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_BLOCK_ASM_DATA_ORDER_CORRECT = prove
+ (`!num_blocks (blocks:(int32 list) list) initial_state
+    state_ptr:int64 data_ptr:int64 pc.
+    num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    LENGTH initial_state = 4 /\
+    val data_ptr + 64 * num_blocks < 2 EXP 64 /\
+    nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                   (data_ptr:int64, 64 * num_blocks) /\
+    nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                   (state_ptr:int64, 16) /\
+    nonoverlapping (state_ptr:int64, 16) (data_ptr:int64, 64 * num_blocks)
+    ==> ensures x86
+      (\s. bytes_loaded s (word pc)
+              (BUTLAST md5_block_asm_data_order_tmc) /\
+           read RIP s = word(pc + 8) /\
+           read RDI s = state_ptr /\
+           read RSI s = data_ptr /\
+           read RDX s = word num_blocks /\
+           (!k. k < 4 ==>
+                read (memory :> bytes32
+                      (word_add state_ptr (word(4 * k)))) s
+                = EL k initial_state) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                  read (memory :> bytes32
+                        (word_add data_ptr (word(64 * j + 4 * t)))) s
+                  = EL t (EL j blocks)))
+      (\s. read RIP s = word(pc + 2262) /\
+           (!k. k < 4 ==>
+                read (memory :> bytes32
+                      (word_add state_ptr (word(4 * k)))) s
+                = EL k (md5_hash_blocks num_blocks blocks initial_state)))
+      (MAYCHANGE [RIP] ,, MAYCHANGE [events] ,,
+       MAYCHANGE [RAX; RBX; RCX; RDX; RDI; RSI; RBP;
+                  R8; R9; R10; R11; R12; R14; R15] ,,
+       MAYCHANGE SOME_FLAGS ,,
+       MAYCHANGE [memory :> bytes (state_ptr,16)])`,
+  REWRITE_TAC[SOME_FLAGS] THEN
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPEC `initial_state:int32 list` LIST_4_EL) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  ABBREV_TAC `a = EL 0 initial_state:int32` THEN
+  ABBREV_TAC `b = EL 1 initial_state:int32` THEN
+  ABBREV_TAC `c = EL 2 initial_state:int32` THEN
+  ABBREV_TAC `d = EL 3 initial_state:int32` THEN
+  ENSURES_SEQUENCE_TAC `pc + 2250`
+    `\s. bytes_loaded s (word pc)
+            (BUTLAST md5_block_asm_data_order_tmc) /\
+         read RIP s = word(pc + 2250) /\
+         read RBP s = state_ptr /\
+         read RAX s =
+           word_zx (EL 0 (md5_hash_blocks num_blocks blocks
+                          [a:int32; b; c; d])) /\
+         read RBX s =
+           word_zx (EL 1 (md5_hash_blocks num_blocks blocks
+                          [a:int32; b; c; d])) /\
+         read RCX s =
+           word_zx (EL 2 (md5_hash_blocks num_blocks blocks
+                          [a:int32; b; c; d])) /\
+         read RDX s =
+           word_zx (EL 3 (md5_hash_blocks num_blocks blocks
+                          [a:int32; b; c; d])) /\
+         (!k. k < 4 ==>
+              read (memory :> bytes32
+                    (word_add state_ptr (word(4 * k)))) s
+              = EL k initial_state)` THEN
+  CONJ_TAC THENL
+   [(* Segment 1: pc+8 -> pc+2250. *)
+    ASM_CASES_TAC `num_blocks = 0` THENL
+     [(* num_blocks = 0 case. *)
+      SUBST_ALL_TAC(ASSUME `num_blocks = 0`) THEN
+      REWRITE_TAC[md5_hash_blocks] THEN
+      RULE_ASSUM_TAC(REWRITE_RULE[MULT_CLAUSES; ARITH_RULE `64 * 0 = 0`]) THEN
+      ENSURES_INIT_TAC "s0" THEN
+      UNDISCH_TAC
+        `forall k.
+              k < 4
+              ==> read (memory :> bytes32 (word_add state_ptr (word (4 * k)))) s0 =
+                  EL k initial_state` THEN
+      DISCH_THEN(LABEL_TAC "STATE_MEM") THEN
+      MAP_EVERY (fun n ->
+        USE_THEN "STATE_MEM" (MP_TAC o SPEC n) THEN
+        REWRITE_TAC[ARITH_LT; MULT_CLAUSES; WORD_ADD_0;
+                    ARITH_RULE `4 * 0 = 0`; ARITH_RULE `4 * 1 = 4`;
+                    ARITH_RULE `4 * 2 = 8`; ARITH_RULE `4 * 3 = 12`] THEN
+        CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+        ASM_REWRITE_TAC[] THEN
+        CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN DISCH_TAC)
+        [`0`; `1`; `2`; `3`] THEN
+      X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--9) THEN
+      ENSURES_FINAL_STATE_TAC THEN
+      ASM_REWRITE_TAC[] THEN
+      GEN_TAC THEN
+      REWRITE_TAC[ARITH_RULE `k < 4 <=> k = 0 \/ k = 1 \/ k = 2 \/ k = 3`] THEN
+      STRIP_TAC THEN ASM_REWRITE_TAC[
+        ARITH_RULE `4 * 0 = 0`; ARITH_RULE `4 * 1 = 4`;
+        ARITH_RULE `4 * 2 = 8`; ARITH_RULE `4 * 3 = 12`;
+        WORD_ADD_0] THEN
+      CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN ASM_REWRITE_TAC[];
+
+      (* num_blocks != 0 case. *)
+      SUBGOAL_THEN `1 <= num_blocks` ASSUME_TAC THENL
+       [ASM_ARITH_TAC; ALL_TAC] THEN
+      ENSURES_SEQUENCE_TAC `pc + 40`
+        `\s. bytes_loaded s (word pc)
+                (BUTLAST md5_block_asm_data_order_tmc) /\
+             read RIP s = word(pc + 40) /\
+             read RBP s = state_ptr /\
+             read RSI s = data_ptr /\
+             read RDI s = word_add data_ptr (word(64 * num_blocks)) /\
+             read RAX s = word_zx (a:int32) /\
+             read RBX s = word_zx (b:int32) /\
+             read RCX s = word_zx (c:int32) /\
+             read RDX s = word_zx (d:int32) /\
+             (!k. k < 4 ==>
+                  read (memory :> bytes32
+                        (word_add state_ptr (word(4 * k)))) s
+                  = EL k initial_state) /\
+             (!j t. j < num_blocks /\ t < 16 ==>
+                    read (memory :> bytes32
+                          (word_add data_ptr (word(64 * j + 4 * t)))) s
+                    = EL t (EL j blocks))` THEN
+      CONJ_TAC THENL
+       [(* Segment 1.A: pc+8 -> pc+40. *)
+        ENSURES_INIT_TAC "s0" THEN
+        UNDISCH_TAC
+          `forall k.
+                k < 4
+                ==> read (memory :> bytes32 (word_add state_ptr (word (4 * k)))) s0 =
+                    EL k initial_state` THEN
+        DISCH_THEN(LABEL_TAC "STATE_MEM") THEN
+        MAP_EVERY (fun n ->
+          USE_THEN "STATE_MEM" (MP_TAC o SPEC n) THEN
+          REWRITE_TAC[ARITH_LT; MULT_CLAUSES; WORD_ADD_0;
+                      ARITH_RULE `4 * 0 = 0`; ARITH_RULE `4 * 1 = 4`;
+                      ARITH_RULE `4 * 2 = 8`; ARITH_RULE `4 * 3 = 12`] THEN
+          CONV_TAC(LAND_CONV(ONCE_DEPTH_CONV NUM_REDUCE_CONV)) THEN
+          ASM_REWRITE_TAC[] THEN
+          CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN DISCH_TAC)
+          [`0`; `1`; `2`; `3`] THEN
+        X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--9) THEN
+        ENSURES_FINAL_STATE_TAC THEN
+        ASM_REWRITE_TAC[] THEN
+        SUBGOAL_THEN
+          `val (word_shl (word num_blocks:int64) 6) = 64 * num_blocks`
+          ASSUME_TAC THENL
+         [REWRITE_TAC[VAL_WORD_SHL; VAL_WORD; DIMINDEX_64] THEN
+          SUBGOAL_THEN `num_blocks MOD 2 EXP 64 = num_blocks` SUBST1_TAC THENL
+           [MATCH_MP_TAC MOD_LT THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+          REWRITE_TAC[ARITH_RULE `2 EXP 6 = 64`] THEN
+          MATCH_MP_TAC MOD_LT THEN
+          UNDISCH_TAC `val (data_ptr:int64) + 64 * num_blocks < 2 EXP 64` THEN
+          ARITH_TAC; ALL_TAC] THEN
+        SUBGOAL_THEN
+          `~(val (word_neg (word (64 * num_blocks):int64)) = 0)`
+          ASSUME_TAC THENL
+         [REWRITE_TAC[VAL_EQ_0; WORD_NEG_EQ_0] THEN
+          REWRITE_TAC[GSYM VAL_EQ_0; VAL_WORD; DIMINDEX_64; VAL_WORD_0] THEN
+          SUBGOAL_THEN `(64 * num_blocks) MOD 2 EXP 64 = 64 * num_blocks` SUBST1_TAC THENL
+           [MATCH_MP_TAC MOD_LT THEN
+            UNDISCH_TAC `val (data_ptr:int64) + 64 * num_blocks < 2 EXP 64` THEN
+            ARITH_TAC; ALL_TAC] THEN
+          ASM_ARITH_TAC; ALL_TAC] THEN
+        ASM_REWRITE_TAC[MULT_CLAUSES] THEN
+        GEN_TAC THEN
+        REWRITE_TAC[ARITH_RULE `k < 4 <=> k = 0 \/ k = 1 \/ k = 2 \/ k = 3`] THEN
+        STRIP_TAC THEN ASM_REWRITE_TAC[
+          ARITH_RULE `4 * 0 = 0`; ARITH_RULE `4 * 1 = 4`;
+          ARITH_RULE `4 * 2 = 8`; ARITH_RULE `4 * 3 = 12`;
+          WORD_ADD_0] THEN
+        CONV_TAC(ONCE_DEPTH_CONV EL_CONV) THEN ASM_REWRITE_TAC[];
+
+        (* Segment 1.B: pc+40 -> pc+2250 via MD5_LOOP_CORRECT. *)
+        MP_TAC(SPECL
+          [`num_blocks:num`; `blocks:(int32 list) list`;
+           `a:int32`; `b:int32`; `c:int32`; `d:int32`;
+           `data_ptr:int64`; `pc:num`] MD5_LOOP_CORRECT) THEN
+        ANTS_TAC THENL
+         [ASM_REWRITE_TAC[] THEN NONOVERLAPPING_TAC; ALL_TAC] THEN
+        MATCH_MP_TAC ENSURES_SUBLEMMA_THM THEN
+        REPEAT CONJ_TAC THENL
+         [(* Pre-strengthen *)
+          GEN_TAC THEN STRIP_TAC THEN
+          POP_ASSUM(MP_TAC o BETA_RULE) THEN STRIP_TAC THEN
+          ASM_REWRITE_TAC[];
+          (* MAYCHANGE-subsume *)
+          REWRITE_TAC[SOME_FLAGS] THEN SUBSUMED_MAYCHANGE_TAC;
+          (* Post-weaken *)
+          REPEAT GEN_TAC THEN
+          REPEAT(DISCH_THEN(CONJUNCTS_THEN2 STRIP_ASSUME_TAC MP_TAC)) THEN
+          REWRITE_TAC[MAYCHANGE; SOME_FLAGS; SEQ_ID; GSYM SEQ_ASSOC] THEN
+          PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN
+          CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+          REWRITE_TAC[ASSIGNS_THM; LEFT_IMP_EXISTS_THM] THEN REPEAT GEN_TAC THEN
+          RULE_ASSUM_TAC BETA_RULE THEN
+          FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+          FIRST_X_ASSUM(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC o check (is_conj o concl)) THEN
+          NONSELFMODIFYING_STATE_UPDATE_TAC
+            (MATCH_MP bytes_loaded_update (fst MD5_BLOCK_ASM_DATA_ORDER_EXEC)) THEN
+          ASSUMPTION_STATE_UPDATE_TAC THEN DISCH_THEN(K ALL_TAC) THEN
+          ASM_REWRITE_TAC[]]]];
+
+    (* Segment 2: pc+2250 -> pc+2262 (4 writeback movs). *)
+    SUBGOAL_THEN
+      `nonoverlapping (word pc:int64, 2291) (state_ptr:int64, 16)`
+      ASSUME_TAC THENL
+     [SUBGOAL_THEN `LENGTH md5_block_asm_data_order_tmc = 2291` MP_TAC THENL
+       [REWRITE_TAC[md5_block_asm_data_order_tmc] THEN
+        CONV_TAC(LAND_CONV LENGTH_CONV) THEN REFL_TAC; ALL_TAC] THEN
+      DISCH_THEN(SUBST1_TAC o SYM) THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+    ENSURES_INIT_TAC "s0" THEN
+    X86_STEPS_TAC MD5_BLOCK_ASM_DATA_ORDER_EXEC (1--4) THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[] THEN
+    GEN_TAC THEN
+    REWRITE_TAC[ARITH_RULE `k < 4 <=> k = 0 \/ k = 1 \/ k = 2 \/ k = 3`] THEN
+    STRIP_TAC THEN
+    ASM_REWRITE_TAC[
+      ARITH_RULE `4 * 0 = 0`; ARITH_RULE `4 * 1 = 4`;
+      ARITH_RULE `4 * 2 = 8`; ARITH_RULE `4 * 3 = 12`; WORD_ADD_0] THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64;
+             ARITH_RULE `32 <= 64`; LE_REFL]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Subroutine-level correctness with prologue/epilogue                       *)
+(* (5 callee-save pushes: RBP, RBX, R12, R14, R15; stack offset 40 bytes;    *)
+(* epilogue is 5 mov-from-stack + add rsp 40 + ret = 7 instructions).        *)
+(* ------------------------------------------------------------------------- *)
+
+let MD5_BLOCK_ASM_DATA_ORDER_NOIBT_SUBROUTINE_CORRECT = prove
+ (`!num_blocks (blocks:(int32 list) list) initial_state
+    state_ptr:int64 data_ptr:int64 pc:num
+    stackpointer:int64 returnaddress:int64.
+    num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    LENGTH initial_state = 4 /\
+    val data_ptr + 64 * num_blocks < 2 EXP 64 /\
+    nonoverlapping (word_sub stackpointer (word 40), 40)
+                   (word pc, LENGTH md5_block_asm_data_order_tmc) /\
+    ALL (nonoverlapping (word_sub stackpointer (word 40), 48))
+        [(word pc, LENGTH md5_block_asm_data_order_tmc);
+         (state_ptr, 16); (data_ptr, 64 * num_blocks)] /\
+    nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                   (data_ptr:int64, 64 * num_blocks) /\
+    nonoverlapping (word pc, LENGTH md5_block_asm_data_order_tmc)
+                   (state_ptr:int64, 16) /\
+    nonoverlapping (state_ptr:int64, 16) (data_ptr:int64, 64 * num_blocks)
+    ==> ensures x86
+      (\s. bytes_loaded s (word pc) md5_block_asm_data_order_tmc /\
+           read RIP s = word pc /\
+           read RSP s = stackpointer /\
+           read (memory :> bytes64 stackpointer) s = returnaddress /\
+           C_ARGUMENTS [state_ptr; data_ptr; word num_blocks] s /\
+           (!k. k < 4 ==>
+                read (memory :> bytes32
+                      (word_add state_ptr (word(4 * k)))) s
+                = EL k initial_state) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                  read (memory :> bytes32
+                        (word_add data_ptr (word(64 * j + 4 * t)))) s
+                  = EL t (EL j blocks)))
+      (\s. read RIP s = returnaddress /\
+           read RSP s = word_add stackpointer (word 8) /\
+           (!k. k < 4 ==>
+                read (memory :> bytes32
+                      (word_add state_ptr (word(4 * k)))) s
+                = EL k (md5_hash_blocks num_blocks blocks initial_state)))
+      (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+       MAYCHANGE [memory :> bytes (state_ptr,16);
+                  memory :> bytes (word_sub stackpointer (word 40), 40)])`,
+  GEN_X86_ADD_RETURN_STACK_TAC
+    (X86_MK_EXEC_RULE md5_block_asm_data_order_tmc)
+    (X86_CORE_PROMOTE MD5_BLOCK_ASM_DATA_ORDER_CORRECT)
+    `[RBX; RBP; R12; R14; R15]` 40 (5,7));;
+
+let MD5_BLOCK_ASM_DATA_ORDER_SUBROUTINE_CORRECT = prove
+ (`!num_blocks (blocks:(int32 list) list) initial_state
+    state_ptr:int64 data_ptr:int64 pc:num
+    stackpointer:int64 returnaddress:int64.
+    num_blocks < 2 EXP 64 /\
+    LENGTH blocks = num_blocks /\
+    ALL (\bl. LENGTH bl = 16) blocks /\
+    LENGTH initial_state = 4 /\
+    val data_ptr + 64 * num_blocks < 2 EXP 64 /\
+    nonoverlapping (word_sub stackpointer (word 40), 40)
+                   (word pc, LENGTH md5_block_asm_data_order_mc) /\
+    ALL (nonoverlapping (word_sub stackpointer (word 40), 48))
+        [(word pc, LENGTH md5_block_asm_data_order_mc);
+         (state_ptr, 16); (data_ptr, 64 * num_blocks)] /\
+    nonoverlapping (word pc, LENGTH md5_block_asm_data_order_mc)
+                   (data_ptr:int64, 64 * num_blocks) /\
+    nonoverlapping (word pc, LENGTH md5_block_asm_data_order_mc)
+                   (state_ptr:int64, 16) /\
+    nonoverlapping (state_ptr:int64, 16) (data_ptr:int64, 64 * num_blocks)
+    ==> ensures x86
+      (\s. bytes_loaded s (word pc) md5_block_asm_data_order_mc /\
+           read RIP s = word pc /\
+           read RSP s = stackpointer /\
+           read (memory :> bytes64 stackpointer) s = returnaddress /\
+           C_ARGUMENTS [state_ptr; data_ptr; word num_blocks] s /\
+           (!k. k < 4 ==>
+                read (memory :> bytes32
+                      (word_add state_ptr (word(4 * k)))) s
+                = EL k initial_state) /\
+           (!j t. j < num_blocks /\ t < 16 ==>
+                  read (memory :> bytes32
+                        (word_add data_ptr (word(64 * j + 4 * t)))) s
+                  = EL t (EL j blocks)))
+      (\s. read RIP s = returnaddress /\
+           read RSP s = word_add stackpointer (word 8) /\
+           (!k. k < 4 ==>
+                read (memory :> bytes32
+                      (word_add state_ptr (word(4 * k)))) s
+                = EL k (md5_hash_blocks num_blocks blocks initial_state)))
+      (MAYCHANGE [RSP] ,, MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+       MAYCHANGE [memory :> bytes (state_ptr,16);
+                  memory :> bytes (word_sub stackpointer (word 40), 40)])`,
+  MATCH_ACCEPT_TAC(ADD_IBT_RULE MD5_BLOCK_ASM_DATA_ORDER_NOIBT_SUBROUTINE_CORRECT));;
