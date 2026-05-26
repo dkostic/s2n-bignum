@@ -928,28 +928,88 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           MATCH_MP_TAC BYTES64_FROM_BYTELIST THEN
           ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
           ALL_TAC] THEN
+        (* Pre-stage the 8 suffix-bytelist facts at s0 from the original
+           bytelist hypotheses via MEMORY_BYTELIST_SPLIT. These suffix
+           reads are at memory disjoint from LOOP16's MAYCHANGE region
+           (bytes(a_i, 16*iters)), so the orthogonal-write conv inside
+           ARM_BIGSTEP_TAC will lift them to s_post automatically.       *)
+        SUBGOAL_THEN
+          `read (memory :> bytelist
+                 (word_add a0 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs0 /\
+           read (memory :> bytelist
+                 (word_add a1 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs1 /\
+           read (memory :> bytelist
+                 (word_add a2 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs2 /\
+           read (memory :> bytelist
+                 (word_add a3 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs3 /\
+           read (memory :> bytelist
+                 (word_add a4 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs4 /\
+           read (memory :> bytelist
+                 (word_add a5 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs5 /\
+           read (memory :> bytelist
+                 (word_add a6 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs6 /\
+           read (memory :> bytelist
+                 (word_add a7 (word(16 * iters)), residue)) s0 =
+             SUB_LIST (16 * iters, residue) bs7`
+          STRIP_ASSUME_TAC THENL
+         [REPEAT CONJ_TAC THEN
+          (MATCH_MP_TAC(MESON[MEMORY_BYTELIST_SPLIT]
+            `read (memory :> bytelist (a:int64, m + n)) s = bs
+             ==> read (memory :> bytelist
+                       (word_add a (word m), n)) s =
+                 SUB_LIST (m, n) bs`) THEN
+           ONCE_REWRITE_TAC[GSYM(ASSUME `16 * iters + residue = len`)] THEN
+           ASM_REWRITE_TAC[]);
+          ALL_TAC] THEN
         (* Apply the LOOP16 lemma as a single BIGSTEP. We unfold SOME_FLAGS
            so MAYCHANGE_STATE_UPDATE_TAC inside ARM_BIGSTEP_TAC can match the
-           per-flag writes. After BIGSTEP fires, the postcondition translation
-           (consumed_bytes -> SUB_LIST, bytes64-zeros -> bytelist-zeros, and
-           tail-bytes preservation) is the next session's job. *)
+           per-flag writes. After BIGSTEP fires, the post-BIGSTEP TRY-chain
+           handles: (i) reflexive PC/X*/X19 conjuncts, (ii) consumed_bytes ->
+           SUB_LIST via LOOP16_CONSUMED_EQUALS_SUBLIST, (iii) bytes64-zeros ->
+           bytelist-zeros via BYTES64_ZEROS_TO_BYTELIST_ZEROS, and (iv) suffix
+           preservation via the pre-staged hypotheses (lifted automatically
+           through BIGSTEP's orthogonal-write conv).                          *)
         REWRITE_TAC[SOME_FLAGS] THEN
-        ARM_BIGSTEP_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC "s_post" THEN
-        BETA_TAC THEN
-        ASM_REWRITE_TAC[] THEN
-        REPEAT CONJ_TAC THEN
-        TRY (FIRST_X_ASSUM ACCEPT_TAC) THEN
-        TRY (AP_TERM_TAC THEN AP_TERM_TAC THEN
-             MATCH_MP_TAC LOOP16_CONSUMED_EQUALS_SUBLIST THEN
-             ASM_ARITH_TAC) THEN
-        TRY (MATCH_MP_TAC BYTES64_ZEROS_TO_BYTELIST_ZEROS THEN
-             ASM_REWRITE_TAC[]) THEN
-        (* Residual subgoals: the suffix bytelist reads at offset 16*iters.
-           These are preserved through LOOP16's MAYCHANGE since LOOP16 only
-           writes to bytes(a_i, 16*iters), and the suffix is at
-           [16*iters, len). Closure via NONOVERLAPPING + MAYCHANGE-frame
-           preservation is left to a follow-up session. *)
-        CHEAT_TAC;
+        ARM_BIGSTEP_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC "s_post" THENL
+         [(* Branch 1: LOOP16 precondition at s0. After BETA + ASM_REWRITE,
+             8 conjuncts of the form `word 4294967295 = word_zx (word 4294967295)`
+             remain; close them via WORD_REDUCE_CONV.                            *)
+          BETA_TAC THEN ASM_REWRITE_TAC[] THEN
+          REPEAT CONJ_TAC THEN
+          TRY (CONV_TAC WORD_REDUCE_CONV) THEN
+          TRY (FIRST_X_ASSUM ACCEPT_TAC);
+          (* Branch 2: postcondition `eventually arm cut_spec s_post`. Drive
+             via ENSURES_FINAL_STATE_TAC, then handle each cut-spec conjunct:
+             reflexive ones via FIRST_X_ASSUM ACCEPT_TAC, X8..X15 via
+             AP_TERM/AP_TERM/LOOP16_CONSUMED_EQUALS_SUBLIST, prefix-zeros via
+             BYTES64_ZEROS_TO_BYTELIST_ZEROS (with per-buffer projection from
+             the LOOP16 forall-j postcondition), and PC arithmetic via
+             WORD_RULE. Suffix preservation comes from the pre-staged
+             hypotheses lifted through BIGSTEP's orthogonal-write conv.        *)
+          ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+          REPEAT CONJ_TAC THEN
+          TRY (FIRST_X_ASSUM ACCEPT_TAC) THEN
+          TRY (CONV_TAC WORD_RULE) THEN
+          TRY (AP_TERM_TAC THEN AP_TERM_TAC THEN
+               MATCH_MP_TAC LOOP16_CONSUMED_EQUALS_SUBLIST THEN
+               ASM_ARITH_TAC) THEN
+          TRY (MATCH_MP_TAC BYTES64_ZEROS_TO_BYTELIST_ZEROS THEN
+               GEN_TAC THEN DISCH_TAC THEN
+               FIRST_X_ASSUM(MP_TAC o
+                 check (is_forall o concl) o
+                 check (fun th -> not(is_eq(concl th)))) THEN
+               ASM_REWRITE_TAC[] THEN
+               DISCH_THEN(MP_TAC o SPEC `j:num`) THEN
+               ASM_REWRITE_TAC[] THEN
+               DISCH_THEN(REPEAT_TCL CONJUNCTS_THEN ASSUME_TAC) THEN
+               ASM_REWRITE_TAC[])];
         (* Subgoal 2: pc+0xbc -> pc+0x268, tail blocks + XOR reduction.          *)
         CHEAT_TAC]]]);;
 
