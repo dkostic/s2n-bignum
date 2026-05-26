@@ -1060,7 +1060,17 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           (* `crc32c_xor8 = word_xor (word_not w_0) ... (word_not w_7)` equals     *)
           (* the XOR of the unfinalised values because 8 copies of 0xFFFFFFFF     *)
           (* XOR to zero.                                                          *)
-          CHEAT_TAC]]]]);;
+          ENSURES_INIT_TAC "s0" THEN
+          ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--7) THEN
+          ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+          REWRITE_TAC[crc32c_xor8; crc32c_buffer; W0; WREG] THEN
+          REWRITE_TAC[READ_ZEROTOP_32] THEN
+          ASM_REWRITE_TAC[GSYM X0] THEN
+          REWRITE_TAC[WORD_ZX_XOR] THEN
+          SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64;
+                   ARITH_RULE `32 <= 64`; ARITH_RULE `32 <= 32`] THEN
+          REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+          CONV_TAC WORD_BITWISE_RULE]]]]);;
 
 (* ------------------------------------------------------------------------- *)
 (* Top-level correctness theorem (Phase 9).                                   *)
