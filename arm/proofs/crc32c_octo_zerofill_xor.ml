@@ -1051,8 +1051,20 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                 REPLICATE len (word 0)` THEN
         CONJ_TAC THENL
          [(* Sub-subgoal 1: pc+0xbc -> pc+0x24c, tail blocks (TBZ-gated).         *)
-          (* This is the residue<16 byte-by-byte CRC32C consumption across 4      *)
-          (* TBZ-gated blocks (8/4/2/1-byte). Deferred to a follow-up session.    *)
+          (*                                                                       *)
+          (* The 4 TBZ-gated tail blocks consume residue=len MOD 16 bytes from    *)
+          (* each buffer in 8/4/2/1-byte chunks. Strategy for follow-up session:  *)
+          (*   1. Introduce ABBREV `residue = len MOD 16`; prove residue < 16.    *)
+          (*   2. Case-split on the 4 bits of residue (16 cases). Each case fixes *)
+          (*      the TBZ outcomes and so a single straight-line ARM_STEPS_TAC    *)
+          (*      can run through the relevant subset of blocks.                   *)
+          (*   3. For the 8/4/2/1-byte CRC32C steps, use the CRC32C{X,W,H,B}      *)
+          (*      bridges in arm/proofs/utils/crc32c_bridge.ml together with the  *)
+          (*      bytelist-suffix decomposition (suffix bs_i has length residue).  *)
+          (*   4. The final state at pc+0x24c then has each W_i holding           *)
+          (*      `crc32c_bytes 0xFFFFFFFF bs_i` (the FULL bs_i CRC, since        *)
+          (*      prefix=16*iters consumed by LOOP16, suffix=residue consumed by   *)
+          (*      tail blocks).                                                     *)
           CHEAT_TAC;
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
           (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
