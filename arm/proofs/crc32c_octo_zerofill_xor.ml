@@ -1094,9 +1094,15 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
             ENSURES_INIT_TAC "s0" THEN
             ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--4) THEN
             ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
-            (* Cases residue ∈ {1..15}: 15 cases under CHEAT_TAC pending          *)
-            (* follow-up session.                                                  *)
-            CHEAT_TAC];
+            (* Cases residue ∈ {1..15}.                                            *)
+            ASM_CASES_TAC `residue = 1` THENL
+             [(* Case residue = 1: TBZs at bits 3,2,1 taken; bit 0 not-taken,     *)
+              (* runs the 1-byte block (24 instrs).                                *)
+              UNDISCH_TAC `residue = 1` THEN DISCH_THEN SUBST_ALL_TAC THEN
+              ENSURES_INIT_TAC "s0" THEN
+              ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--28) THEN
+              CHEAT_TAC;
+              CHEAT_TAC]];
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
           (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
           (* w_i = crc32c_bytes 0xFFFFFFFF bs_i. The desired                       *)
