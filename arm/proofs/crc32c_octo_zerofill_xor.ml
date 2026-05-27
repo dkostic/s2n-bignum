@@ -1151,7 +1151,62 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
               ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
               ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--28) THEN
               ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
-              CHEAT_TAC;
+              (* Collapse `word_zx (word_zx ...)` pairs / triples so the X      *)
+              (* update conjuncts match RESIDUE1_X_UPDATE shape.                 *)
+              SIMP_TAC[WORD_ZX_ZX; DIMINDEX_8; DIMINDEX_32; DIMINDEX_64;
+                       ARITH_RULE `8 <= 32`; ARITH_RULE `32 <= 64`;
+                       ARITH_RULE `8 <= 64`] THEN
+              REPEAT CONJ_TAC THENL
+               [(* X8 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X9 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X10 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X11 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X12 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X13 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X14 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* X15 *)
+                AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE1_X_UPDATE THEN
+                ASM_REWRITE_TAC[];
+                (* memory a0..a7: substitute len = 16*iters + 1 then close via *)
+                (* RESIDUE1_MEMORY_CLOSE.                                       *)
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[];
+                SUBGOAL_THEN `len = 16 * iters + 1` SUBST1_TAC THENL
+                 [ASM_ARITH_TAC; ALL_TAC] THEN
+                MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN ASM_REWRITE_TAC[]];
               CHEAT_TAC]];
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
           (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
