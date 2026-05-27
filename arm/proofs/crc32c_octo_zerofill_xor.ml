@@ -1513,6 +1513,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                       (* crc32c_bytes 0xFFFFFFFF bs) and RESIDUE12_MEMORY_CLOSE       *)
                       (* (which composes the int64 + int32 zero-fills atop the       *)
                       (* prefix-bytelist zero into bytelist (a, k+12) zero).          *)
+                      (* Validated by kernel-proof load (s033, 2026-05-27).           *)
                       UNDISCH_TAC `residue = 12` THEN DISCH_THEN SUBST_ALL_TAC THEN
                       SUBGOAL_THEN
                         `LENGTH (bs0:byte list) = 16 * iters + 12 /\
