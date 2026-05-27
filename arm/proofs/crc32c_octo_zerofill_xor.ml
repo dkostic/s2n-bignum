@@ -1936,7 +1936,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                              [ASM_ARITH_TAC; ALL_TAC] THEN
                             MATCH_MP_TAC RESIDUE9_MEMORY_CLOSE THEN
                             ASM_REWRITE_TAC[]];
-                          CHEAT_TAC]]]]]]];
+                          CHEAT_TAC]]]]]]]];
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
           (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
           (* w_i = crc32c_bytes 0xFFFFFFFF bs_i. The desired                       *)
