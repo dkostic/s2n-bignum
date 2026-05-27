@@ -337,6 +337,44 @@ let SUFFIX_BYTELIST_TO_BYTES8 = prove
     REWRITE_TAC[SUB_LIST_LENGTH];
     DISCH_THEN ACCEPT_TAC]);;
 
+(* ------------------------------------------------------------------------- *)
+(* RESIDUE1_MEMORY_CLOSE: per-buffer memory zero-projection for residue=1.   *)
+(* Composes the orthogonal-prefix lift (`bytelist (a, 16*iters) s = ZEROES`) *)
+(* with the post-STRB tail byte (`bytes8 (a + 16*iters) s = word 0`) into    *)
+(* the full-buffer zero-fill `bytelist (a, 16*iters + 1) s = ZEROES`.        *)
+(* ------------------------------------------------------------------------- *)
+
+let REPLICATE_ZERO_PLUS_ONE = prove
+ (`!k. REPLICATE (k + 1) (word 0:byte) =
+       APPEND (REPLICATE k (word 0:byte)) [word 0:byte]`,
+  INDUCT_TAC THEN
+  REWRITE_TAC[REPLICATE; APPEND; ADD_CLAUSES;
+              ARITH_RULE `0 + 1 = SUC 0`;
+              ARITH_RULE `SUC k + 1 = SUC(k + 1)`] THEN
+  ASM_REWRITE_TAC[]);;
+
+let RESIDUE1_MEMORY_CLOSE = prove
+ (`!(a:int64) (s:armstate) k.
+        read (memory :> bytelist (a, k)) s = REPLICATE k (word 0) /\
+        read (memory :> bytes8 (word_add a (word k))) s = word 0
+        ==> read (memory :> bytelist (a, k + 1)) s =
+            REPLICATE (k + 1) (word 0)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  SUBGOAL_THEN
+    `k + 1 = LENGTH (APPEND (REPLICATE k (word 0:byte)) [word 0:byte])`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[LENGTH_APPEND; LENGTH_REPLICATE; LENGTH] THEN ARITH_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+  REWRITE_TAC[LENGTH_REPLICATE; LENGTH] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  CONJ_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      ACCEPT_TAC(REWRITE_RULE[READ_COMPONENT_COMPOSE] th));
+    ONCE_REWRITE_TAC[GSYM(SPEC_ALL READ_COMPONENT_COMPOSE)] THEN
+    REWRITE_TAC[MEMORY_BYTELIST_1_EQ_BYTES8] THEN
+    ASM_REWRITE_TAC[]]);;
+
 let RESIDUE1_X_UPDATE = prove
  (`!(bs:byte list) n.
         LENGTH bs = n + 1
