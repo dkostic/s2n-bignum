@@ -230,3 +230,37 @@ let BYTES64_FROM_BYTELIST = prove
   MP_TAC(ISPECL [`bs:byte list`; `n:num`; `8:num`] NUM_OF_BYTELIST_SUB_LIST) THEN
   ASM_REWRITE_TAC[] THEN
   DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* BYTES8_FROM_BYTELIST: 1-byte analogue of BYTES64_FROM_BYTELIST. Used      *)
+(* when a single LDRB reads from inside a region whose bytelist contents    *)
+(* are pinned in the precondition.                                           *)
+(* ------------------------------------------------------------------------- *)
+
+let BYTES8_FROM_BYTELIST = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) n.
+        read (memory :> bytelist (a, LENGTH bs)) s = bs /\
+        n + 1 <= LENGTH bs
+        ==> read (memory :> bytes8 (word_add a (word n))) s =
+            word (num_of_bytelist (SUB_LIST(n, 1) bs))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[bytes8; READ_COMPONENT_COMPOSE; asword; through; read] THEN
+  AP_TERM_TAC THEN
+  SUBGOAL_THEN
+    `read (bytes (word_add (a:int64) (word n), 1)) (read memory s) =
+     (read (bytes (a, LENGTH (bs:byte list))) (read memory s) DIV 2 EXP (8 * n))
+     MOD 2 EXP (8 * 1)`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[READ_BYTES_DIV; READ_BYTES_MOD] THEN
+    SUBGOAL_THEN `MIN (LENGTH (bs:byte list) - n) 1 = 1` SUBST1_TAC THENL
+     [ASM_ARITH_TAC; REWRITE_TAC[]];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (bytes (a, LENGTH (bs:byte list))) (read memory s) = num_of_bytelist bs`
+  SUBST1_TAC THENL
+   [FIRST_X_ASSUM(MP_TAC o GEN_REWRITE_RULE I [READ_BYTELIST_EQ_BYTES]) THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE] THEN SIMP_TAC[];
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`bs:byte list`; `n:num`; `1:num`] NUM_OF_BYTELIST_SUB_LIST) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC);;
