@@ -1027,3 +1027,633 @@ let RESIDUE4_MEMORY_CLOSE = prove
     REWRITE_TAC[MEMORY_BYTELIST_4_EQ_BYTES32] THEN
     ASM_REWRITE_TAC[] THEN
     REWRITE_TAC[CONS_11] THEN CONV_TAC WORD_BLAST]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Residue=8 helpers (CRC32CX path).                                          *)
+(* Templated from the residue=4 helpers above by widening to 8 bytes /        *)
+(* int64. BYTES64_FROM_BYTELIST and CRC32CX_BRIDGE already exist (above).     *)
+(* ------------------------------------------------------------------------- *)
+
+(* ------------------------------------------------------------------------- *)
+(* MEMORY_BYTELIST_8_EQ_BYTES64: an 8-byte bytelist read equals the byte     *)
+(* decomposition of a single bytes64 read. Used to bridge post-STR state     *)
+(* (where bytes64 = word 0) back to the bytelist form.                       *)
+(* ------------------------------------------------------------------------- *)
+
+let MEMORY_BYTELIST_8_EQ_BYTES64 = prove
+ (`!(a:int64) (s:armstate).
+        read (memory :> bytelist (a, 8)) s =
+        [word_subword (read (memory :> bytes64 a) s) (0,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (8,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (16,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (24,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (32,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (40,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (48,8):byte;
+         word_subword (read (memory :> bytes64 a) s) (56,8):byte]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `8 = SUC (SUC (SUC (SUC (SUC (SUC (SUC (SUC 0)))))))`;
+              bytelist_clauses;
+              READ_COMPONENT_COMPOSE; bytes64;
+              asword; through; read; CONS_11] THEN
+  REWRITE_TAC[ARITH_RULE `SUC (SUC (SUC (SUC (SUC (SUC (SUC (SUC 0))))))) = 8`;
+              ARITH_RULE `SUC (SUC (SUC (SUC (SUC (SUC (SUC 0)))))) = 7`;
+              ARITH_RULE `SUC (SUC (SUC (SUC (SUC (SUC 0))))) = 6`;
+              ARITH_RULE `SUC (SUC (SUC (SUC (SUC 0)))) = 5`;
+              ARITH_RULE `SUC (SUC (SUC (SUC 0))) = 4`;
+              ARITH_RULE `SUC (SUC (SUC 0)) = 3`;
+              ARITH_RULE `SUC (SUC 0) = 2`;
+              ARITH_RULE `SUC 0 = 1`] THEN
+  REWRITE_TAC[ARITH_RULE `8 = 1 + (1 + (1 + (1 + (1 + (1 + (1 + 1))))))`;
+              ARITH_RULE `7 = 1 + (1 + (1 + (1 + (1 + (1 + 1)))))`;
+              ARITH_RULE `6 = 1 + (1 + (1 + (1 + (1 + 1))))`;
+              ARITH_RULE `5 = 1 + (1 + (1 + (1 + 1)))`;
+              ARITH_RULE `4 = 1 + (1 + (1 + 1))`;
+              ARITH_RULE `3 = 1 + (1 + 1)`;
+              ARITH_RULE `2 = 1 + 1`;
+              READ_BYTES_COMBINE; READ_BYTES_1] THEN
+  REWRITE_TAC[
+    WORD_RULE `word_add (word_add (a:int64) (word 1)) (word 1) =
+               word_add a (word 2)`;
+    WORD_RULE `word_add (word_add (word_add (a:int64) (word 1)) (word 1))
+                        (word 1) = word_add a (word 3)`;
+    WORD_RULE `word_add (word_add (word_add (word_add (a:int64) (word 1))
+                          (word 1)) (word 1)) (word 1) = word_add a (word 4)`;
+    WORD_RULE `word_add (word_add (word_add (word_add (word_add (a:int64)
+                          (word 1)) (word 1)) (word 1)) (word 1)) (word 1) =
+               word_add a (word 5)`;
+    WORD_RULE `word_add (word_add (word_add (word_add (word_add (word_add (a:int64)
+                          (word 1)) (word 1)) (word 1)) (word 1)) (word 1)) (word 1) =
+               word_add a (word 6)`;
+    WORD_RULE `word_add (word_add (word_add (word_add (word_add (word_add (word_add
+                          (a:int64) (word 1)) (word 1)) (word 1)) (word 1)) (word 1))
+                          (word 1)) (word 1) = word_add a (word 7)`] THEN
+  ABBREV_TAC `b0:byte = read memory s (a:int64)` THEN
+  ABBREV_TAC `b1:byte = read memory s (word_add (a:int64) (word 1))` THEN
+  ABBREV_TAC `b2:byte = read memory s (word_add (a:int64) (word 2))` THEN
+  ABBREV_TAC `b3:byte = read memory s (word_add (a:int64) (word 3))` THEN
+  ABBREV_TAC `b4:byte = read memory s (word_add (a:int64) (word 4))` THEN
+  ABBREV_TAC `b5:byte = read memory s (word_add (a:int64) (word 5))` THEN
+  ABBREV_TAC `b6:byte = read memory s (word_add (a:int64) (word 6))` THEN
+  ABBREV_TAC `b7:byte = read memory s (word_add (a:int64) (word 7))` THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[DIV_1] THEN
+  REPEAT CONJ_TAC THEN CONV_TAC SYM_CONV THENL
+   [(* byte 0: ... MOD 256 = b0 *)
+    ASM_SIMP_TAC[MOD_MULT_ADD; MOD_LT];
+    (* byte 1 *)
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT];
+    (* byte 2 *)
+    SUBGOAL_THEN `(65536:num) = 256 * 256` SUBST1_TAC THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM DIV_DIV] THEN
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT];
+    (* byte 3 *)
+    SUBGOAL_THEN `(16777216:num) = 256 * (256 * 256)` SUBST1_TAC THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM DIV_DIV] THEN
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT];
+    (* byte 4 *)
+    SUBGOAL_THEN `(4294967296:num) = 256 * (256 * (256 * 256))` SUBST1_TAC THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM DIV_DIV] THEN
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT];
+    (* byte 5 *)
+    SUBGOAL_THEN `(1099511627776:num) = 256 * (256 * (256 * (256 * 256)))` SUBST1_TAC THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM DIV_DIV] THEN
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT];
+    (* byte 6 *)
+    SUBGOAL_THEN `(281474976710656:num) = 256 * (256 * (256 * (256 * (256 * 256))))` SUBST1_TAC THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM DIV_DIV] THEN
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT];
+    (* byte 7 *)
+    SUBGOAL_THEN `(72057594037927936:num) = 256 * (256 * (256 * (256 * (256 * (256 * 256)))))` SUBST1_TAC THENL
+     [ARITH_TAC; ALL_TAC] THEN
+    REWRITE_TAC[GSYM DIV_DIV] THEN
+    ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+                 ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* SUFFIX_BYTELIST_TO_BYTES64: residue=8 per-buffer adapter (k+8, width 8).  *)
+(* ------------------------------------------------------------------------- *)
+
+let SUFFIX_BYTELIST_TO_BYTES64 = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) k.
+        LENGTH bs = k + 8 /\
+        read (memory :> bytelist (word_add a (word k), 8)) s =
+          SUB_LIST (k, 8) bs
+        ==> read (memory :> bytes64 (word_add a (word k))) s =
+            word(num_of_bytelist (SUB_LIST(k, 8) bs))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`word_add a (word k):int64`; `s:armstate`;
+                 `SUB_LIST(k, 8) (bs:byte list)`; `0:num`]
+                BYTES64_FROM_BYTELIST) THEN
+  SUBGOAL_THEN `LENGTH (SUB_LIST (k,8) (bs:byte list)) = 8` ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[ARITH] THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, 8) (SUB_LIST(k, 8) (bs:byte list)) =
+     SUB_LIST(k, 8) bs`
+  SUBST1_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [SYM th]) THEN
+    REWRITE_TAC[SUB_LIST_LENGTH];
+    DISCH_THEN ACCEPT_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Eight byte-extraction lemmas:                                              *)
+(*   word_subword (word(num_of_bytelist [b0..b7]):int64) (k*8, 8) = bk        *)
+(* for k=0..7. Used inside RESIDUE8_X_UPDATE to push the loaded int64        *)
+(* through the eight CRC32CX byte-step calls.                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let WORD_SUBWORD_BYTELIST8_BYTE0 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (0, 8):byte = b0`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[DIV_1] THEN
+  ASM_SIMP_TAC[MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE1 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (8, 8):byte = b1`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE2 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (16, 8):byte = b2`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(65536:num) = 256 * 256` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM DIV_DIV] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE3 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (24, 8):byte = b3`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(16777216:num) = 256 * (256 * 256)` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM DIV_DIV] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE4 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (32, 8):byte = b4`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(4294967296:num) = 256 * (256 * (256 * 256))` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM DIV_DIV] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE5 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (40, 8):byte = b5`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(1099511627776:num) = 256 * (256 * (256 * (256 * 256)))` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM DIV_DIV] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE6 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (48, 8):byte = b6`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(281474976710656:num) = 256 * (256 * (256 * (256 * (256 * 256))))` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM DIV_DIV] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+let WORD_SUBWORD_BYTELIST8_BYTE7 = prove
+ (`!b0 b1 b2 b3 b4 b5 b6 b7:byte.
+       word_subword
+        (word(num_of_bytelist [b0; b1; b2; b3; b4; b5; b6; b7]):int64) (56, 8):byte = b7`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN
+  REWRITE_TAC[GSYM VAL_EQ] THEN
+  REWRITE_TAC[VAL_WORD_SUBWORD; VAL_WORD; DIMINDEX_8; DIMINDEX_64] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MP_TAC(ISPEC `b0:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b1:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b2:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b3:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b4:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b5:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b6:byte` VAL_BOUND) THEN
+  MP_TAC(ISPEC `b7:byte` VAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_8] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(val (b0:byte) +
+      256 * (val (b1:byte) +
+       256 * (val (b2:byte) +
+        256 * (val (b3:byte) +
+         256 * (val (b4:byte) +
+          256 * (val (b5:byte) +
+           256 * (val (b6:byte) + 256 * val (b7:byte)))))))) MOD 18446744073709551616 =
+     val b0 + 256 * (val b1 + 256 * (val b2 + 256 * (val b3 +
+      256 * (val b4 + 256 * (val b5 + 256 * (val b6 + 256 * val b7))))))`
+  SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN `(72057594037927936:num) = 256 * (256 * (256 * (256 * (256 * (256 * 256)))))` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[GSYM DIV_DIV] THEN
+  ASM_SIMP_TAC[DIV_MULT_ADD; ARITH_RULE `~(256 = 0)`; DIV_LT;
+               ADD_CLAUSES; MOD_MULT_ADD; MOD_LT]);;
+
+(* ------------------------------------------------------------------------- *)
+(* LENGTH_EQ_8_DECOMP: a byte list of length 8 decomposes into 8 elements.   *)
+(* ------------------------------------------------------------------------- *)
+
+let LENGTH_EQ_8_DECOMP = prove
+ (`!l:byte list. LENGTH l = 8
+                 ==> ?b0 b1 b2 b3 b4 b5 b6 b7. l = [b0; b1; b2; b3; b4; b5; b6; b7]`,
+  GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `8 = SUC 7`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `7 = SUC 6`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `6 = SUC 5`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `5 = SUC 4`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `4 = SUC 3`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `3 = SUC 2`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `2 = SUC 1`; LENGTH_EQ_CONS] THEN
+  REWRITE_TAC[ARITH_RULE `1 = SUC 0`; LENGTH_EQ_CONS; LENGTH_EQ_NIL] THEN
+  MESON_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* RESIDUE8_X_UPDATE: per-buffer X-register update fact for residue=8 case.  *)
+(* Given a buffer `bs` of length n+8, the CRC32CX chain output on            *)
+(* `acc = crc32c_bytes 0xFFFFFFFF (SUB_LIST(0,n) bs)` consuming the 8-byte   *)
+(* int64 loaded from `bytes64 (a + n)` (which equals the bytes at positions  *)
+(* n..n+7 of bs by SUFFIX_BYTELIST_TO_BYTES64) collapses to                  *)
+(* `crc32c_bytes 0xFFFFFFFF bs` --- the full-buffer CRC.                     *)
+(*                                                                           *)
+(* Like residue=4, the kernel's X-register data path passes the loaded       *)
+(* int64 directly into CRC32CX (no word_zx); the 8 word_subword extractions *)
+(* (k*8, 8) of `word(num_of_bytelist (SUB_LIST(n,8) bs)):int64` are the      *)
+(* eight bytes of bs at positions n..n+7 (LSB-first).                        *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE8_X_UPDATE = prove
+ (`!(bs:byte list) n.
+        LENGTH bs = n + 8
+        ==> crc32c_hw_step
+              (crc32c_hw_step
+                (crc32c_hw_step
+                  (crc32c_hw_step
+                    (crc32c_hw_step
+                      (crc32c_hw_step
+                        (crc32c_hw_step
+                          (crc32c_hw_step
+                            (crc32c_bytes (word 0xFFFFFFFF:int32) (SUB_LIST(0, n) bs))
+                            (word_subword
+                              (word(num_of_bytelist
+                                      (SUB_LIST(n, 8) bs)):int64)
+                              (0, 8):byte))
+                          (word_subword
+                            (word(num_of_bytelist
+                                    (SUB_LIST(n, 8) bs)):int64)
+                            (8, 8):byte))
+                        (word_subword
+                          (word(num_of_bytelist
+                                  (SUB_LIST(n, 8) bs)):int64)
+                          (16, 8):byte))
+                      (word_subword
+                        (word(num_of_bytelist
+                                (SUB_LIST(n, 8) bs)):int64)
+                        (24, 8):byte))
+                    (word_subword
+                      (word(num_of_bytelist
+                              (SUB_LIST(n, 8) bs)):int64)
+                      (32, 8):byte))
+                  (word_subword
+                    (word(num_of_bytelist
+                            (SUB_LIST(n, 8) bs)):int64)
+                    (40, 8):byte))
+                (word_subword
+                  (word(num_of_bytelist
+                          (SUB_LIST(n, 8) bs)):int64)
+                  (48, 8):byte))
+              (word_subword
+                (word(num_of_bytelist
+                        (SUB_LIST(n, 8) bs)):int64)
+                (56, 8):byte)
+            = crc32c_bytes (word 0xFFFFFFFF:int32) bs`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `?b0 b1 b2 b3 b4 b5 b6 b7:byte.
+        SUB_LIST (n, 8) (bs:byte list) = [b0; b1; b2; b3; b4; b5; b6; b7]`
+   STRIP_ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_EQ_8_DECOMP THEN
+    REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[WORD_SUBWORD_BYTELIST8_BYTE0; WORD_SUBWORD_BYTELIST8_BYTE1;
+              WORD_SUBWORD_BYTELIST8_BYTE2; WORD_SUBWORD_BYTELIST8_BYTE3;
+              WORD_SUBWORD_BYTELIST8_BYTE4; WORD_SUBWORD_BYTELIST8_BYTE5;
+              WORD_SUBWORD_BYTELIST8_BYTE6; WORD_SUBWORD_BYTELIST8_BYTE7] THEN
+  REWRITE_TAC[CRC32CB_BRIDGE] THEN
+  TRANS_TAC EQ_TRANS
+   `crc32c_bytes (word 0xFFFFFFFF:int32)
+      (APPEND (SUB_LIST(0,n) (bs:byte list))
+              [b0; b1; b2; b3; b4; b5; b6; b7])` THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[crc32c_bytes_APPEND; crc32c_bytes];
+    AP_TERM_TAC THEN
+    FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
+    MP_TAC(ISPECL [`bs:byte list`; `n:num`] SUB_LIST_TOPSPLIT) THEN
+    ASM_SIMP_TAC[ARITH_RULE
+      `LENGTH (bs:byte list) = n + 8 ==> LENGTH bs - n = 8`]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* RESIDUE8_MEMORY_CLOSE: per-buffer memory zero-projection for residue=8.   *)
+(* Composes the orthogonal-prefix lift (`bytelist (a, k) s = ZEROES`) with    *)
+(* the post-STR tail int64 (`bytes64 (a + k) s = word 0`) into the           *)
+(* full-buffer zero-fill `bytelist (a, k + 8) s = ZEROES`.                   *)
+(* ------------------------------------------------------------------------- *)
+
+let REPLICATE_ZERO_PLUS_EIGHT = prove
+ (`!k. REPLICATE (k + 8) (word 0:byte) =
+       APPEND (REPLICATE k (word 0:byte))
+              [word 0:byte; word 0:byte; word 0:byte; word 0:byte;
+               word 0:byte; word 0:byte; word 0:byte; word 0:byte]`,
+  GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `k + 8 = (k + 7) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[ARITH_RULE `k + 7 = (k + 6) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[ARITH_RULE `k + 6 = (k + 5) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[ARITH_RULE `k + 5 = (k + 4) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[ARITH_RULE `k + 4 = (k + 3) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[ARITH_RULE `k + 3 = (k + 2) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[ARITH_RULE `k + 2 = (k + 1) + 1`] THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_ONE] THEN
+  REWRITE_TAC[GSYM APPEND_ASSOC; APPEND]);;
+
+let RESIDUE8_MEMORY_CLOSE = prove
+ (`!(a:int64) (s:armstate) k.
+        read (memory :> bytelist (a, k)) s = REPLICATE k (word 0) /\
+        read (memory :> bytes64 (word_add a (word k))) s = word 0
+        ==> read (memory :> bytelist (a, k + 8)) s =
+            REPLICATE (k + 8) (word 0)`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[REPLICATE_ZERO_PLUS_EIGHT] THEN
+  SUBGOAL_THEN
+    `k + 8 = LENGTH (APPEND (REPLICATE k (word 0:byte))
+                            [word 0:byte; word 0:byte;
+                             word 0:byte; word 0:byte;
+                             word 0:byte; word 0:byte;
+                             word 0:byte; word 0:byte])`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[LENGTH_APPEND; LENGTH_REPLICATE; LENGTH] THEN ARITH_TAC;
+    ALL_TAC] THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+  REWRITE_TAC[LENGTH_REPLICATE; LENGTH] THEN CONV_TAC NUM_REDUCE_CONV THEN
+  CONJ_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      ACCEPT_TAC(REWRITE_RULE[READ_COMPONENT_COMPOSE] th));
+    ONCE_REWRITE_TAC[GSYM(SPEC_ALL READ_COMPONENT_COMPOSE)] THEN
+    REWRITE_TAC[MEMORY_BYTELIST_8_EQ_BYTES64] THEN
+    ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[CONS_11] THEN CONV_TAC WORD_BLAST]);;
