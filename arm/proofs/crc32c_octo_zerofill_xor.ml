@@ -1097,11 +1097,60 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
             (* Cases residue ∈ {1..15}.                                            *)
             ASM_CASES_TAC `residue = 1` THENL
              [(* Case residue = 1: TBZs at bits 3,2,1 taken; bit 0 not-taken,     *)
-              (* runs the 1-byte block (24 instrs). Closure not yet proved —     *)
-              (* still under CHEAT_TAC.                                           *)
+              (* runs the 1-byte block (24 instrs). Closure uses the helpers in  *)
+              (* arm/proofs/utils/crc32c_bridge.ml: BYTES8_FROM_BYTELIST to       *)
+              (* identify the loaded byte, RESIDUE1_X_UPDATE to fold the CRC32CB *)
+              (* output back into crc32c_bytes, and MEMORY_BYTELIST_1_EQ_BYTES8 *)
+              (* + read_bytelist_append to recover the post-STRB bytelist zero.   *)
               UNDISCH_TAC `residue = 1` THEN DISCH_THEN SUBST_ALL_TAC THEN
+              SUBGOAL_THEN
+                `LENGTH (bs0:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs1:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs2:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs3:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs4:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs5:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs6:byte list) = 16 * iters + 1 /\
+                 LENGTH (bs7:byte list) = 16 * iters + 1`
+                STRIP_ASSUME_TAC THENL
+               [REPEAT CONJ_TAC THEN ASM_ARITH_TAC; ALL_TAC] THEN
               ENSURES_INIT_TAC "s0" THEN
+              (* Pre-stage 8 bytes8 reads at s0 by applying                       *)
+              (* SUFFIX_BYTELIST_TO_BYTES8 to each suffix-bytelist hypothesis.    *)
+              MP_TAC(ISPECL [`a0:int64`; `s0:armstate`;
+                             `bs0:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a1:int64`; `s0:armstate`;
+                             `bs1:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a2:int64`; `s0:armstate`;
+                             `bs2:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a3:int64`; `s0:armstate`;
+                             `bs3:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a4:int64`; `s0:armstate`;
+                             `bs4:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a5:int64`; `s0:armstate`;
+                             `bs5:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a6:int64`; `s0:armstate`;
+                             `bs6:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+              MP_TAC(ISPECL [`a7:int64`; `s0:armstate`;
+                             `bs7:byte list`; `16 * iters`]
+                            SUFFIX_BYTELIST_TO_BYTES8) THEN
+              ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
               ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--28) THEN
+              ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
               CHEAT_TAC;
               CHEAT_TAC]];
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
