@@ -1052,20 +1052,32 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
         CONJ_TAC THENL
          [(* Sub-subgoal 1: pc+0xbc -> pc+0x24c, tail blocks (TBZ-gated).         *)
           (*                                                                       *)
-          (* The 4 TBZ-gated tail blocks consume residue=len MOD 16 bytes from    *)
-          (* each buffer in 8/4/2/1-byte chunks. Strategy for follow-up session:  *)
-          (*   1. Introduce ABBREV `residue = len MOD 16`; prove residue < 16.    *)
-          (*   2. Case-split on the 4 bits of residue (16 cases). Each case fixes *)
-          (*      the TBZ outcomes and so a single straight-line ARM_STEPS_TAC    *)
-          (*      can run through the relevant subset of blocks.                   *)
-          (*   3. For the 8/4/2/1-byte CRC32C steps, use the CRC32C{X,W,H,B}      *)
-          (*      bridges in arm/proofs/utils/crc32c_bridge.ml together with the  *)
-          (*      bytelist-suffix decomposition (suffix bs_i has length residue).  *)
-          (*   4. The final state at pc+0x24c then has each W_i holding           *)
-          (*      `crc32c_bytes 0xFFFFFFFF bs_i` (the FULL bs_i CRC, since        *)
-          (*      prefix=16*iters consumed by LOOP16, suffix=residue consumed by   *)
-          (*      tail blocks).                                                     *)
-          CHEAT_TAC;
+          (* Strategy: case-split on residue = len MOD 16 (16 cases). For each    *)
+          (* case, the 4 bits of residue fix the 4 TBZ outcomes, so a single      *)
+          (* ARM_STEPS_TAC runs through the appropriate subset of tail blocks.    *)
+          (* This session: residue=0 case (all 4 TBZs taken, no consumption).     *)
+          (* Remaining 15 cases: still under CHEAT_TAC.                            *)
+          ABBREV_TAC `iters = len DIV 16` THEN
+          ABBREV_TAC `residue = len MOD 16` THEN
+          SUBGOAL_THEN
+            `residue < 16 /\ 16 * iters + residue = len /\
+             16 * iters <= len`
+            STRIP_ASSUME_TAC THENL
+           [MAP_EVERY EXPAND_TAC ["iters"; "residue"] THEN
+            REPEAT CONJ_TAC THEN ARITH_TAC;
+            ALL_TAC] THEN
+          ASM_CASES_TAC `residue = 0` THENL
+           [(* Case residue = 0: all 4 TBZs taken, no bytes consumed in tail.    *)
+            (* Since residue=0, suffix bytelist is empty, prefix=len, and        *)
+            (* SUB_LIST(0, 16*iters) bs_i = bs_i (because LENGTH bs_i = len =    *)
+            (* 16*iters). So X8..X15 already hold crc32c_bytes 0xFFFFFFFF bs_i   *)
+            (* on entry to pc+0xbc. The 4 TBZs each branch over their blocks.   *)
+            FIRST_X_ASSUM SUBST_ALL_TAC THEN
+            RULE_ASSUM_TAC(REWRITE_RULE[ADD_CLAUSES]) THEN
+            CHEAT_TAC;
+            (* Cases residue ∈ {1..15}: 15 cases under CHEAT_TAC pending          *)
+            (* follow-up session.                                                  *)
+            CHEAT_TAC];
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
           (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
           (* w_i = crc32c_bytes 0xFFFFFFFF bs_i. The desired                       *)
