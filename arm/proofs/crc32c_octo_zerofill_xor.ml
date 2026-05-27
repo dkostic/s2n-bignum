@@ -1072,9 +1072,28 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
             (* SUB_LIST(0, 16*iters) bs_i = bs_i (because LENGTH bs_i = len =    *)
             (* 16*iters). So X8..X15 already hold crc32c_bytes 0xFFFFFFFF bs_i   *)
             (* on entry to pc+0xbc. The 4 TBZs each branch over their blocks.   *)
-            FIRST_X_ASSUM SUBST_ALL_TAC THEN
+            UNDISCH_TAC `residue = 0` THEN DISCH_THEN SUBST_ALL_TAC THEN
             RULE_ASSUM_TAC(REWRITE_RULE[ADD_CLAUSES]) THEN
-            CHEAT_TAC;
+            (* With residue=0: 16*iters = len. Substitute throughout to expose       *)
+            (* SUB_LIST(0,len) bs_i, which equals bs_i by LENGTH bs_i = len.         *)
+            SUBGOAL_THEN `16 * iters = len` SUBST_ALL_TAC THENL
+             [ASM_ARITH_TAC; ALL_TAC] THEN
+            (* Prove SUB_LIST(0,len) bs_i = bs_i for all 8 buffers. *)
+            SUBGOAL_THEN
+              `SUB_LIST (0,len) (bs0:byte list) = bs0 /\
+               SUB_LIST (0,len) (bs1:byte list) = bs1 /\
+               SUB_LIST (0,len) (bs2:byte list) = bs2 /\
+               SUB_LIST (0,len) (bs3:byte list) = bs3 /\
+               SUB_LIST (0,len) (bs4:byte list) = bs4 /\
+               SUB_LIST (0,len) (bs5:byte list) = bs5 /\
+               SUB_LIST (0,len) (bs6:byte list) = bs6 /\
+               SUB_LIST (0,len) (bs7:byte list) = bs7`
+              STRIP_ASSUME_TAC THENL
+             [REPEAT CONJ_TAC THEN ASM_MESON_TAC[SUB_LIST_LENGTH];
+              ALL_TAC] THEN
+            ENSURES_INIT_TAC "s0" THEN
+            ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--4) THEN
+            ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[];
             (* Cases residue ∈ {1..15}: 15 cases under CHEAT_TAC pending          *)
             (* follow-up session.                                                  *)
             CHEAT_TAC];
