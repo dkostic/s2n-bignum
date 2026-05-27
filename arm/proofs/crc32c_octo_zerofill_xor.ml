@@ -1097,7 +1097,8 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
             (* Cases residue ∈ {1..15}.                                            *)
             ASM_CASES_TAC `residue = 1` THENL
              [(* Case residue = 1: TBZs at bits 3,2,1 taken; bit 0 not-taken,     *)
-              (* runs the 1-byte block (24 instrs).                                *)
+              (* runs the 1-byte block (24 instrs). Closure not yet proved —     *)
+              (* still under CHEAT_TAC.                                           *)
               UNDISCH_TAC `residue = 1` THEN DISCH_THEN SUBST_ALL_TAC THEN
               ENSURES_INIT_TAC "s0" THEN
               ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--28) THEN

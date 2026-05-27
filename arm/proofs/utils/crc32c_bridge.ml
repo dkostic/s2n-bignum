@@ -264,3 +264,76 @@ let BYTES8_FROM_BYTELIST = prove
   MP_TAC(ISPECL [`bs:byte list`; `n:num`; `1:num`] NUM_OF_BYTELIST_SUB_LIST) THEN
   ASM_REWRITE_TAC[] THEN
   DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* MEMORY_BYTELIST_1_EQ_BYTES8: a 1-byte bytelist read equals a single-byte  *)
+(* bytes8 read packaged as a singleton list. Useful when bridging post-STRB  *)
+(* state (where bytes8 = word 0) back to the bytelist form expected by the   *)
+(* outer postcondition.                                                      *)
+(* ------------------------------------------------------------------------- *)
+
+let MEMORY_BYTELIST_1_EQ_BYTES8 = prove
+ (`!(a:int64) (s:armstate).
+        read (memory :> bytelist (a, 1)) s =
+        [(read (memory :> bytes8 a) s):byte]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ONE; bytelist_clauses; READ_COMPONENT_COMPOSE; bytes8;
+              asword; through; read; CONS_11] THEN
+  REWRITE_TAC[GSYM ONE; READ_BYTES_1] THEN
+  CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
+(* WORD_SUBWORD_ZX_BYTE_TRIVIAL: round-trip a byte through a word_zx int32   *)
+(* and a low-byte word_subword. The CRC32CB ARM model's data path passes the *)
+(* loaded byte through word_zx into the int32 W-register, then crc32c_hw    *)
+(* extracts the byte via word_subword (0,8). This bridge lets us recover    *)
+(* the raw byte for matching against `crc32c_bytes`.                         *)
+(* ------------------------------------------------------------------------- *)
+
+let WORD_SUBWORD_ZX_BYTE_TRIVIAL = prove
+ (`!b:byte. word_subword ((word_zx b):int32) (0, 8):byte = b`,
+  GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
+(* RESIDUE1_X_UPDATE: per-buffer X-register update fact for residue=1 case   *)
+(* of the tail-block. Given a buffer `bs` of length n+1, the CRC32CB output  *)
+(* on `acc = crc32c_bytes 0xFFFFFFFF (SUB_LIST(0,n) bs)` consuming the byte  *)
+(* loaded from `bytes8 (a + n)` (which equals the n-th byte of bs by         *)
+(* BYTES8_FROM_BYTELIST applied to the suffix bytelist) collapses to         *)
+(* `crc32c_bytes 0xFFFFFFFF bs` — i.e. the full-buffer CRC.                  *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE1_X_UPDATE = prove
+ (`!(bs:byte list) n.
+        LENGTH bs = n + 1
+        ==> crc32c_hw_step
+              (crc32c_bytes (word 0xFFFFFFFF:int32) (SUB_LIST(0, n) bs))
+              (word_subword
+                (word_zx
+                  (word(num_of_bytelist (SUB_LIST(n, 1) bs)):byte):int32)
+                (0, 8):byte)
+            = crc32c_bytes (word 0xFFFFFFFF:int32) bs`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[CRC32CB_BRIDGE; WORD_SUBWORD_ZX_BYTE_TRIVIAL] THEN
+  SUBGOAL_THEN `SUB_LIST (n, 1) (bs:byte list) = [EL n bs]` SUBST1_TAC THENL
+   [ASM_SIMP_TAC[SUB_LIST_1;
+      ARITH_RULE `LENGTH (bs:byte list) = n + 1 ==> n < LENGTH bs`];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `word (num_of_bytelist [EL n (bs:byte list)]) = EL n bs:byte`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN CONV_TAC WORD_BLAST;
+    ALL_TAC] THEN
+  TRANS_TAC EQ_TRANS
+   `crc32c_bytes (word 0xFFFFFFFF:int32)
+      (APPEND (SUB_LIST(0,n) (bs:byte list)) [EL n bs])` THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[crc32c_bytes_APPEND; crc32c_bytes];
+    AP_TERM_TAC THEN
+    SUBGOAL_THEN `[EL n (bs:byte list)] = SUB_LIST(n, 1) bs` SUBST1_TAC THENL
+     [ASM_SIMP_TAC[SUB_LIST_1;
+        ARITH_RULE `LENGTH (bs:byte list) = n + 1 ==> n < LENGTH bs`];
+      ALL_TAC] THEN
+    MP_TAC(ISPECL [`bs:byte list`; `n:num`] SUB_LIST_TOPSPLIT) THEN
+    ASM_SIMP_TAC[ARITH_RULE
+      `LENGTH (bs:byte list) = n + 1 ==> LENGTH bs - n = 1`]]);;
