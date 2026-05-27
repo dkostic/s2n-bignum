@@ -303,6 +303,40 @@ let WORD_SUBWORD_ZX_BYTE_TRIVIAL = prove
 (* `crc32c_bytes 0xFFFFFFFF bs` — i.e. the full-buffer CRC.                  *)
 (* ------------------------------------------------------------------------- *)
 
+(* ------------------------------------------------------------------------- *)
+(* SUFFIX_BYTELIST_TO_BYTES8: a 1-byte suffix-bytelist read gives the same   *)
+(* underlying byte as the bytes8 read at that address. This is the residue=1 *)
+(* per-buffer adapter: from the cut-state's suffix-bytelist hypothesis        *)
+(*    read (memory :> bytelist (a + word k, 1)) s = SUB_LIST(k, 1) bs        *)
+(* (where LENGTH bs = k + 1), derive                                          *)
+(*    read (memory :> bytes8 (a + word k)) s =                                *)
+(*      word(num_of_bytelist (SUB_LIST(k, 1) bs))                             *)
+(* ------------------------------------------------------------------------- *)
+
+let SUFFIX_BYTELIST_TO_BYTES8 = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) k.
+        LENGTH bs = k + 1 /\
+        read (memory :> bytelist (word_add a (word k), 1)) s =
+          SUB_LIST (k, 1) bs
+        ==> read (memory :> bytes8 (word_add a (word k))) s =
+            word(num_of_bytelist (SUB_LIST(k, 1) bs))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(ISPECL [`word_add a (word k):int64`; `s:armstate`;
+                 `SUB_LIST(k, 1) (bs:byte list)`; `0:num`]
+                BYTES8_FROM_BYTELIST) THEN
+  SUBGOAL_THEN `LENGTH (SUB_LIST (k,1) (bs:byte list)) = 1` ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[ARITH] THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, 1) (SUB_LIST(k, 1) (bs:byte list)) =
+     SUB_LIST(k, 1) bs`
+  SUBST1_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [SYM th]) THEN
+    REWRITE_TAC[SUB_LIST_LENGTH];
+    DISCH_THEN ACCEPT_TAC]);;
+
 let RESIDUE1_X_UPDATE = prove
  (`!(bs:byte list) n.
         LENGTH bs = n + 1
