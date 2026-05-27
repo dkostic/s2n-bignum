@@ -1800,6 +1800,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                           (* and RESIDUE9_MEMORY_CLOSE (which composes the int64 + *)
                           (* int8 zero-fills atop the prefix-bytelist zero into    *)
                           (* bytelist (a, k+9) zero).                              *)
+                          (* Validated by kernel-proof load (s034, 2026-05-27).    *)
                           UNDISCH_TAC `residue = 9` THEN
                           DISCH_THEN SUBST_ALL_TAC THEN
                           SUBGOAL_THEN
