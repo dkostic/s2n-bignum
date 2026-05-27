@@ -1657,3 +1657,146 @@ let RESIDUE8_MEMORY_CLOSE = prove
     REWRITE_TAC[MEMORY_BYTELIST_8_EQ_BYTES64] THEN
     ASM_REWRITE_TAC[] THEN
     REWRITE_TAC[CONS_11] THEN CONV_TAC WORD_BLAST]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Residue=12 helpers (8-byte CRC32CX path then 4-byte CRC32CW path).         *)
+(* Composed from RESIDUE8_X_UPDATE and RESIDUE4_X_UPDATE via                   *)
+(* crc32c_bytes_APPEND, splitting the 12-byte tail of bs into [n,n+8) and     *)
+(* [n+8,n+12).                                                                *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE12_X_UPDATE = prove
+ (`!(bs:byte list) n.
+        LENGTH bs = n + 12
+        ==> crc32c_hw_step
+              (crc32c_hw_step
+                (crc32c_hw_step
+                  (crc32c_hw_step
+                    (crc32c_hw_step
+                      (crc32c_hw_step
+                        (crc32c_hw_step
+                          (crc32c_hw_step
+                            (crc32c_hw_step
+                              (crc32c_hw_step
+                                (crc32c_hw_step
+                                  (crc32c_hw_step
+                                    (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                                  (SUB_LIST(0, n) bs))
+                                    (word_subword
+                                      (word(num_of_bytelist
+                                              (SUB_LIST(n, 8) bs)):int64)
+                                      (0, 8):byte))
+                                  (word_subword
+                                    (word(num_of_bytelist
+                                            (SUB_LIST(n, 8) bs)):int64)
+                                    (8, 8):byte))
+                                (word_subword
+                                  (word(num_of_bytelist
+                                          (SUB_LIST(n, 8) bs)):int64)
+                                  (16, 8):byte))
+                              (word_subword
+                                (word(num_of_bytelist
+                                        (SUB_LIST(n, 8) bs)):int64)
+                                (24, 8):byte))
+                            (word_subword
+                              (word(num_of_bytelist
+                                      (SUB_LIST(n, 8) bs)):int64)
+                              (32, 8):byte))
+                          (word_subword
+                            (word(num_of_bytelist
+                                    (SUB_LIST(n, 8) bs)):int64)
+                            (40, 8):byte))
+                        (word_subword
+                          (word(num_of_bytelist
+                                  (SUB_LIST(n, 8) bs)):int64)
+                          (48, 8):byte))
+                      (word_subword
+                        (word(num_of_bytelist
+                                (SUB_LIST(n, 8) bs)):int64)
+                        (56, 8):byte))
+                    (word_subword
+                      (word(num_of_bytelist
+                              (SUB_LIST(n + 8, 4) bs)):int32)
+                      (0, 8):byte))
+                  (word_subword
+                    (word(num_of_bytelist
+                            (SUB_LIST(n + 8, 4) bs)):int32)
+                    (8, 8):byte))
+                (word_subword
+                  (word(num_of_bytelist
+                          (SUB_LIST(n + 8, 4) bs)):int32)
+                  (16, 8):byte))
+              (word_subword
+                (word(num_of_bytelist
+                        (SUB_LIST(n + 8, 4) bs)):int32)
+                (24, 8):byte)
+            = crc32c_bytes (word 0xFFFFFFFF:int32) bs`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `?b0 b1 b2 b3 b4 b5 b6 b7:byte.
+        SUB_LIST (n, 8) (bs:byte list) = [b0; b1; b2; b3; b4; b5; b6; b7]`
+   STRIP_ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_EQ_8_DECOMP THEN
+    REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `?c0 c1 c2 c3:byte.
+        SUB_LIST (n + 8, 4) (bs:byte list) = [c0; c1; c2; c3]`
+   STRIP_ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_EQ_4_DECOMP THEN
+    REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[WORD_SUBWORD_BYTELIST8_BYTE0; WORD_SUBWORD_BYTELIST8_BYTE1;
+              WORD_SUBWORD_BYTELIST8_BYTE2; WORD_SUBWORD_BYTELIST8_BYTE3;
+              WORD_SUBWORD_BYTELIST8_BYTE4; WORD_SUBWORD_BYTELIST8_BYTE5;
+              WORD_SUBWORD_BYTELIST8_BYTE6; WORD_SUBWORD_BYTELIST8_BYTE7] THEN
+  REWRITE_TAC[WORD_SUBWORD_BYTELIST4_BYTE0; WORD_SUBWORD_BYTELIST4_BYTE1;
+              WORD_SUBWORD_BYTELIST4_BYTE2; WORD_SUBWORD_BYTELIST4_BYTE3] THEN
+  REWRITE_TAC[CRC32CB_BRIDGE] THEN
+  TRANS_TAC EQ_TRANS
+   `crc32c_bytes (word 0xFFFFFFFF:int32)
+      (APPEND
+        (APPEND (SUB_LIST(0,n) (bs:byte list))
+                [b0; b1; b2; b3; b4; b5; b6; b7])
+        [c0; c1; c2; c3])` THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[crc32c_bytes_APPEND; crc32c_bytes];
+    AP_TERM_TAC THEN
+    REWRITE_TAC[GSYM APPEND_ASSOC] THEN
+    SUBGOAL_THEN
+      `APPEND [b0; b1; b2; b3; b4; b5; b6; b7] [c0; c1; c2; c3] =
+       SUB_LIST(n, 12) (bs:byte list)`
+    SUBST1_TAC THENL
+     [POP_ASSUM(SUBST1_TAC o SYM) THEN POP_ASSUM(SUBST1_TAC o SYM) THEN
+      MP_TAC(ISPECL [`bs:byte list`; `8:num`; `4:num`; `n:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `8 + 4 = 12`] THEN
+      DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC;
+      ALL_TAC] THEN
+    MP_TAC(ISPECL [`bs:byte list`; `n:num`] SUB_LIST_TOPSPLIT) THEN
+    ASM_SIMP_TAC[ARITH_RULE
+      `LENGTH (bs:byte list) = n + 12 ==> LENGTH bs - n = 12`]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* RESIDUE12_MEMORY_CLOSE: per-buffer memory zero-projection for residue=12. *)
+(* Composes the orthogonal-prefix lift `bytelist (a, k) s = ZEROES`           *)
+(* with the post-STR int64 zero `bytes64 (a + k) s = word 0`                  *)
+(* and the post-STR int32 zero `bytes32 (a + k + 8) s = word 0`               *)
+(* into the full-buffer zero-fill `bytelist (a, k + 12) s = ZEROES`.          *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE12_MEMORY_CLOSE = prove
+ (`!(a:int64) (s:armstate) k.
+        read (memory :> bytelist (a, k)) s = REPLICATE k (word 0) /\
+        read (memory :> bytes64 (word_add a (word k))) s = word 0 /\
+        read (memory :> bytes32 (word_add a (word (k + 8)))) s = word 0
+        ==> read (memory :> bytelist (a, k + 12)) s =
+            REPLICATE (k + 12) (word 0)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `k + 12 = (k + 8) + 4` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  MATCH_MP_TAC RESIDUE4_MEMORY_CLOSE THEN
+  ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC RESIDUE8_MEMORY_CLOSE THEN
+  ASM_REWRITE_TAC[]);;
