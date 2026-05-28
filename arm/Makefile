@@ -530,6 +530,19 @@ p521/p521_jscalarmul_alt.native: p521/bignum_mod_n521_9.native
 sm2/sm2_montjscalarmul.native: sm2/sm2_montjadd.native sm2/sm2_montjdouble.native
 sm2/sm2_montjscalarmul_alt.native: sm2/sm2_montjadd_alt.native sm2/sm2_montjdouble_alt.native
 
+# SHA-1 HW: the proof of sha1/sha1_block_data_order_hw.o lives in the public
+# wrapper file (which transitively loads sha1_block_data_order_hw_ensures.ml
+# and sha1_block_data_order_hw.ml), not in the implicit base name.
+sha1/sha1_block_data_order_hw.native: proofs/sha1_block_data_order_hw_public.ml \
+    proofs/sha1_block_data_order_hw_ensures.ml \
+    proofs/sha1_block_data_order_hw.ml \
+    proofs/sha1_block_core.ml \
+    proofs/utils/sha1_spec.ml \
+    proofs/utils/sha1_bridge.ml \
+    proofs/sha1.ml \
+    $(BASE_ML) sha1/sha1_block_data_order_hw.o ; \
+  ../tools/build-proof.sh proofs/sha1_block_data_order_hw_public.ml "$(HOLLIGHT)" "$@"
+
 # Tutorial
 
 # safety tutorial does not have safety.o and uses existing ones
