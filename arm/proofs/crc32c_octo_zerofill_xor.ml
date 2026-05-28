@@ -3144,7 +3144,190 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
                                            [ASM_ARITH_TAC; ALL_TAC] THEN
                                           MATCH_MP_TAC RESIDUE11_MEMORY_CLOSE THEN
                                           ASM_REWRITE_TAC[]];
-                                        CHEAT_TAC]]]]]]]]]]]]]]];
+                                        (* Residue = 13 (final, only remaining residue):     *)
+                                        (* TBZ at bit 3 not-taken; runs 8-block (LDR X /     *)
+                                        (* CRC32CX^8 / STR XZR), TBZ at bit 2 not-taken;    *)
+                                        (* runs 4-block (LDR W / CRC32CW^4 / STR WZR),      *)
+                                        (* TBZ at bit 1 taken; TBZ at bit 0 not-taken;       *)
+                                        (* runs 1-block (LDRB / CRC32CB / STRB WZR). 76      *)
+                                        (* instructions total (4 TBZs + 24 + 24 + 24).       *)
+                                        (* Closure composes RESIDUE13_X_UPDATE (which        *)
+                                        (* collapses the 8-byte CRC32CX, 4-byte CRC32CW and  *)
+                                        (* 1-byte CRC32CB chain into crc32c_bytes) and       *)
+                                        (* RESIDUE13_MEMORY_CLOSE (which composes the        *)
+                                        (* int64 + int32 + int8 zero-fills atop the          *)
+                                        (* prefix-bytelist zero into bytelist (a, k+13)      *)
+                                        (* zero).                                            *)
+                                        SUBGOAL_THEN `residue = 13` ASSUME_TAC THENL
+                                         [ASM_ARITH_TAC; ALL_TAC] THEN
+                                        UNDISCH_TAC `residue = 13` THEN
+                                        DISCH_THEN SUBST_ALL_TAC THEN
+                                        SUBGOAL_THEN
+                                          `LENGTH (bs0:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs1:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs2:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs3:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs4:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs5:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs6:byte list) = 16 * iters + 13 /\
+                                           LENGTH (bs7:byte list) = 16 * iters + 13`
+                                          STRIP_ASSUME_TAC THENL
+                                         [REPEAT CONJ_TAC THEN ASM_ARITH_TAC; ALL_TAC] THEN
+                                        ENSURES_INIT_TAC "s0" THEN
+                                        MP_TAC(ISPECL [`a0:int64`; `s0:armstate`;
+                                                       `bs0:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a1:int64`; `s0:armstate`;
+                                                       `bs1:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a2:int64`; `s0:armstate`;
+                                                       `bs2:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a3:int64`; `s0:armstate`;
+                                                       `bs3:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a4:int64`; `s0:armstate`;
+                                                       `bs4:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a5:int64`; `s0:armstate`;
+                                                       `bs5:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a6:int64`; `s0:armstate`;
+                                                       `bs6:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a7:int64`; `s0:armstate`;
+                                                       `bs7:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES64) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a0:int64`; `s0:armstate`;
+                                                       `bs0:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a1:int64`; `s0:armstate`;
+                                                       `bs1:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a2:int64`; `s0:armstate`;
+                                                       `bs2:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a3:int64`; `s0:armstate`;
+                                                       `bs3:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a4:int64`; `s0:armstate`;
+                                                       `bs4:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a5:int64`; `s0:armstate`;
+                                                       `bs5:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a6:int64`; `s0:armstate`;
+                                                       `bs6:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a7:int64`; `s0:armstate`;
+                                                       `bs7:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES32) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a0:int64`; `s0:armstate`;
+                                                       `bs0:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a1:int64`; `s0:armstate`;
+                                                       `bs1:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a2:int64`; `s0:armstate`;
+                                                       `bs2:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a3:int64`; `s0:armstate`;
+                                                       `bs3:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a4:int64`; `s0:armstate`;
+                                                       `bs4:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a5:int64`; `s0:armstate`;
+                                                       `bs5:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a6:int64`; `s0:armstate`;
+                                                       `bs6:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        MP_TAC(ISPECL [`a7:int64`; `s0:armstate`;
+                                                       `bs7:byte list`; `16 * iters`]
+                                                      RESIDUE13_BYTELIST_TO_BYTES8) THEN
+                                        ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+                                        ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--76) THEN
+                                        ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+                                        SIMP_TAC[WORD_ZX_ZX; DIMINDEX_8; DIMINDEX_16;
+                                                 DIMINDEX_32; DIMINDEX_64;
+                                                 ARITH_RULE `8 <= 32`;
+                                                 ARITH_RULE `16 <= 32`;
+                                                 ARITH_RULE `32 <= 64`;
+                                                 ARITH_RULE `16 <= 64`;
+                                                 ARITH_RULE `8 <= 64`] THEN
+                                        REPEAT CONJ_TAC THENL
+                                         [AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          AP_TERM_TAC THEN MATCH_MP_TAC RESIDUE13_X_UPDATE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[];
+                                          SUBGOAL_THEN `len = 16 * iters + 13` SUBST1_TAC THENL
+                                           [ASM_ARITH_TAC; ALL_TAC] THEN
+                                          MATCH_MP_TAC RESIDUE13_MEMORY_CLOSE THEN
+                                          ASM_REWRITE_TAC[]]]]]]]]]]]]]]]]];
           (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR instructions.             *)
           (* The 7 EORs reduce W8..W15 down to W0 = w0 ^ w1 ^ ... ^ w7 where      *)
           (* w_i = crc32c_bytes 0xFFFFFFFF bs_i. The desired                       *)
