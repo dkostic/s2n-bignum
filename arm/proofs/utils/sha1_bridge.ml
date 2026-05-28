@@ -345,3 +345,103 @@ let SHA1SU_BRIDGE = prove
   REWRITE_TAC[sha1su0; sha1su1; word_join4] THEN
   CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
   BITBLAST_TAC);;
+
+(* ========================================================================= *)
+(* Phase 9 byte-level bridges.                                               *)
+(*                                                                           *)
+(* These connect the byte-level public spec (in arm/proofs/utils/             *)
+(* sha1_spec.ml: sha1_word_be / sha1_block_word / sha1_block_from_bytes /     *)
+(* sha1_blocks_from_bytes / sha1_hash_bytes) to the int32-list view that      *)
+(* SHA1_HW_SUBROUTINE_CORRECT (in arm/proofs/sha1_block_data_order_hw_       *)
+(* ensures.ml) consumes.                                                     *)
+(* ========================================================================= *)
+
+(* Length of the block decomposition. *)
+let LENGTH_SHA1_BLOCKS_FROM_BYTES = prove
+ (`!num_blocks bs.
+    LENGTH (sha1_blocks_from_bytes num_blocks bs) = num_blocks`,
+  INDUCT_TAC THEN
+  ASM_REWRITE_TAC[sha1_blocks_from_bytes; LENGTH; LENGTH_APPEND;
+                  ARITH; ADD1]);;
+
+(* The j-th block of a num_blocks-block decomposition. *)
+let EL_SHA1_BLOCKS_FROM_BYTES = prove
+ (`!num_blocks bs j.
+    j < num_blocks
+    ==> EL j (sha1_blocks_from_bytes num_blocks bs) =
+        sha1_block_from_bytes j bs`,
+  INDUCT_TAC THENL [REWRITE_TAC[LT]; ALL_TAC] THEN
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[ADD1; sha1_blocks_from_bytes; EL_APPEND;
+              LENGTH_SHA1_BLOCKS_FROM_BYTES] THEN
+  ASM_CASES_TAC `j:num < num_blocks` THENL [ASM_SIMP_TAC[]; ALL_TAC] THEN
+  SUBGOAL_THEN `j:num = num_blocks` SUBST1_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  REWRITE_TAC[SUB_REFL; EL; HD; LT_REFL]);;
+
+(* Each block produced by sha1_block_from_bytes has length 16. *)
+let LENGTH_SHA1_BLOCK_FROM_BYTES = prove
+ (`!j bs. LENGTH (sha1_block_from_bytes j bs) = 16`,
+  REWRITE_TAC[sha1_block_from_bytes; LENGTH; ARITH]);;
+
+(* Therefore every block in the multi-block decomposition has length 16. *)
+let ALL_LENGTH_SHA1_BLOCKS_FROM_BYTES = prove
+ (`!num_blocks bs.
+    ALL (\bl. LENGTH bl = 16) (sha1_blocks_from_bytes num_blocks bs)`,
+  INDUCT_TAC THEN
+  ASM_REWRITE_TAC[sha1_blocks_from_bytes; ALL; ALL_APPEND;
+                  ADD1; LENGTH_SHA1_BLOCK_FROM_BYTES]);;
+
+(* The k-th word of the j-th block, for k < 16. *)
+let EL_SHA1_BLOCK_FROM_BYTES = prove
+ (`!j bs k.
+    k < 16
+    ==> EL k (sha1_block_from_bytes j bs) = sha1_block_word j k bs`,
+  GEN_TAC THEN GEN_TAC THEN CONV_TAC EXPAND_CASES_CONV THEN
+  REWRITE_TAC[sha1_block_from_bytes] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN REWRITE_TAC[]);;
+
+(* word_bytereverse of sha1_block_word reduces to a raw 4-byte read.        *)
+(* This is the key identity: it says "the FIPS-big-endian word, after an    *)
+(* extra word_bytereverse, is just the natural little-endian decode of the  *)
+(* 4 bytes." That natural decode is what `read (memory :> bytes32 _)`       *)
+(* produces when bytes are stored little-endian (the norm).                 *)
+let WORD_BYTEREVERSE_SHA1_BLOCK_WORD = prove
+ (`!j k bs.
+    word_bytereverse (sha1_block_word j k bs) :int32 =
+    word(num_of_bytelist [EL (64*j + 4*k + 0) bs;
+                          EL (64*j + 4*k + 1) bs;
+                          EL (64*j + 4*k + 2) bs;
+                          EL (64*j + 4*k + 3) bs])`,
+  REWRITE_TAC[sha1_block_word; sha1_word_be; WORD_BYTEREVERSE_BYTEREVERSE]);;
+
+(* Memory-level helpers: byte-list reads project to bytes32 / bytes128 reads. *)
+
+(* A bytes128 read can be split into a word_join4 of four bytes32 reads. *)
+let READ_BYTES128_AS_WORD_JOIN4_BYTES32 = prove
+ (`!a s.
+    read (memory :> bytes128 a) s :int128 =
+    word_join4 (read (memory :> bytes32 a) s)
+               (read (memory :> bytes32 (word_add a (word 4))) s)
+               (read (memory :> bytes32 (word_add a (word 8))) s)
+               (read (memory :> bytes32 (word_add a (word 12))) s)`,
+  REPEAT GEN_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV
+    [CONJUNCT1 (CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT)] THEN
+  GEN_REWRITE_TAC (LAND_CONV o ONCE_DEPTH_CONV)
+    [CONJUNCT1 (CONJUNCT2 (CONJUNCT2 READ_MEMORY_BYTESIZED_SPLIT))] THEN
+  REWRITE_TAC[word_join4;
+              WORD_RULE `word_add (word_add a (word 8)) (word 4) =
+                         word_add a (word 12)`] THEN
+  BITBLAST_TAC);;
+
+(* If a bytelist of length 4 reads to [b0;b1;b2;b3], the bytes32 read at the *)
+(* same address is word(num_of_bytelist [b0;b1;b2;b3]).                       *)
+let READ_BYTES32_FROM_BYTELIST_4 = prove
+ (`!a s b0 b1 b2 b3.
+    read (memory :> bytelist (a,4)) s = [b0;b1;b2;b3]
+    ==> read (memory :> bytes32 a) s :int32 =
+        word(num_of_bytelist [b0;b1;b2;b3])`,
+  REWRITE_TAC[bytes32; READ_COMPONENT_COMPOSE; asword; through;
+              READ_BYTELIST_EQ_BYTES; read] THEN
+  MESON_TAC[]);;
