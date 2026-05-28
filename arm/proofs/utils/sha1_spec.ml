@@ -158,3 +158,60 @@ let sha1_hash_blocks = define
  `sha1_hash_blocks 0 blocks H = H /\
   sha1_hash_blocks (n + 1) blocks H =
     sha1_block_compress (EL n blocks) (sha1_hash_blocks n blocks H)`;;
+
+(* ------------------------------------------------------------------------- *)
+(* Byte-level entry point (Phase 9).                                         *)
+(*                                                                           *)
+(* The HW implementation works on whole 64-byte blocks: it does not pad or   *)
+(* length-tag (FIPS one-shot hash padding is the higher-level caller's job). *)
+(* This section defines:                                                     *)
+(*   - sha1_word_be           : 4 bytes (big-endian) -> int32                *)
+(*   - sha1_block_from_bytes  : 64 bytes -> int32 list of length 16          *)
+(*   - sha1_blocks_from_bytes : n*64 bytes -> int32 list list of length n    *)
+(*   - sha1_hash_bytes        : the public spec                               *)
+(*                                                                           *)
+(* FIPS 180-4 §6.1.2 reads the 16 message-block words `M_t` as 4 big-endian  *)
+(* bytes each; word_bytereverse converts the native little-endian            *)
+(* interpretation of `read (memory :> bytes32 _)` to that big-endian form.   *)
+(* ------------------------------------------------------------------------- *)
+
+(* sha1_word_be packs 4 bytes (b0,b1,b2,b3) -> b0||b1||b2||b3 as a 32-bit  *)
+(* big-endian word: i.e. b0 is the most-significant byte. Equivalent to a   *)
+(* word-bytereverse of the natural little-endian num_of_bytelist read.      *)
+let sha1_word_be = new_definition
+ `sha1_word_be (b0:byte) (b1:byte) (b2:byte) (b3:byte) : int32 =
+    word_bytereverse (word(num_of_bytelist [b0;b1;b2;b3]):int32)`;;
+
+(* The j-th block word (j=0..15) of an n*64-byte buffer, in FIPS big-endian  *)
+(* form: bytes bs[64*i+4*j..64*i+4*j+3] form one big-endian int32.           *)
+let sha1_block_word = new_definition
+ `sha1_block_word (i:num) (j:num) (bs:byte list) : int32 =
+    sha1_word_be (EL (64*i + 4*j + 0) bs)
+                 (EL (64*i + 4*j + 1) bs)
+                 (EL (64*i + 4*j + 2) bs)
+                 (EL (64*i + 4*j + 3) bs)`;;
+
+(* The 16-word i-th block of an n*64-byte buffer. *)
+let sha1_block_from_bytes = new_definition
+ `sha1_block_from_bytes (i:num) (bs:byte list) : int32 list =
+    [sha1_block_word i  0 bs; sha1_block_word i  1 bs;
+     sha1_block_word i  2 bs; sha1_block_word i  3 bs;
+     sha1_block_word i  4 bs; sha1_block_word i  5 bs;
+     sha1_block_word i  6 bs; sha1_block_word i  7 bs;
+     sha1_block_word i  8 bs; sha1_block_word i  9 bs;
+     sha1_block_word i 10 bs; sha1_block_word i 11 bs;
+     sha1_block_word i 12 bs; sha1_block_word i 13 bs;
+     sha1_block_word i 14 bs; sha1_block_word i 15 bs]`;;
+
+(* Iterated multi-block view: split n*64 bytes into n int32-list blocks. *)
+let sha1_blocks_from_bytes = define
+ `sha1_blocks_from_bytes 0 bs = [] /\
+  sha1_blocks_from_bytes (n + 1) bs =
+    APPEND (sha1_blocks_from_bytes n bs)
+           [sha1_block_from_bytes n bs]`;;
+
+(* Hash an n*64-byte buffer (whole-blocks-only, no padding/length-tagging). *)
+let sha1_hash_bytes = new_definition
+ `sha1_hash_bytes (num_blocks:num) (bs:byte list) (H:int32 list)
+                  : int32 list =
+    sha1_hash_blocks num_blocks (sha1_blocks_from_bytes num_blocks bs) H`;;
