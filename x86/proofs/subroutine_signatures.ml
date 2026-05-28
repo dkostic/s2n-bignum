@@ -4718,6 +4718,24 @@ let subroutine_signatures = [
    ])
 );
 
+("md5_block_asm_data_order",
+  ([(*args*)
+     ("state", "uint32_t[static 4]", (*is const?*)"false");
+     ("data", "uint8_t*", (*is const?*)"true");
+     ("num_blocks", "size_t", (*is const?*)"false");
+   ],
+   "void",
+   [(* input buffers *)
+    ("state", "4"(* num elems *), 4(* elem bytesize *));
+    ("data", "64*num_blocks"(* num elems *), 1(* elem bytesize *));
+   ],
+   [(* output buffers *)
+    ("state", "4"(* num elems *), 4(* elem bytesize *));
+   ],
+   [(* temporary buffers *)
+   ])
+);
+
 ("mldsa_intt",
   ([(*args*)
      ("a", "int32_t[static 256]", (*is const?*)"false");

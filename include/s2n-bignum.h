@@ -1199,11 +1199,12 @@ extern void secp256k1_jdouble_alt(uint64_t p3[S2N_BIGNUM_STATIC 12],const uint64
 extern void secp256k1_jmixadd(uint64_t p3[S2N_BIGNUM_STATIC 12],const uint64_t p1[S2N_BIGNUM_STATIC 12],const uint64_t p2[S2N_BIGNUM_STATIC 8]);
 extern void secp256k1_jmixadd_alt(uint64_t p3[S2N_BIGNUM_STATIC 12],const uint64_t p1[S2N_BIGNUM_STATIC 12],const uint64_t p2[S2N_BIGNUM_STATIC 8]);
 
+#ifdef __x86_64__
 // MD5 inner block-compression function (RFC 1321)
 // Hashes num_blocks 64-byte blocks from data into the four 32-bit
 // chaining words at state, in place. Caller is responsible for
 // length+1+padding.
-#ifdef __x86_64__
+// Inputs state[4], data[64*num_blocks]; output state[4]
 extern void md5_block_asm_data_order(uint32_t state[S2N_BIGNUM_STATIC 4],const uint8_t *data,size_t num_blocks);
 #endif
 

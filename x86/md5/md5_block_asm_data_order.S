@@ -11,7 +11,7 @@
 // ----------------------------------------------------------------------------
 // Inner block-compression routine for MD5 (RFC 1321).
 //
-//    extern void md5_block_asm_data_order(uint32_t state[4],
+//    extern void md5_block_asm_data_order(uint32_t state[S2N_BIGNUM_STATIC 4],
 //                                         const uint8_t *data,
 //                                         size_t num_blocks);
 //
