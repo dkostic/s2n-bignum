@@ -445,3 +445,118 @@ let READ_BYTES32_FROM_BYTELIST_4 = prove
   REWRITE_TAC[bytes32; READ_COMPONENT_COMPOSE; asword; through;
               READ_BYTELIST_EQ_BYTES; read] THEN
   MESON_TAC[]);;
+
+(* Byte-by-byte projection of a bytelist read: each byte at offset i is      *)
+(* EL i of the byte list. The list-as-spec form makes this independent of    *)
+(* the master address.                                                       *)
+let READ_MEMORY_FROM_BYTELIST = prove
+ (`!(l:byte list) a s i.
+    read (memory :> bytelist (a, LENGTH l)) s = l /\ i < LENGTH l
+    ==> read memory s (word_add a (word i)) = EL i l`,
+  LIST_INDUCT_TAC THEN REWRITE_TAC[LENGTH; LT] THEN
+  GEN_TAC THEN GEN_TAC THEN INDUCT_TAC THEN
+  REWRITE_TAC[READ_COMPONENT_COMPOSE; bytelist_clauses; CONS_11;
+              EL; HD; TL; WORD_ADD_0] THEN
+  REWRITE_TAC[ARITH_RULE
+    `(SUC i = LENGTH t \/ SUC i < LENGTH t) <=> i < LENGTH t`] THEN
+  STRIP_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPECL
+    [`word_add (a:int64) (word 1)`; `s:armstate`; `i:num`]) THEN
+  ASM_REWRITE_TAC[READ_COMPONENT_COMPOSE] THEN
+  REWRITE_TAC[WORD_RULE
+    `word_add (word_add a (word 1)) (word i) = word_add a (word (SUC i))`]);;
+
+(* A 4-byte slice of a master bytelist read becomes a bytes32 read.          *)
+let SHA1_BYTES32_FROM_BYTELIST = prove
+ (`!s data_ptr (bs:byte list) m.
+    read (memory :> bytelist (data_ptr, LENGTH bs)) s = bs /\
+    m + 4 <= LENGTH bs
+    ==>
+    read (memory :> bytes32 (word_add data_ptr (word m))) s :int32 =
+      word(num_of_bytelist
+             [EL m bs; EL (m+1) bs; EL (m+2) bs; EL (m+3) bs])`,
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC READ_BYTES32_FROM_BYTELIST_4 THEN
+  ASM_REWRITE_TAC[READ_COMPONENT_COMPOSE; bytelist_clauses;
+                  ARITH_RULE `4 = SUC(SUC(SUC(SUC 0)))`; CONS_11] THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV
+   [WORD_RULE `word_add (word_add (word_add (word_add data_ptr (word m))
+                          (word 1)) (word 1)) (word 1) =
+               word_add data_ptr (word (m + 3))`] THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV
+   [WORD_RULE `word_add (word_add (word_add data_ptr (word m)) (word 1))
+                         (word 1) = word_add data_ptr (word (m + 2))`] THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV
+   [WORD_RULE `word_add (word_add data_ptr (word m)) (word 1) =
+               word_add data_ptr (word (m + 1))`] THEN
+  CONJ_TAC THENL [
+    MP_TAC(SPECL [`bs:byte list`; `data_ptr:int64`; `s:armstate`; `m:num`]
+      READ_MEMORY_FROM_BYTELIST) THEN
+    ASM_SIMP_TAC[WORD_ADD_0; ARITH_RULE `m + 4 <= n ==> m < n`];
+    CONJ_TAC THENL [
+      MP_TAC(SPECL [`bs:byte list`; `data_ptr:int64`; `s:armstate`; `m + 1`]
+        READ_MEMORY_FROM_BYTELIST) THEN
+      ASM_SIMP_TAC[ARITH_RULE `m + 4 <= n ==> m + 1 < n`];
+      CONJ_TAC THENL [
+        MP_TAC(SPECL [`bs:byte list`; `data_ptr:int64`; `s:armstate`; `m + 2`]
+          READ_MEMORY_FROM_BYTELIST) THEN
+        ASM_SIMP_TAC[ARITH_RULE `m + 4 <= n ==> m + 2 < n`];
+        MP_TAC(SPECL [`bs:byte list`; `data_ptr:int64`; `s:armstate`; `m + 3`]
+          READ_MEMORY_FROM_BYTELIST) THEN
+        ASM_SIMP_TAC[ARITH_RULE `m + 4 <= n ==> m + 3 < n`]
+      ]
+    ]
+  ]);;
+
+(* A 16-byte slice of a master bytelist read becomes a bytes128 read,        *)
+(* expressed as a word_join4 of four 4-byte word-of-num_of_bytelist forms.   *)
+let SHA1_BYTES128_FROM_BYTELIST = prove
+ (`!s data_ptr (bs:byte list) m.
+    read (memory :> bytelist (data_ptr, LENGTH bs)) s = bs /\
+    m + 16 <= LENGTH bs
+    ==>
+    read (memory :> bytes128 (word_add data_ptr (word m))) s :int128 =
+      word_join4
+        (word(num_of_bytelist [EL m bs; EL(m+1) bs; EL(m+2) bs; EL(m+3) bs]))
+        (word(num_of_bytelist [EL(m+4) bs; EL(m+5) bs;
+                               EL(m+6) bs; EL(m+7) bs]))
+        (word(num_of_bytelist [EL(m+8) bs; EL(m+9) bs;
+                               EL(m+10) bs; EL(m+11) bs]))
+        (word(num_of_bytelist [EL(m+12) bs; EL(m+13) bs;
+                               EL(m+14) bs; EL(m+15) bs]))`,
+  REPEAT STRIP_TAC THEN
+  ONCE_REWRITE_TAC[READ_BYTES128_AS_WORD_JOIN4_BYTES32] THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV
+   [WORD_RULE `word_add (word_add data_ptr (word m)) (word 4) =
+               word_add data_ptr (word (m + 4))`] THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV
+   [WORD_RULE `word_add (word_add data_ptr (word m)) (word 8) =
+               word_add data_ptr (word (m + 8))`] THEN
+  GEN_REWRITE_TAC ONCE_DEPTH_CONV
+   [WORD_RULE `word_add (word_add data_ptr (word m)) (word 12) =
+               word_add data_ptr (word (m + 12))`] THEN
+  MP_TAC(SPECL [`s:armstate`; `data_ptr:int64`; `bs:byte list`; `m:num`]
+    SHA1_BYTES32_FROM_BYTELIST) THEN
+  ASM_SIMP_TAC[ARITH_RULE `m + 16 <= n ==> m + 4 <= n`] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  MP_TAC(SPECL [`s:armstate`; `data_ptr:int64`; `bs:byte list`; `m + 4`]
+    SHA1_BYTES32_FROM_BYTELIST) THEN
+  ASM_SIMP_TAC[ARITH_RULE `m + 16 <= n ==> (m + 4) + 4 <= n`] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  MP_TAC(SPECL [`s:armstate`; `data_ptr:int64`; `bs:byte list`; `m + 8`]
+    SHA1_BYTES32_FROM_BYTELIST) THEN
+  ASM_SIMP_TAC[ARITH_RULE `m + 16 <= n ==> (m + 8) + 4 <= n`] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  MP_TAC(SPECL [`s:armstate`; `data_ptr:int64`; `bs:byte list`; `m + 12`]
+    SHA1_BYTES32_FROM_BYTELIST) THEN
+  ASM_SIMP_TAC[ARITH_RULE `m + 16 <= n ==> (m + 12) + 4 <= n`] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[ARITH_RULE `(m + 4) + 1 = m + 5`;
+              ARITH_RULE `(m + 4) + 2 = m + 6`;
+              ARITH_RULE `(m + 4) + 3 = m + 7`;
+              ARITH_RULE `(m + 8) + 1 = m + 9`;
+              ARITH_RULE `(m + 8) + 2 = m + 10`;
+              ARITH_RULE `(m + 8) + 3 = m + 11`;
+              ARITH_RULE `(m + 12) + 1 = m + 13`;
+              ARITH_RULE `(m + 12) + 2 = m + 14`;
+              ARITH_RULE `(m + 12) + 3 = m + 15`]);;
