@@ -4193,3 +4193,396 @@ let RESIDUE15_BYTELIST_TO_BYTES8 = prove
       GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [SYM th]) THEN
     REWRITE_TAC[SUB_LIST_LENGTH];
     DISCH_THEN ACCEPT_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Residue=7 helpers (4-byte CRC32CW path, 2-byte CRC32CH path,              *)
+(* 1-byte CRC32CB path). Composed from RESIDUE4_X_UPDATE,                    *)
+(* RESIDUE2_X_UPDATE and RESIDUE1_X_UPDATE via crc32c_bytes_APPEND,          *)
+(* splitting the 7-byte tail of bs into [n,n+4), [n+4,n+6) and [n+6,n+7).   *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE7_X_UPDATE = prove
+ (`!(bs:byte list) n.
+        LENGTH bs = n + 7
+        ==> crc32c_hw_step
+              (crc32c_hw_step
+                (crc32c_hw_step
+                  (crc32c_hw_step
+                    (crc32c_hw_step
+                      (crc32c_hw_step
+                        (crc32c_hw_step
+                          (crc32c_bytes (word 0xFFFFFFFF:int32)
+                                        (SUB_LIST(0, n) bs))
+                          (word_subword
+                            (word(num_of_bytelist
+                                    (SUB_LIST(n, 4) bs)):int32)
+                            (0, 8):byte))
+                        (word_subword
+                          (word(num_of_bytelist
+                                  (SUB_LIST(n, 4) bs)):int32)
+                          (8, 8):byte))
+                      (word_subword
+                        (word(num_of_bytelist
+                                (SUB_LIST(n, 4) bs)):int32)
+                        (16, 8):byte))
+                    (word_subword
+                      (word(num_of_bytelist
+                              (SUB_LIST(n, 4) bs)):int32)
+                      (24, 8):byte))
+                  (word_subword
+                    (word_zx
+                      (word(num_of_bytelist
+                              (SUB_LIST(n + 4, 2) bs)):int16):int32)
+                    (0, 8):byte))
+                (word_subword
+                  (word_zx
+                    (word(num_of_bytelist
+                            (SUB_LIST(n + 4, 2) bs)):int16):int32)
+                  (8, 8):byte))
+              (word_subword
+                (word_zx
+                  (word(num_of_bytelist
+                          (SUB_LIST(n + 6, 1) bs)):byte):int32)
+                (0, 8):byte)
+            = crc32c_bytes (word 0xFFFFFFFF:int32) bs`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[WORD_SUBWORD_ZX_INT16_BYTE0; WORD_SUBWORD_ZX_INT16_BYTE1;
+              WORD_SUBWORD_ZX_BYTE_TRIVIAL] THEN
+  SUBGOAL_THEN
+    `?b0 b1 b2 b3:byte.
+        SUB_LIST (n, 4) (bs:byte list) = [b0; b1; b2; b3]`
+   STRIP_ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_EQ_4_DECOMP THEN
+    REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `?c0 c1:byte.
+        SUB_LIST (n + 4, 2) (bs:byte list) = [c0; c1]`
+   STRIP_ASSUME_TAC THENL
+   [MATCH_MP_TAC LENGTH_EQ_2_DECOMP THEN
+    REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `SUB_LIST (n + 6, 1) (bs:byte list) = [EL (n + 6) bs]`
+   SUBST1_TAC THENL
+   [ASM_SIMP_TAC[SUB_LIST_1;
+      ARITH_RULE `LENGTH (bs:byte list) = n + 7 ==> n + 6 < LENGTH bs`];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `word (num_of_bytelist [EL (n + 6) (bs:byte list)]) = EL (n + 6) bs:byte`
+  SUBST1_TAC THENL
+   [REWRITE_TAC[num_of_bytelist; MULT_0; ADD_0] THEN CONV_TAC WORD_BLAST;
+    ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[WORD_SUBWORD_BYTELIST4_BYTE0; WORD_SUBWORD_BYTELIST4_BYTE1;
+              WORD_SUBWORD_BYTELIST4_BYTE2; WORD_SUBWORD_BYTELIST4_BYTE3] THEN
+  REWRITE_TAC[WORD_SUBWORD_BYTELIST2_LSB; WORD_SUBWORD_BYTELIST2_MSB] THEN
+  REWRITE_TAC[CRC32CB_BRIDGE] THEN
+  TRANS_TAC EQ_TRANS
+   `crc32c_bytes (word 0xFFFFFFFF:int32)
+      (APPEND
+        (APPEND
+          (APPEND (SUB_LIST(0,n) (bs:byte list))
+                  [b0; b1; b2; b3])
+          [c0; c1])
+        [EL (n + 6) bs])` THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[crc32c_bytes_APPEND; crc32c_bytes];
+    AP_TERM_TAC THEN
+    REWRITE_TAC[GSYM APPEND_ASSOC] THEN
+    SUBGOAL_THEN
+      `APPEND [b0; b1; b2; b3]
+              (APPEND [c0; c1] [EL (n + 6) (bs:byte list)]) =
+       SUB_LIST(n, 7) (bs:byte list)`
+    SUBST1_TAC THENL
+     [POP_ASSUM(SUBST1_TAC o SYM) THEN
+      POP_ASSUM(SUBST1_TAC o SYM) THEN
+      SUBGOAL_THEN `[EL (n + 6) (bs:byte list)] = SUB_LIST(n + 6, 1) bs`
+      SUBST1_TAC THENL
+       [ASM_SIMP_TAC[SUB_LIST_1;
+          ARITH_RULE `LENGTH (bs:byte list) = n + 7 ==> n + 6 < LENGTH bs`];
+        ALL_TAC] THEN
+      MP_TAC(ISPECL [`bs:byte list`; `2:num`; `1:num`; `n + 4:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `2 + 1 = 3`;
+                  ARITH_RULE `(n + 4) + 2 = n + 6`] THEN
+      DISCH_THEN(SUBST1_TAC o SYM) THEN
+      MP_TAC(ISPECL [`bs:byte list`; `4:num`; `3:num`; `n:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `4 + 3 = 7`] THEN
+      DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC;
+      ALL_TAC] THEN
+    MP_TAC(ISPECL [`bs:byte list`; `n:num`] SUB_LIST_TOPSPLIT) THEN
+    ASM_SIMP_TAC[ARITH_RULE
+      `LENGTH (bs:byte list) = n + 7 ==> LENGTH bs - n = 7`]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* RESIDUE7_MEMORY_CLOSE: per-buffer memory zero-projection for residue=7.   *)
+(* Composes the orthogonal-prefix lift `bytelist (a, k) s = ZEROES`           *)
+(* with the post-STR int32 zero `bytes32 (a + k) s = word 0`                  *)
+(* and the post-STRH int16 zero `bytes16 (a + (k + 4)) s = word 0`            *)
+(* and the post-STRB int8 zero `bytes8 (a + (k + 6)) s = word 0`              *)
+(* into the full-buffer zero-fill `bytelist (a, k + 7) s = ZEROES`.           *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE7_MEMORY_CLOSE = prove
+ (`!(a:int64) (s:armstate) k.
+        read (memory :> bytelist (a, k)) s = REPLICATE k (word 0) /\
+        read (memory :> bytes32 (word_add a (word k))) s = word 0 /\
+        read (memory :> bytes16 (word_add a (word (k + 4)))) s = word 0 /\
+        read (memory :> bytes8 (word_add a (word (k + 6)))) s = word 0
+        ==> read (memory :> bytelist (a, k + 7)) s =
+            REPLICATE (k + 7) (word 0)`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `k + 7 = (k + 6) + 1` SUBST1_TAC THENL
+   [ARITH_TAC; ALL_TAC] THEN
+  MATCH_MP_TAC RESIDUE1_MEMORY_CLOSE THEN
+  ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC RESIDUE6_MEMORY_CLOSE THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Residue=7 per-buffer cut-state adapters.                                   *)
+(* The cut state on entry to the residue=7 case has a 7-byte suffix           *)
+(* bytelist hypothesis                                                        *)
+(*    read (memory :> bytelist (word_add a (word k), 7)) s =                  *)
+(*      SUB_LIST(k, 7) bs                                                     *)
+(* (with LENGTH bs = k + 7). The kernel's tail-block performs an LDR W        *)
+(* (4 bytes at offset k), an LDRH (2 bytes at offset k+4) and an LDRB         *)
+(* (1 byte at offset k+6); we stage the corresponding bytes32 / bytes16 /     *)
+(* bytes8 reads at s0 so ARM_STEPS_TAC can resolve all three. They are        *)
+(* pre-store reads at s0 — the post-imm STR WZR / STRH WZR / STRB WZR writes  *)
+(* are sequenced after the corresponding LDRs.                                *)
+(* ------------------------------------------------------------------------- *)
+
+let RESIDUE7_BYTELIST_TO_BYTES32 = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) k.
+        LENGTH bs = k + 7 /\
+        read (memory :> bytelist (word_add a (word k), 7)) s =
+          SUB_LIST (k, 7) bs
+        ==> read (memory :> bytes32 (word_add a (word k))) s =
+            word(num_of_bytelist (SUB_LIST(k, 4) bs))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `read (memory :> bytelist (word_add a (word k), 4)) (s:armstate) =
+     SUB_LIST (k, 4) (bs:byte list)`
+  ASSUME_TAC THENL
+   [SUBGOAL_THEN
+      `SUB_LIST(k, 7) (bs:byte list) =
+       APPEND (SUB_LIST(k, 4) bs) (SUB_LIST(k + 4, 3) bs)`
+    ASSUME_TAC THENL
+     [MP_TAC(ISPECL [`bs:byte list`; `4:num`; `3:num`; `k:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `4 + 3 = 7`];
+      ALL_TAC] THEN
+    SUBGOAL_THEN
+      `LENGTH (SUB_LIST(k, 4) (bs:byte list)) = 4 /\
+       LENGTH (SUB_LIST(k + 4, 3) (bs:byte list)) = 3`
+    STRIP_ASSUME_TAC THENL
+     [REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    UNDISCH_TAC `read (memory :> bytelist (word_add a (word k), 7)) s =
+                 SUB_LIST (k, 7) (bs:byte list)` THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `7 = LENGTH (APPEND (SUB_LIST(k, 4) (bs:byte list))
+                          (SUB_LIST(k + 4, 3) bs))`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+    ASM_REWRITE_TAC[] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`word_add a (word k):int64`; `s:armstate`;
+                 `SUB_LIST(k, 4) (bs:byte list)`; `0:num`]
+                BYTES32_FROM_BYTELIST) THEN
+  SUBGOAL_THEN `LENGTH (SUB_LIST (k,4) (bs:byte list)) = 4` ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[ARITH; LE_REFL] THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, 4) (SUB_LIST(k, 4) (bs:byte list)) =
+     SUB_LIST(k, 4) bs`
+  SUBST1_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [SYM th]) THEN
+    REWRITE_TAC[SUB_LIST_LENGTH];
+    DISCH_THEN ACCEPT_TAC]);;
+
+let RESIDUE7_BYTELIST_TO_BYTES16 = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) k.
+        LENGTH bs = k + 7 /\
+        read (memory :> bytelist (word_add a (word k), 7)) s =
+          SUB_LIST (k, 7) bs
+        ==> read (memory :> bytes16 (word_add a (word (k + 4)))) s =
+            word(num_of_bytelist (SUB_LIST(k + 4, 2) bs))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `LENGTH (SUB_LIST(k, 4) (bs:byte list)) = 4 /\
+     LENGTH (SUB_LIST(k + 4, 2) (bs:byte list)) = 2 /\
+     LENGTH (SUB_LIST(k + 6, 1) (bs:byte list)) = 1 /\
+     LENGTH (SUB_LIST(k + 4, 3) (bs:byte list)) = 3`
+  STRIP_ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (memory :> bytelist
+       (word_add a (word (k + 4)), 3)) (s:armstate) =
+     SUB_LIST (k + 4, 3) (bs:byte list)`
+  ASSUME_TAC THENL
+   [SUBGOAL_THEN
+      `read (memory :> bytelist (word_add a (word k), 7)) (s:armstate) =
+       APPEND (SUB_LIST(k, 4) (bs:byte list)) (SUB_LIST(k + 4, 3) bs)`
+    MP_TAC THENL
+     [ASM_REWRITE_TAC[] THEN
+      MP_TAC(ISPECL [`bs:byte list`; `4:num`; `3:num`; `k:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `4 + 3 = 7`];
+      ALL_TAC] THEN
+    SUBGOAL_THEN
+      `7 = LENGTH (APPEND (SUB_LIST(k, 4) (bs:byte list))
+                          (SUB_LIST(k + 4, 3) bs))`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `word_add (word_add (a:int64) (word k)) (word 4) =
+       word_add a (word (k + 4))`
+    SUBST1_TAC THENL
+     [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (memory :> bytelist
+       (word_add a (word (k + 4)), 2)) (s:armstate) =
+     SUB_LIST (k + 4, 2) (bs:byte list)`
+  ASSUME_TAC THENL
+   [SUBGOAL_THEN
+      `SUB_LIST(k + 4, 3) (bs:byte list) =
+       APPEND (SUB_LIST(k + 4, 2) bs) (SUB_LIST(k + 6, 1) bs)`
+    ASSUME_TAC THENL
+     [MP_TAC(ISPECL [`bs:byte list`; `2:num`; `1:num`; `k + 4:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `2 + 1 = 3`;
+                  ARITH_RULE `(k + 4) + 2 = k + 6`];
+      ALL_TAC] THEN
+    UNDISCH_TAC `read (memory :> bytelist (word_add a (word (k + 4)), 3)) s =
+                 SUB_LIST (k + 4, 3) (bs:byte list)` THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `3 = LENGTH (APPEND (SUB_LIST(k + 4, 2) (bs:byte list))
+                          (SUB_LIST(k + 6, 1) bs))`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+    ASM_REWRITE_TAC[] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`word_add a (word (k + 4)):int64`; `s:armstate`;
+                 `SUB_LIST(k + 4, 2) (bs:byte list)`; `0:num`]
+                BYTES16_FROM_BYTELIST) THEN
+  ASM_REWRITE_TAC[ARITH; LE_REFL] THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, 2) (SUB_LIST(k + 4, 2) (bs:byte list)) =
+     SUB_LIST(k + 4, 2) bs`
+  SUBST1_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [SYM th]) THEN
+    REWRITE_TAC[SUB_LIST_LENGTH];
+    DISCH_THEN ACCEPT_TAC]);;
+
+let RESIDUE7_BYTELIST_TO_BYTES8 = prove
+ (`!(a:int64) (s:armstate) (bs:byte list) k.
+        LENGTH bs = k + 7 /\
+        read (memory :> bytelist (word_add a (word k), 7)) s =
+          SUB_LIST (k, 7) bs
+        ==> read (memory :> bytes8 (word_add a (word (k + 6)))) s =
+            word(num_of_bytelist (SUB_LIST(k + 6, 1) bs))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `LENGTH (SUB_LIST(k, 4) (bs:byte list)) = 4 /\
+     LENGTH (SUB_LIST(k + 4, 2) (bs:byte list)) = 2 /\
+     LENGTH (SUB_LIST(k + 6, 1) (bs:byte list)) = 1 /\
+     LENGTH (SUB_LIST(k + 4, 3) (bs:byte list)) = 3`
+  STRIP_ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH_SUB_LIST] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (memory :> bytelist
+       (word_add a (word (k + 4)), 3)) (s:armstate) =
+     SUB_LIST (k + 4, 3) (bs:byte list)`
+  ASSUME_TAC THENL
+   [SUBGOAL_THEN
+      `read (memory :> bytelist (word_add a (word k), 7)) (s:armstate) =
+       APPEND (SUB_LIST(k, 4) (bs:byte list)) (SUB_LIST(k + 4, 3) bs)`
+    MP_TAC THENL
+     [ASM_REWRITE_TAC[] THEN
+      MP_TAC(ISPECL [`bs:byte list`; `4:num`; `3:num`; `k:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `4 + 3 = 7`];
+      ALL_TAC] THEN
+    SUBGOAL_THEN
+      `7 = LENGTH (APPEND (SUB_LIST(k, 4) (bs:byte list))
+                          (SUB_LIST(k + 4, 3) bs))`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `word_add (word_add (a:int64) (word k)) (word 4) =
+       word_add a (word (k + 4))`
+    SUBST1_TAC THENL
+     [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+    `read (memory :> bytelist
+       (word_add a (word (k + 6)), 1)) (s:armstate) =
+     SUB_LIST (k + 6, 1) (bs:byte list)`
+  ASSUME_TAC THENL
+   [SUBGOAL_THEN
+      `SUB_LIST(k + 4, 3) (bs:byte list) =
+       APPEND (SUB_LIST(k + 4, 2) bs) (SUB_LIST(k + 6, 1) bs)`
+    ASSUME_TAC THENL
+     [MP_TAC(ISPECL [`bs:byte list`; `2:num`; `1:num`; `k + 4:num`]
+                    SUB_LIST_SPLIT) THEN
+      REWRITE_TAC[ARITH_RULE `2 + 1 = 3`;
+                  ARITH_RULE `(k + 4) + 2 = k + 6`];
+      ALL_TAC] THEN
+    UNDISCH_TAC `read (memory :> bytelist (word_add a (word (k + 4)), 3)) s =
+                 SUB_LIST (k + 4, 3) (bs:byte list)` THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `3 = LENGTH (APPEND (SUB_LIST(k + 4, 2) (bs:byte list))
+                          (SUB_LIST(k + 6, 1) bs))`
+    SUBST1_TAC THENL
+     [REWRITE_TAC[LENGTH_APPEND] THEN ASM_REWRITE_TAC[] THEN ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[READ_COMPONENT_COMPOSE; read_bytelist_append] THEN
+    ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN
+      `word_add (word_add (a:int64) (word (k + 4))) (word 2) =
+       word_add a (word (k + 6))`
+    SUBST1_TAC THENL
+     [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    STRIP_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`word_add a (word (k + 6)):int64`; `s:armstate`;
+                 `SUB_LIST(k + 6, 1) (bs:byte list)`; `0:num`]
+                BYTES8_FROM_BYTELIST) THEN
+  ASM_REWRITE_TAC[ARITH; LE_REFL] THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  SUBGOAL_THEN
+    `SUB_LIST(0, 1) (SUB_LIST(k + 6, 1) (bs:byte list)) =
+     SUB_LIST(k + 6, 1) bs`
+  SUBST1_TAC THENL
+   [FIRST_ASSUM(fun th ->
+      GEN_REWRITE_TAC (LAND_CONV o LAND_CONV o RAND_CONV) [SYM th]) THEN
+    REWRITE_TAC[SUB_LIST_LENGTH];
+    DISCH_THEN ACCEPT_TAC]);;
