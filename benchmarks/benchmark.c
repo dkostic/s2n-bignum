@@ -1113,6 +1113,11 @@ void call_mldsa_pointwise_acc_l5(void) repeat(mldsa_pointwise_acc_l5_x86((int32_
 void call_mldsa_pointwise_acc_l7(void) repeat(mldsa_pointwise_acc_l7_x86((int32_t*)b0,(const int32_t*)b1,(const int32_t*)b2,mldsa_avx2_qdata))
 void call_mldsa_reduce(void) repeat(mldsa_reduce((int32_t*)b0))
 
+void call_md5_block_asm_data_order_1blk(void) \
+    repeat(md5_block_asm_data_order((uint32_t*)b0,(uint8_t*)b1,1))
+void call_md5_block_asm_data_order_16blk(void) \
+    repeat(md5_block_asm_data_order((uint32_t*)b0,(uint8_t*)b1,16))
+
 void call_mlkem_frombytes(void) repeat(mlkem_frombytes((uint16_t*)b0,(int8_t*)b1))
 void call_mlkem_intt(void) repeat(mlkem_intt_x86((int16_t*)b0,(int16_t*)b1))
 void call_mlkem_mulcache_compute(void) repeat(mlkem_mulcache_compute_x86((int16_t*)b0,(int16_t*)b1,(int16_t*)b2))
@@ -1177,6 +1182,9 @@ void call_sha3_keccak2_f1600(void) repeat(sha3_keccak2_f1600(b0,b1))
 void call_sha3_keccak2_f1600_alt(void) repeat(sha3_keccak2_f1600_alt(b0,b1))
 void call_sha3_keccak4_f1600_alt(void) repeat(sha3_keccak4_f1600_alt(b0,b1))
 void call_sha3_keccak4_f1600_alt2(void) repeat(sha3_keccak4_f1600_alt2(b0,b1))
+
+void call_md5_block_asm_data_order_1blk(void) {}
+void call_md5_block_asm_data_order_16blk(void) {}
 
 void call_mlkem_frombytes(void) {}
 void call_mlkem_unpack(void) {}
@@ -1610,6 +1618,8 @@ int main(int argc, char *argv[])
   timingtest(all,"edwards25519_scalarmulbase_alt",call_edwards25519_scalarmulbase_alt);
   timingtest(bmi,"edwards25519_scalarmuldouble",call_edwards25519_scalarmuldouble);
   timingtest(all,"edwards25519_scalarmuldouble_alt",call_edwards25519_scalarmuldouble_alt);
+  timingtest(!arm,"md5_block_asm_data_order (1 block)",call_md5_block_asm_data_order_1blk);
+  timingtest(!arm,"md5_block_asm_data_order (16 blocks)",call_md5_block_asm_data_order_16blk);
   timingtest(all,"mlkem_basemul_k2",call_mlkem_basemul_k2);
   timingtest(all,"mlkem_basemul_k3",call_mlkem_basemul_k3);
   timingtest(all,"mlkem_basemul_k4",call_mlkem_basemul_k4);
