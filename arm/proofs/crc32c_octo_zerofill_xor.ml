@@ -700,7 +700,8 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
       (* Branch B parameterized form; reduce iters=0, residue=len to recover    *)
       (* the simple Branch A state predicate (X regs unchanged etc).            *)
       ASM_REWRITE_TAC[MULT_CLAUSES; ADD_CLAUSES; WORD_ADD_0;
-                      crc32c_bytes_NIL; REPLICATE] THEN
+                      crc32c_bytes_NIL; REPLICATE; SUB_LIST_CLAUSES;
+                      bytelist_clauses] THEN
       SUBGOAL_THEN
         `word_zx (word 0xFFFFFFFF:int32):int64 = word 0xFFFFFFFF`
       (fun th -> REWRITE_TAC[th]) THENL
