@@ -102,6 +102,36 @@ let aes128_cipher_arm = new_definition
     let s10 = aes_arm_final_round s9 (EL 9 ks) in
     word_xor s10 (EL 10 ks)`;;
 
+(* TODO: prove the equivalence between `aes128_cipher_arm` and the spec's   *)
+(* `aes128_cipher` (which uses FIPS-order `fips197_round` from              *)
+(* common/fips197.ml).  Both compute the same byte-level cipher because     *)
+(* `joined_GF2` is constructed so SubBytes-via-joined_GF2 commutes with     *)
+(* ShiftRows.  The single fact that wraps it up is:                         *)
+(*                                                                           *)
+(*   `aes_sub_bytes joined_GF2 (aes_shift_rows x) =                         *)
+(*    aes_shift_rows (aes_sub_bytes joined_GF2 x)`                          *)
+(*                                                                           *)
+(* (the SR↔SB commutation).  After this, `aes128_cipher_arm pt ks =          *)
+(* aes128_cipher pt ks` falls out by induction over the 10 rounds + final.  *)
+(*                                                                           *)
+(* This commutation is *NOT* directly closed by `BITBLAST_TAC` because       *)
+(* `aes_sub_byte joined_GF2` involves a 8-bit symbolic shift into a 2048-   *)
+(* bit constant `joined_GF2`, which makes the SAT instance combinatorially  *)
+(* expensive.  A workable proof is byte-wise extensional: split each side   *)
+(* into 16 byte projections via `WORD_SUBWORD_JOIN_LOWER`/`UPPER`, observe  *)
+(* both byte projections at position `i` reduce to                          *)
+(* `aes_sub_byte joined_GF2 (word_subword x (n_i, 8))` for the same `n_i`,  *)
+(* and conclude.  Single-byte projection of `aes_shift_rows` does close     *)
+(* under `WORD_BLAST` (fast); the obstacle is automating the                *)
+(* `WORD_SUBWORD_JOIN_*` push-throughs because the dimension-index          *)
+(* hypotheses must be discharged at non-power-of-2 widths (120, 112, 104,   *)
+(* …).  Punted to a follow-on session.                                      *)
+(*                                                                           *)
+(* Until the bridge is proved, downstream proofs should phrase their        *)
+(* algorithmic statements in terms of `aes128_cipher_arm` rather than        *)
+(* `aes128_cipher`; the public byte-level theorem (Phase 11) will discharge *)
+(* the equivalence once at the top level.                                   *)
+
 (* ========================================================================= *)
 (* Phase 3c: NIST byte-order bridge.                                         *)
 (*                                                                           *)
@@ -150,6 +180,22 @@ let EXT_REV64_IS_BYTEREVERSE = prove
   GEN_TAC THEN
   REWRITE_TAC[aes_gcm_ext_swap_int128; aes_gcm_rev64_int128] THEN
   BITBLAST_TAC);;
+
+(* `byteswap128` from common/polyval_ghash.ml is the half-swap variant       *)
+(* used in `htable_mem` to describe the kernel's H-table layout (the         *)
+(* kernel stores `H_power_k` with halves swapped relative to the             *)
+(* algebraic form).  This is the same operation as `aes_gcm_ext_swap_int128` *)
+(* — reused under both names for ergonomic reasons.                          *)
+let AES_GCM_EXT_SWAP_IS_BYTESWAP128 = prove
+ (`!x:int128. aes_gcm_ext_swap_int128 x = byteswap128 x`,
+  GEN_TAC THEN REWRITE_TAC[aes_gcm_ext_swap_int128; byteswap128]);;
+
+(* The reverse direction: byte-reversal can be obtained by composing         *)
+(* `aes_gcm_rev64_int128` and `aes_gcm_ext_swap_int128`.                     *)
+let WORD_BYTEREVERSE_AS_REV64_EXT = prove
+ (`!x:int128.
+    word_bytereverse x = aes_gcm_ext_swap_int128 (aes_gcm_rev64_int128 x)`,
+  REWRITE_TAC[REV64_EXT_IS_BYTEREVERSE]);;
 
 (* ========================================================================= *)
 (* Phase 3b: GHASH 4-block Karatsuba bridge — STUBBED.                       *)
