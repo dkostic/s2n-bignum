@@ -539,6 +539,20 @@ let decode = new_definition `!w:int32. decode w =
     let datasize = if q then 128 else 64 in
     SOME (arm_DUP_GEN (QREG' Rd) (XREG' Rn) esize datasize)
 
+  | [0b01:2; 0b011110000:9; imm5:5; 0b000001:6; Rn:5; Rd:5] ->
+    // DUP element (scalar variant). Assembler alias:
+    //   mov <V><d>, <Vn>.<T>[<index>]
+    // The encoding is AdvSIMD_dup_element with scalar=1; datasize is
+    // always 64 (it writes a scalar element to the destination Q
+    // register's bottom esize bits, with upper bits zeroed). esize is
+    // 8 << (count of trailing zeros in imm5); index is the upper bits
+    // of imm5 past the size-encoding zero.
+    let size = word_ctz imm5 in
+    if size > 3 then NONE else
+    let esize = 8 * 2 EXP size in
+    let index = val (word_ushr imm5 (size + 1)) in
+    SOME (arm_DUP_GEN_FROM_ELEM (QREG' Rd) (QREG' Rn) esize 64 index)
+
   | [0:1; q; 0b101110000:9; Rm:5; 0:1; imm4:4; 0:1; Rn:5; Rd:5] ->
     // EXT
     if ~q /\ bit 3 imm4 then NONE // "UNDEFINED"

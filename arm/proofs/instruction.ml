@@ -1204,6 +1204,42 @@ let arm_DUP_GEN = define
             else word_duplicate (word_zx n:8 word) in
           (Rd := word_zx d:(128)word) s`;;
 
+(* DUP element (scalar variant): mov <V><d>, <Vn>.<T>[<idx>].
+   Reads the idx-th esize-bit element of Rn (a 128-bit Q register)
+   and writes it as a scalar to Rd (the bottom esize bits of the
+   destination Q register; the upper bits are zeroed per the
+   architectural definition). The combinator takes datasize for
+   symmetry with the vector form, but only datasize=64 is exercised
+   by the kernel; that branch zero-extends the extracted element to
+   128 bits, which matches the D-register lens semantics.
+   N.B. The parameter is named `idx`, not `index`, because HOL Light
+   has a clashing top-level `index : num->num->num` function. *)
+let arm_DUP_GEN_FROM_ELEM = define
+ `arm_DUP_GEN_FROM_ELEM Rd Rn esize datasize idx =
+    \s. let n:(128)word = read Rn (s:armstate) in
+        if datasize = 128 then
+          let d:(128)word =
+            if esize = 64 then
+              word_duplicate (word_subword n (64*idx,64):int64)
+            else if esize = 32 then
+              word_duplicate (word_subword n (32*idx,32):int32)
+            else if esize = 16 then
+              word_duplicate (word_subword n (16*idx,16):int16)
+            else
+              word_duplicate (word_subword n (8*idx,8):byte) in
+          (Rd := d) s
+        else
+          let d:(64)word =
+            if esize = 64 then
+              word_subword n (64*idx,64)
+            else if esize = 32 then
+              word_zx (word_subword n (32*idx,32):int32)
+            else if esize = 16 then
+              word_zx (word_subword n (16*idx,16):int16)
+            else
+              word_zx (word_subword n (8*idx,8):byte) in
+          (Rd := word_zx d:(128)word) s`;;
+
 let arm_EON = define
  `arm_EON Rd Rm Rn =
     \s. let m = read Rm s
@@ -3410,6 +3446,7 @@ let arm_CMHI_VEC_ALT =   EXPAND_SIMD_RULE arm_CMHI_VEC;;
 let arm_CMLE_VEC_ZERO_ALT = EXPAND_SIMD_RULE arm_CMLE_VEC_ZERO;;
 let arm_CNT_ALT =        EXPAND_SIMD_RULE arm_CNT;;
 let arm_DUP_GEN_ALT =    EXPAND_SIMD_RULE arm_DUP_GEN;;
+let arm_DUP_GEN_FROM_ELEM_ALT = EXPAND_SIMD_RULE arm_DUP_GEN_FROM_ELEM;;
 let arm_MLS_VEC_ALT =    EXPAND_SIMD_RULE arm_MLS_VEC;;
 let arm_MLA_VEC_ALT =    EXPAND_SIMD_RULE arm_MLA_VEC;;
 let arm_MUL_VEC_ALT =    EXPAND_SIMD_RULE arm_MUL_VEC;;
@@ -3542,7 +3579,7 @@ let ARM_OPERATION_CLAUSES =
        arm_CBNZ_ALT; arm_CBZ_ALT; arm_CCMN; arm_CCMP; arm_CLZ;
        arm_CMGE_VEC_ALT; arm_CMGT_VEC_ALT; arm_CMHI_VEC_ALT; arm_CMLE_VEC_ZERO_ALT; arm_CNT_ALT;
        arm_CSEL; arm_CSINC; arm_CSINV; arm_CSNEG;
-       arm_DUP_GEN_ALT;
+       arm_DUP_GEN_ALT; arm_DUP_GEN_FROM_ELEM_ALT;
        arm_EON; arm_EOR; arm_EOR_VEC; arm_EOR3; arm_EXT; arm_EXTR;
        arm_FCSEL; arm_FMOV_FtoI; arm_FMOV_ItoF; arm_INS; arm_INS_GEN;
        arm_LSL; arm_LSLV; arm_LSR; arm_LSRV;
