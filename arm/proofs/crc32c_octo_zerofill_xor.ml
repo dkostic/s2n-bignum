@@ -588,7 +588,82 @@ let BRANCH_A_TAIL_CLOSURE = prove
                       memory :> bytes(a5, len);
                       memory :> bytes(a6, len);
                       memory :> bytes(a7, len)])`,
-  CHEAT_TAC);;
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[NONOVERLAPPING_CLAUSES; PAIRWISE; ALL;
+              fst CRC32C_OCTO_ZERO_FILL_XOR_EXEC] THEN
+  STRIP_TAC THEN
+  (* Inner cut at pc+0x24c (post-tail, pre-XOR): mirrors Branch B 1103-1136.    *)
+  ENSURES_SEQUENCE_TAC `pc + 0x24c`
+   `\s. read SP s = sp_in /\
+        read X8 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs0) /\
+        read X9 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs1) /\
+        read X10 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs2) /\
+        read X11 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs3) /\
+        read X12 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs4) /\
+        read X13 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs5) /\
+        read X14 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs6) /\
+        read X15 s =
+          word_zx (crc32c_bytes (word 0xFFFFFFFF:int32) bs7) /\
+        read (memory :> bytelist (a0, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a1, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a2, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a3, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a4, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a5, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a6, len)) s =
+          REPLICATE len (word 0) /\
+        read (memory :> bytelist (a7, len)) s =
+          REPLICATE len (word 0)` THEN
+  CONJ_TAC THENL
+   [(* Sub-subgoal 1: pc+0xbc -> pc+0x24c, tail blocks (TBZ-gated).             *)
+    (* Case-split on len = 0..15. Path C has len < 16 in scope, so 16 cases.   *)
+    (* This session: residue=0 (len=0) only; 1..15 left under CHEAT_TAC.        *)
+    ASM_CASES_TAC `len = 0` THENL
+     [(* Case len = 0: all 4 TBZs taken, no bytes consumed in tail.              *)
+      (* Since len=0, bs_i = [] for all i (LENGTH_EQ_NIL), so                    *)
+      (* crc32c_bytes 0xFFFFFFFF [] = word 0xFFFFFFFF and                        *)
+      (* word_zx (word 0xFFFFFFFF) = word 0xFFFFFFFF. Also REPLICATE 0 = [].     *)
+      UNDISCH_TAC `len = 0` THEN DISCH_THEN SUBST_ALL_TAC THEN
+      SUBGOAL_THEN
+        `bs0:byte list = [] /\ bs1:byte list = [] /\
+         bs2:byte list = [] /\ bs3:byte list = [] /\
+         bs4:byte list = [] /\ bs5:byte list = [] /\
+         bs6:byte list = [] /\ bs7:byte list = []`
+        STRIP_ASSUME_TAC THENL
+       [REPEAT CONJ_TAC THEN ASM_MESON_TAC[LENGTH_EQ_NIL]; ALL_TAC] THEN
+      ASM_REWRITE_TAC[crc32c_bytes; REPLICATE] THEN
+      ENSURES_INIT_TAC "s0" THEN
+      ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--4) THEN
+      ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+      CONV_TAC WORD_REDUCE_CONV;
+      (* Cases len ∈ {1..15} — pending. *)
+      CHEAT_TAC];
+    (* Sub-subgoal 2: pc+0x24c -> pc+0x268, 7 EOR XOR reduction.                *)
+    (* Verbatim copy of Branch B lines 3422-3432. Independent of len.           *)
+    ENSURES_INIT_TAC "s0" THEN
+    ARM_STEPS_TAC CRC32C_OCTO_ZERO_FILL_XOR_EXEC (1--7) THEN
+    ENSURES_FINAL_STATE_TAC THEN ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[crc32c_xor8; crc32c_buffer; W0; WREG] THEN
+    REWRITE_TAC[READ_ZEROTOP_32] THEN
+    ASM_REWRITE_TAC[GSYM X0] THEN
+    REWRITE_TAC[WORD_ZX_XOR] THEN
+    SIMP_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64;
+             ARITH_RULE `32 <= 64`; ARITH_RULE `32 <= 32`] THEN
+    REWRITE_TAC[WORD_ZX_TRIVIAL] THEN
+    CONV_TAC WORD_BITWISE_RULE]);;
 
 (* ------------------------------------------------------------------------- *)
 (* CORE correctness theorem (Phase 9 — body proof, post-prologue).            *)
