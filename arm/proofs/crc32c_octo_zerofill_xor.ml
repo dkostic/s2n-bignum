@@ -579,7 +579,7 @@ let BRANCH_A_TAIL_CLOSURE = prove
           (MAYCHANGE [PC; X0; X1; X2; X3; X4; X5; X6; X7;
                       X8; X9; X10; X11; X12; X13; X14; X15;
                       X16; X17; X19] ,,
-           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+           MAYCHANGE [NF; ZF; CF; VF] ,, MAYCHANGE [events] ,,
            MAYCHANGE [memory :> bytes(a0, len);
                       memory :> bytes(a1, len);
                       memory :> bytes(a2, len);
@@ -751,7 +751,11 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
         ALL_TAC] THEN
       REWRITE_TAC[INT_LT_SUB_RADD; INT_ADD_LID; INT_OF_NUM_LT] THEN
       COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC];
-      CHEAT_TAC];
+      (* Branch A tail-only closure: discharge via BRANCH_A_TAIL_CLOSURE.       *)
+      MATCH_MP_TAC BRANCH_A_TAIL_CLOSURE THEN
+      REWRITE_TAC[NONOVERLAPPING_CLAUSES; PAIRWISE; ALL;
+                  fst CRC32C_OCTO_ZERO_FILL_XOR_EXEC] THEN
+      ASM_REWRITE_TAC[]];
     (* Branch B: ~(len < 16), b.lt not taken -> loop entry pc+0x30.             *)
     RULE_ASSUM_TAC(REWRITE_RULE[NOT_LT]) THEN
     ENSURES_SEQUENCE_TAC `pc + 0x30`
