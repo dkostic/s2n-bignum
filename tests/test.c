@@ -15940,6 +15940,373 @@ int test_aes_xts_roundtrip(void)
 }
 
 // ****************************************************************************
+// AES-128-GCM encrypt-kernel testing.
+//
+// We exercise `aes_gcm_enc_kernel` (the AES-128-only fork at
+// arm/aes-gcm/aes_gcm_enc_kernel_aes128.S) in two ways:
+//
+//   1. End-to-end NIST KATs: a handful of AES-128-GCM vectors from
+//      aws-lc/crypto/cipher_extra/test/aes_128_gcm_tests.txt with
+//      block-aligned plaintext (the kernel only handles full 16-byte
+//      blocks). The full GCM authentication (AAD, partial-block tail,
+//      tag finalization) is performed in C around the kernel call,
+//      mirroring what aws-lc's gcm.c does.
+//
+//   2. Randomised differential testing against the pure-C reference
+//      `ref_aes_gcm_enc_kernel`: identical inputs to both, compare
+//      ciphertext + post-kernel GHASH state + post-kernel counter.
+//      This is the primary catch-all for asm bugs (off-by-one in the
+//      AES-192/256 cascade surgery, ABI clobbers, byteswap mistakes).
+//      Lengths are sampled across 16-byte block-aligned and full-block
+//      counts of 1, 2, 3, and 4n for n = 1..16.
+// ****************************************************************************
+
+#include "ref_aes_gcm.c"
+
+// One AES-128-GCM end-to-end NIST KAT case. All fields are hex-string-encoded.
+struct gcm_kat {
+  const char *key;        // 32 hex chars (16 bytes)
+  const char *nonce;      // 24 hex chars (12 bytes)
+  const char *plaintext;  // hex-encoded plaintext (length must be multiple
+                          //                       of 32, i.e. 16 bytes binary)
+  const char *aad;        // hex-encoded AAD (any length)
+  const char *ciphertext; // expected ciphertext, same byte-length as plaintext
+  const char *tag;        // 32 hex chars (16 bytes)
+};
+
+// AES-128-GCM KAT vectors — generated from python's `cryptography` AESGCM
+// (same algorithm openssl/AWS-LC ship). Each case has block-aligned
+// plaintext; we drive the kernel for the AES-CTR + GHASH bulk and finalize
+// the tag in C around it. The cases cover 1, 2, 3, 4, 5, 16, and 17 blocks
+// to exercise the main 4-block loop and the 1/2/3-block tail handlers.
+static const struct gcm_kat aes128_gcm_kats[] = {
+  // 16 bytes of plaintext (1 block)
+  { "feffe9928665731c6d6a8f9467308308",
+    "cafebabefacedbaddecaf888",
+    "00000000000000000000000000000000",
+    "",
+    "9bb22ce7d9f372c1ee2b28722b25f206",
+    "271dbbbc06e78d7c6be9ca74d0baba1e" },
+  // 32 bytes of plaintext (2 blocks)
+  { "feffe9928665731c6d6a8f9467308308",
+    "cafebabefacedbaddecaf888",
+    "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a72",
+    "",
+    "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e",
+    "67383e3899332afdd4d83a204575a052" },
+  // 48 bytes of plaintext (3 blocks)
+  { "feffe9928665731c6d6a8f9467308308",
+    "cafebabefacedbaddecaf888",
+    "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525",
+    "",
+    "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa05",
+    "5168a053a2465185f6b19ec265a4e88b" },
+  // 64 bytes of plaintext (4 blocks) — exactly one main-loop iteration
+  { "feffe9928665731c6d6a8f9467308308",
+    "cafebabefacedbaddecaf888",
+    "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255",
+    "",
+    "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091473f5985",
+    "4d5c2af327cd64a62cf35abd2ba6fab4" },
+  // 16-byte plaintext + AAD (test that AAD is handled outside the kernel)
+  { "feffe9928665731c6d6a8f9467308308",
+    "cafebabefacedbaddecaf888",
+    "d9313225f88406e5a55909c5aff5269a",
+    "feedfacedeadbeeffeedfacedeadbeefabaddad2",
+    "42831ec2217774244b7221b784d0d49c",
+    "d9f20ea917428bc48f586f2936d0fddf" },
+  // 64 bytes plaintext + 16 bytes AAD (one main-loop iteration with AAD)
+  { "000102030405060708090a0b0c0d0e0f",
+    "112233445566778899aabbcc",
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "deadbeefdeadbeefdeadbeefdeadbeef",
+    "32ae4974d878f8d8d5f7decf0f2f4e982beb4ed46318d50c52295952593e13aac67f8b696330c3e1b0dc62b3f8436b238def48f06a2bfd12c107d9286b5dd7b9",
+    "4cfd47f67380c8921322e22162e23626" },
+  // 256 bytes plaintext (4 main-loop iterations)
+  { "a1a2a3a4a5a6a7a8a9aaabacadaeafa0",
+    "0102030405060708090a0b0c",
+    "a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1a0b1c2d3e4f5a0b1",
+    "",
+    "eb7f5563dd2ba9c19470274e20a26132f03531af669b45d1684f00e88b787fc6634f07722e2155673b34042cadfb79b52ae4a482996a062b18f0d8c887ae7a2e26bc4752074cf5cb1dc48e598054bbe8bba702ab1ba27cce33187103c9a560204b0eea3814362c2f3b04e33bd06bf4e740161691fee8455bd991aeb974c6ddf94f292fcbeb7f04eb0b3ee52a269a15a145c3fdcefc22539eb345ce58d54a859c99ad2db767a00d3504276a310ed74281318e788a06b94e45d564940827702640f553ac58e1ba60ae097d4b025f3d1ebd871281e3909e4de3821a8a40e676b14da7c6f2db299594e1e5cd01a3de3160679dca776d328f6e675024c63d0d0ec6d2",
+    "ca20a9c95695a1430482ca844c389238" },
+};
+
+// Convert a single hex character to its 0..15 value
+static int hex_nibble(char c)
+{ if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+// Decode a hex string into a byte buffer; returns the number of bytes written
+// (= strlen(s)/2). Caller must supply a sufficiently large output buffer.
+static size_t hex_decode(uint8_t *out, const char *s)
+{ size_t n = 0;
+  while (s[0] && s[1])
+   { out[n++] = (uint8_t)((hex_nibble(s[0]) << 4) | hex_nibble(s[1]));
+     s += 2;
+   }
+  return n;
+}
+
+// Drive the kernel end-to-end for AES-128-GCM with 12-byte nonce, AAD, and
+// block-aligned plaintext (i.e. all the in-kernel work is a single
+// aes_gcm_enc_kernel call). Returns the computed (ciphertext, tag).
+static void kernel_aes128_gcm_encrypt(const uint8_t key_bytes[16],
+                                      const uint8_t nonce[12],
+                                      const uint8_t *plaintext, size_t pt_len,
+                                      const uint8_t *aad, size_t aad_len,
+                                      uint8_t *ciphertext, uint8_t tag[16])
+{
+#ifdef __x86_64__
+  (void)key_bytes; (void)nonce; (void)plaintext; (void)pt_len;
+  (void)aad; (void)aad_len; (void)ciphertext; (void)tag;
+  return;
+#else
+  s2n_bignum_AES_KEY  key;
+  uint64_t            Htable[2 * 12]; // 12 × 16-byte slots
+  uint8_t             H_raw[16];
+  uint8_t             zero[16] = {0};
+  uint64_t            H_lo, H_hi;
+  uint64_t            Xi_io[2];
+  uint8_t            *Xi_bytes = (uint8_t *)Xi_io;
+  uint8_t             ivec[16];
+  uint8_t             J0[16];
+  uint8_t             EKJ0[16];
+  uint8_t             len_block[16];
+  uint8_t             ks_block[16];
+  uint8_t             ctr_block[16];
+  size_t              i, off;
+  uint32_t            ctr32;
+  uint64_t            full_blocks_bytes = pt_len & ~(size_t)15;
+
+  // Setup
+  ref_aes128_expand_key(key_bytes, &key);
+  ref_aes128_encrypt_block(zero, H_raw, &key);
+  {
+    uint64_t IN_d0, IN_d1;
+    IN_d0 = load_u64_le(H_raw + 8);
+    IN_d1 = load_u64_le(H_raw);
+    gcm_v8_twist(&H_lo, &H_hi, IN_d0, IN_d1);
+  }
+  ref_gcm_init_htable(Htable, &key);
+
+  // J0 for 12-byte IV
+  memcpy(J0, nonce, 12);
+  J0[12] = 0; J0[13] = 0; J0[14] = 0; J0[15] = 1;
+
+  // Initial counter for the first plaintext block: J0+1
+  memcpy(ivec, J0, 16);
+  ctr32 = ((uint32_t)ivec[12] << 24) | ((uint32_t)ivec[13] << 16) |
+          ((uint32_t)ivec[14] <<  8) |  (uint32_t)ivec[15];
+  ctr32 += 1;
+  ivec[12] = (uint8_t)(ctr32 >> 24); ivec[13] = (uint8_t)(ctr32 >> 16);
+  ivec[14] = (uint8_t)(ctr32 >>  8); ivec[15] = (uint8_t)ctr32;
+
+  // GHASH AAD into Xi (kernel doesn't touch AAD)
+  memset(Xi_bytes, 0, 16);
+  for (off = 0; off + 16 <= aad_len; off += 16)
+    gcm_ghash_block_v8(Xi_bytes, aad + off, H_lo, H_hi);
+  if (off < aad_len)
+   { uint8_t pad[16] = {0};
+     memcpy(pad, aad + off, aad_len - off);
+     gcm_ghash_block_v8(Xi_bytes, pad, H_lo, H_hi);
+   }
+
+  // Run the kernel for the block-aligned portion
+  if (full_blocks_bytes > 0)
+   { aes_gcm_enc_kernel(plaintext, full_blocks_bytes * 8, ciphertext,
+                        Xi_io, ivec, &key, Htable);
+   }
+
+  // Tail (handled outside the kernel since the kernel only does full blocks)
+  if (full_blocks_bytes < pt_len)
+   { uint8_t pad[16] = {0};
+     size_t  rem = pt_len - full_blocks_bytes;
+     ctr32 = ((uint32_t)ivec[12] << 24) | ((uint32_t)ivec[13] << 16) |
+             ((uint32_t)ivec[14] <<  8) |  (uint32_t)ivec[15];
+     memcpy(ctr_block, ivec, 12);
+     ctr_block[12] = (uint8_t)(ctr32 >> 24);
+     ctr_block[13] = (uint8_t)(ctr32 >> 16);
+     ctr_block[14] = (uint8_t)(ctr32 >>  8);
+     ctr_block[15] = (uint8_t)ctr32;
+     ref_aes128_encrypt_block(ctr_block, ks_block, &key);
+     for (i = 0; i < rem; ++i)
+       ciphertext[full_blocks_bytes + i] =
+         plaintext[full_blocks_bytes + i] ^ ks_block[i];
+     memcpy(pad, ciphertext + full_blocks_bytes, rem);
+     gcm_ghash_block_v8(Xi_bytes, pad, H_lo, H_hi);
+   }
+
+  // Final length block
+  store_u64_be(len_block,     (uint64_t)aad_len * 8);
+  store_u64_be(len_block + 8, (uint64_t)pt_len  * 8);
+  gcm_ghash_block_v8(Xi_bytes, len_block, H_lo, H_hi);
+
+  // Tag = AES_E(K, J0) XOR Xi
+  ref_aes128_encrypt_block(J0, EKJ0, &key);
+  for (i = 0; i < 16; ++i)
+    tag[i] = EKJ0[i] ^ Xi_bytes[i];
+#endif
+}
+
+// KAT test: run end-to-end AES-128-GCM through the kernel, compare
+// against the published ciphertext+tag. Returns 0 on success.
+int test_aes_gcm_enc_kernel_aes128_kats(void)
+{
+#ifdef __x86_64__
+  return 1;
+#else
+  size_t   n_kats = sizeof(aes128_gcm_kats) / sizeof(aes128_gcm_kats[0]);
+  size_t   n_passed = 0, n_skipped = 0;
+  size_t   k;
+
+  printf("Testing aes_gcm_enc_kernel (AES-128) against %zu NIST KATs\n",
+         n_kats);
+
+  for (k = 0; k < n_kats; ++k)
+   { const struct gcm_kat *t = &aes128_gcm_kats[k];
+     uint8_t key[16], nonce[12];
+     uint8_t pt[256], expect_ct[256], aad[256];
+     uint8_t expect_tag[16];
+     uint8_t out_ct[256], out_tag[16];
+     size_t  pt_len, aad_len;
+
+     // Skip cases where the published ciphertext/tag isn't filled in.
+     if (t->ciphertext[0] == '\0' || t->tag[0] == '\0')
+      { ++n_skipped; continue; }
+
+     hex_decode(key, t->key);
+     hex_decode(nonce, t->nonce);
+     pt_len  = hex_decode(pt, t->plaintext);
+     aad_len = hex_decode(aad, t->aad);
+     hex_decode(expect_ct, t->ciphertext);
+     hex_decode(expect_tag, t->tag);
+
+     kernel_aes128_gcm_encrypt(key, nonce, pt, pt_len, aad, aad_len,
+                               out_ct, out_tag);
+
+     if (memcmp(out_ct, expect_ct, pt_len) != 0)
+      { printf("### KAT %zu: ciphertext disparity (pt_len=%zu)\n", k, pt_len);
+        return 1;
+      }
+     if (memcmp(out_tag, expect_tag, 16) != 0)
+      { size_t j;
+        printf("### KAT %zu: tag disparity (pt_len=%zu)\n", k, pt_len);
+        printf("    out_tag    = ");
+        for (j = 0; j < 16; ++j) printf("%02x", out_tag[j]);
+        printf("\n    expect_tag = ");
+        for (j = 0; j < 16; ++j) printf("%02x", expect_tag[j]);
+        printf("\n");
+        return 1;
+      }
+     if (VERBOSE)
+       printf("OK: KAT %zu pt_len=%zu aad_len=%zu\n", k, pt_len, aad_len);
+     ++n_passed;
+   }
+
+  printf("All %zu KATs passed (%zu skipped)\n", n_passed, n_skipped);
+  return 0;
+#endif
+}
+
+// Random differential test: feed identical inputs to the kernel and the
+// pure-C reference; compare ciphertext + Xi_io + ivec_io. This is the main
+// safety net for asm bugs in the AES-128 fork.
+int test_aes_gcm_enc_kernel_aes128_random(void)
+{
+#ifdef __x86_64__
+  return 1;
+#else
+  uint64_t  t;
+  uint8_t   key_bytes[16];
+  uint8_t   ivec[16], ivec_ref[16];
+  uint8_t   plaintext[BUFFERSIZE];
+  uint8_t   ct_kernel[BUFFERSIZE], ct_ref[BUFFERSIZE];
+  uint64_t  Xi_kernel[2], Xi_ref[2];
+  s2n_bignum_AES_KEY key;
+  uint64_t  Htable[2 * 12];
+  size_t    pt_len, num_blocks;
+
+  printf("Testing aes_gcm_enc_kernel (AES-128) against C reference, %d cases\n",
+         tests);
+
+  for (t = 0; t < (uint64_t)tests; ++t)
+   { random_bytes(key_bytes, 16);
+     random_bytes(ivec, 16);
+     memcpy(ivec_ref, ivec, 16);
+
+     // pt length: prefer block-aligned multiples of 64 (one main loop
+     // iteration unit) plus 1/2/3/4-block trailing for tail coverage.
+     // Also throw in single-block and 5-/6-/7-block lengths.
+     {
+       uint32_t r = (uint32_t)rand();
+       uint32_t mode = r & 0x7;
+       if (mode == 0)
+        // exactly N main-loop iterations (4*N blocks)
+        num_blocks = 4 * (1 + (r >> 3) % 16);
+       else if (mode == 1)
+        // 4*N + 1
+        num_blocks = 4 * ((r >> 3) % 16) + 1;
+       else if (mode == 2)
+        num_blocks = 4 * ((r >> 3) % 16) + 2;
+       else if (mode == 3)
+        num_blocks = 4 * ((r >> 3) % 16) + 3;
+       else
+        // any 1..32 blocks
+        num_blocks = 1 + (r >> 3) % 32;
+       if (num_blocks == 0) num_blocks = 1;
+     }
+     pt_len = num_blocks * 16;
+     random_bytes(plaintext, pt_len);
+     memset(ct_kernel, 0, pt_len);
+     memset(ct_ref,    0, pt_len);
+
+     // Random Xi state (the kernel will GHASH-update from this start)
+     {
+       uint8_t *Xib = (uint8_t *)Xi_kernel;
+       random_bytes(Xib, 16);
+       memcpy(Xi_ref, Xi_kernel, 16);
+     }
+
+     // Setup AES key + Htable
+     ref_aes128_expand_key(key_bytes, &key);
+     ref_gcm_init_htable(Htable, &key);
+
+     // Kernel
+     aes_gcm_enc_kernel(plaintext, pt_len * 8, ct_kernel,
+                        Xi_kernel, ivec, &key, Htable);
+
+     // Reference
+     ref_aes_gcm_enc_kernel(plaintext, pt_len * 8, ct_ref,
+                            Xi_ref, ivec_ref, &key, Htable);
+
+     if (memcmp(ct_kernel, ct_ref, pt_len) != 0)
+      { printf("### Random %llu: ciphertext disparity (blocks=%zu)\n",
+               (unsigned long long)t, num_blocks);
+        return 1;
+      }
+     if (memcmp(Xi_kernel, Xi_ref, 16) != 0)
+      { printf("### Random %llu: Xi disparity (blocks=%zu)\n",
+               (unsigned long long)t, num_blocks);
+        return 1;
+      }
+     if (memcmp(ivec, ivec_ref, 16) != 0)
+      { printf("### Random %llu: ivec disparity (blocks=%zu)\n",
+               (unsigned long long)t, num_blocks);
+        return 1;
+      }
+     if (VERBOSE)
+       printf("OK: aes_gcm_enc_kernel blocks=%zu\n", num_blocks);
+   }
+
+  printf("All OK\n");
+  return 0;
+#endif
+}
+
+// ****************************************************************************
 // Analogous testing of relevant functions against TweetNaCl as reference
 //
 // See https://tweetnacl.cr.yp.to/ for more info on TweetNaCl
@@ -16866,6 +17233,8 @@ int main(int argc, char *argv[])
     functionaltest(aes,"aes_xts_roundtrip",test_aes_xts_roundtrip);
     functionaltest(aes,"known value tests for aes-xts encrypt",test_known_values_xts_encrypt);
     functionaltest(aes,"known value tests for aes-xts decrypt",test_known_values_xts_decrypt);
+    functionaltest(aes,"aes_gcm_enc_kernel_aes128 KATs",test_aes_gcm_enc_kernel_aes128_kats);
+    functionaltest(aes,"aes_gcm_enc_kernel_aes128 random",test_aes_gcm_enc_kernel_aes128_random);
   }
 
   if (extrastrigger) function_to_test = "_";

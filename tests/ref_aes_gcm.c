@@ -110,11 +110,10 @@ static void ref_aes128_encrypt_block(const uint8_t in[16], uint8_t out[16],
 }
 
 // ***************************************************************************
-// GHASH primitives — adapted from aws-lc's gcm_nohw.c (gcm_polyval_nohw),
-// which implements GHASH via byte-reflected POLYVAL multiplication. Same
-// math the GCM spec describes; same H representation aws-lc's gcm_init_v8
-// produces (with bits flowing in reverse and the high bit handled per the
-// GCM spec).
+// GHASH primitives — direct emulation of aws-lc's `gcm_init_v8` and the
+// per-block GHASH update inside `aes_gcm_enc_kernel`. The byte conventions
+// these use are NOT the same as `gcm_init_nohw`/`gcm_polyval_nohw` (see the
+// extended commentary on `ref_gcm_init_htable` below).
 // ***************************************************************************
 
 static uint64_t load_u64_be(const uint8_t *p)
@@ -131,6 +130,20 @@ static void store_u64_be(uint8_t *p, uint64_t v)
   p[6] = (uint8_t)(v >> 8);  p[7] = (uint8_t)v;
 }
 
+static uint64_t load_u64_le(const uint8_t *p)
+{ return  (uint64_t)p[0]        | ((uint64_t)p[1] << 8) |
+         ((uint64_t)p[2] << 16) | ((uint64_t)p[3] << 24) |
+         ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
+         ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
+}
+
+static void store_u64_le(uint8_t *p, uint64_t v)
+{ p[0] = (uint8_t) v;        p[1] = (uint8_t)(v >> 8);
+  p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24);
+  p[4] = (uint8_t)(v >> 32); p[5] = (uint8_t)(v >> 40);
+  p[6] = (uint8_t)(v >> 48); p[7] = (uint8_t)(v >> 56);
+}
+
 // 64-bit carry-less multiply, scalar bit-by-bit (clarity over speed)
 static void clmul64(uint64_t *out_lo, uint64_t *out_hi, uint64_t a, uint64_t b)
 { uint64_t lo = 0, hi = 0;
@@ -145,25 +158,38 @@ static void clmul64(uint64_t *out_lo, uint64_t *out_hi, uint64_t a, uint64_t b)
   *out_hi = hi;
 }
 
-// Compute X * H mod the GHASH polynomial, where both X and H are stored as
-// the (Xi_lo, Xi_hi) pair the assembly uses internally:
-//   Xi_lo = bytes 8..15 of Xi loaded as big-endian uint64,
-//   Xi_hi = bytes 0..7 of Xi loaded as big-endian uint64,
-// and H is similarly the (H_lo, H_hi) pair derived from the raw H = AES_E(K, 0).
-//
-// This matches `gcm_polyval_nohw` in aws-lc (modulo carry-less mul backend).
-static void gcm_polyval_ref(uint64_t Xi[2], uint64_t H_lo, uint64_t H_hi)
+// gcm_init_v8 twist on a (lo, hi) pair where the inputs come from LE-load of
+// H_raw bytes (with halves already swapped via vext). Same algebra as
+// gcm_polyval_nohw's twist, just applied to LE-loaded integers instead of
+// BE-loaded ones.
+static void gcm_v8_twist(uint64_t *out_lo, uint64_t *out_hi,
+                         uint64_t lo, uint64_t hi)
+{ uint64_t carry = (uint64_t)0 - (hi >> 63);
+  uint64_t new_hi = (hi << 1) | (lo >> 63);
+  uint64_t new_lo = (lo << 1) ^ (carry & 1);
+  new_hi ^= carry & UINT64_C(0xc200000000000000);
+  *out_lo = new_lo;
+  *out_hi = new_hi;
+}
+
+// Multiply two H-domain values in v8-internal pair form. Output is the
+// internal pair of the resulting product H^(j+k).
+static void gcm_v8_polymul(uint64_t *res_lo, uint64_t *res_hi,
+                           uint64_t a_lo, uint64_t a_hi,
+                           uint64_t b_lo, uint64_t b_hi)
 { uint64_t r0, r1, r2, r3, mid0, mid1;
 
-  clmul64(&r0, &r1, Xi[0], H_lo);
-  clmul64(&r2, &r3, Xi[1], H_hi);
-  clmul64(&mid0, &mid1, Xi[0] ^ Xi[1], H_hi ^ H_lo);
+  clmul64(&r0, &r1, a_lo, b_lo);
+  clmul64(&r2, &r3, a_hi, b_hi);
+  clmul64(&mid0, &mid1, a_lo ^ a_hi, b_lo ^ b_hi);
   mid0 ^= r0 ^ r2;
   mid1 ^= r1 ^ r3;
   r2 ^= mid1;
   r1 ^= mid0;
 
-  // Reduce: same bit-flow trick as gcm_polyval_nohw.
+  // Same reduction as gcm_polyval_nohw — works because the polynomial
+  // ring algebra is independent of the byte-encoding. This reduces (r0..r3)
+  // (a 256-bit accumulator) modulo the GHASH polynomial.
   r1 ^= (r0 << 63) ^ (r0 << 62) ^ (r0 << 57);
   r2 ^= r0;
   r3 ^= r1;
@@ -177,127 +203,122 @@ static void gcm_polyval_ref(uint64_t Xi[2], uint64_t H_lo, uint64_t H_hi)
   r2 ^= r1 << 57;
   r3 ^= r1 >> 7;
 
-  Xi[0] = r2;
-  Xi[1] = r3;
+  *res_lo = r2;
+  *res_hi = r3;
 }
 
-// Twist H to match aws-lc's gcm_init_v8 / nohw representation: the raw
-// 16-byte H = AES_E(K, 0) is loaded as two big-endian uint64s, then the
-// "shift-by-1 with reduction" twist is applied so that the polynomial
-// algebra works out without an extra shift in each multiplication.
-static void gcm_twist_h(uint64_t out[2], const uint8_t H_raw[16])
-{ uint64_t lo = load_u64_be(H_raw + 8);
-  uint64_t hi = load_u64_be(H_raw);
-  uint64_t carry = (uint64_t)0 - (hi >> 63);
-  hi <<= 1;
-  hi |= lo >> 63;
-  lo <<= 1;
-  lo ^= carry & 1;
-  hi ^= carry & UINT64_C(0xc200000000000000);
-  out[0] = lo;
-  out[1] = hi;
+// Read v8-formatted Htable[i] (16 bytes at the given pointer) into the
+// kernel-internal pair (IN_lo, IN_hi). Inverse of v8_htable_store.
+static void v8_htable_load(uint64_t *IN_lo, uint64_t *IN_hi,
+                           const uint8_t htable_bytes[16])
+{ *IN_hi = load_u64_le(htable_bytes);
+  *IN_lo = load_u64_le(htable_bytes + 8);
 }
 
-// Compute the squared product (X * Y mod GHASH polynomial) where X, Y are
-// twisted H-domain values. Used to populate H^2, H^3, H^4 in the Karatsuba
-// Htable layout aws-lc's gcm_init_v8 produces.
-static void gcm_polyval_pair(uint64_t result[2],
-                             uint64_t X_lo, uint64_t X_hi,
-                             uint64_t Y_lo, uint64_t Y_hi)
-{ uint64_t r0, r1, r2, r3, mid0, mid1;
-
-  clmul64(&r0, &r1, X_lo, Y_lo);
-  clmul64(&r2, &r3, X_hi, Y_hi);
-  clmul64(&mid0, &mid1, X_lo ^ X_hi, Y_lo ^ Y_hi);
-  mid0 ^= r0 ^ r2;
-  mid1 ^= r1 ^ r3;
-  r2 ^= mid1;
-  r1 ^= mid0;
-
-  r1 ^= (r0 << 63) ^ (r0 << 62) ^ (r0 << 57);
-  r2 ^= r0;
-  r3 ^= r1;
-  r2 ^= r0 >> 1;
-  r2 ^= r1 << 63;
-  r3 ^= r1 >> 1;
-  r2 ^= r0 >> 2;
-  r2 ^= r1 << 62;
-  r3 ^= r1 >> 2;
-  r2 ^= r0 >> 7;
-  r2 ^= r1 << 57;
-  r3 ^= r1 >> 7;
-
-  result[0] = r2;
-  result[1] = r3;
+// Pack an internal pair (IN_lo, IN_hi) into the 16-byte v8 layout (this
+// applies the final vext.8 H,H,#8 swap and the LE store).
+static void v8_htable_store(uint8_t htable_bytes[16],
+                            uint64_t IN_lo, uint64_t IN_hi)
+{ store_u64_le(htable_bytes,     IN_hi);
+  store_u64_le(htable_bytes + 8, IN_lo);
 }
 
-// Build the standard aws-lc Karatsuba Htable layout from the AES-128 round
-// keys. Layout (each entry is a 16-byte (lo, hi) pair, written here as
-// uint64_t pairs at the indicated byte offset):
+// Compute one GHASH update: Xi := (Xi XOR block) * H mod GHASH-poly.
+// The byte conventions mirror the kernel exactly:
+//   - Xi[16] is the NIST-spec byte form (same as the kernel's [x3] memory
+//     view of Xi);
+//   - block[16] is also NIST-spec byte form (raw ciphertext);
+//   - (H_lo, H_hi) is the kernel-internal pair, NOT a NIST-byte form. Use
+//     v8_htable_load on Htable[0..15] to obtain it.
 //
-//   offset  0: H^1 (twisted)
-//   offset 16: h12k (Karatsuba pre-processed mix of H^1 and H^2)
+// Internally we apply the same vext+vrev64 transform the kernel does to
+// convert Xi between NIST-byte form and the internal pair, multiply by H
+// in pair form, then transform back.
+static void gcm_ghash_block_v8(uint8_t Xi[16], const uint8_t *block,
+                               uint64_t H_lo, uint64_t H_hi)
+{ uint8_t  combined[16];
+  uint64_t Xi_lo, Xi_hi, res_lo, res_hi;
+  size_t   i;
+
+  for (i = 0; i < 16; ++i) combined[i] = Xi[i] ^ block[i];
+
+  // Transform NIST-byte combined to internal pair: vld1; vext; vrev64.
+  //   t1.d[0] = LE-load(combined[ 0.. 7])
+  //   t1.d[1] = LE-load(combined[ 8..15])
+  //   IN.d[0] = t1.d[1]                 (after vext)
+  //   IN.d[1] = t1.d[0]
+  //   IN.d[k] = bswap(IN.d[k])          (vrev64 within each lane)
+  Xi_lo = __builtin_bswap64(load_u64_le(combined + 8));
+  Xi_hi = __builtin_bswap64(load_u64_le(combined));
+
+  gcm_v8_polymul(&res_lo, &res_hi, Xi_lo, Xi_hi, H_lo, H_hi);
+
+  // Inverse transform: vext; vrev64; vst1.
+  {
+    uint64_t v_after_ext_d0 = res_hi;        // vext: swap halves
+    uint64_t v_after_ext_d1 = res_lo;
+    uint64_t v_after_rev64_d0 = __builtin_bswap64(v_after_ext_d0);
+    uint64_t v_after_rev64_d1 = __builtin_bswap64(v_after_ext_d1);
+    store_u64_le(Xi,     v_after_rev64_d0);
+    store_u64_le(Xi + 8, v_after_rev64_d1);
+  }
+}
+
+// Build an Htable in the exact byte layout that aws-lc's gcm_init_v8
+// assembly produces, mirroring the kernel's expectations:
+//
+//   offset  0: H^1   (v8 internal pair, stored as (IN_hi, IN_lo) in LE bytes)
+//   offset 16: h12k  (Karatsuba pre-processed; not read by encrypt kernel)
 //   offset 32: H^2
 //   offset 48: H^3
 //   offset 64: h34k
 //   offset 80: H^4
-//   offset 96: H^5  (unused by encrypt kernel; populated for completeness)
-//   offset 112: h56k (unused)
-//   offset 128: H^6  (unused)
-//   ...
-//
-// For the encrypt kernel under test we only need H^1, H^2, H^3, H^4
-// populated correctly at offsets 0, 32, 48, 80; the kernel does not read
-// the h12k/h34k slots (it computes Karatsuba pre-processing on the fly).
-// We still populate them to a valid value so the layout matches what
-// aws-lc's gcm_init_v8 produces.
+//   offsets 96..191: H^5..H^8 + their Karatsuba pairs (not read by encrypt
+//                    kernel; zeroed)
 static void ref_gcm_init_htable(uint64_t Htable[12*2],  // 12 × 16-byte slots
                                 const s2n_bignum_AES_KEY *key)
 { uint8_t  H_raw[16];
   uint8_t  zero[16] = {0};
-  uint64_t H1[2], H2[2], H3[2], H4[2];
+  uint64_t t1_d0, t1_d1, IN_d0, IN_d1;
+  uint64_t H1_lo, H1_hi, H2_lo, H2_hi, H3_lo, H3_hi, H4_lo, H4_hi;
+  uint8_t *htable_bytes = (uint8_t *)Htable;
 
   // H = AES_E(K, 0)
   ref_aes128_encrypt_block(zero, H_raw, key);
 
-  // Twist H
-  gcm_twist_h(H1, H_raw);
-  // H^2 = H * H
-  gcm_polyval_pair(H2, H1[0], H1[1], H1[0], H1[1]);
-  // H^3 = H * H^2
-  gcm_polyval_pair(H3, H1[0], H1[1], H2[0], H2[1]);
-  // H^4 = H^2 * H^2
-  gcm_polyval_pair(H4, H2[0], H2[1], H2[0], H2[1]);
+  // Replicate gcm_init_v8's prologue:
+  //   t1 = vld1(H_raw)            -- t1.d[0] = LE-load(H_raw[0..7]),
+  //                                  t1.d[1] = LE-load(H_raw[8..15])
+  //   IN = vext(t1, t1, #8)        -- IN.d[0] = t1.d[1], IN.d[1] = t1.d[0]
+  t1_d0 = load_u64_le(H_raw);
+  t1_d1 = load_u64_le(H_raw + 8);
+  IN_d0 = t1_d1;
+  IN_d1 = t1_d0;
 
-  // Slot 0: H^1
-  Htable[0] = H1[0]; Htable[1] = H1[1];
-  // Slot 1: h12k (placeholder — not consulted by kernel)
-  Htable[2] = H1[0] ^ H1[1]; Htable[3] = H2[0] ^ H2[1];
-  // Slot 2: H^2
-  Htable[4] = H2[0]; Htable[5] = H2[1];
-  // Slot 3: H^3
-  Htable[6] = H3[0]; Htable[7] = H3[1];
-  // Slot 4: h34k (placeholder)
-  Htable[8] = H3[0] ^ H3[1]; Htable[9] = H4[0] ^ H4[1];
-  // Slot 5: H^4
-  Htable[10] = H4[0]; Htable[11] = H4[1];
-  // Slots 6..11 (H^5, h56k, H^6, H^7, h78k, H^8): not consulted by
-  // the AES-128 encrypt kernel; zero them defensively.
-  memset(&Htable[12], 0, 6 * 16);
+  // Twist (lo, hi) = (IN.d[0], IN.d[1]) -> (twisted_lo, twisted_hi). The
+  // kernel-internal (H_lo, H_hi) pair is (twisted_lo, twisted_hi), used
+  // as-is in the polymul; the byte memory layout has them swapped via the
+  // final vext.8.
+  gcm_v8_twist(&H1_lo, &H1_hi, IN_d0, IN_d1);
+
+  // H^2 = H * H, H^3 = H * H^2, H^4 = H^2 * H^2
+  gcm_v8_polymul(&H2_lo, &H2_hi, H1_lo, H1_hi, H1_lo, H1_hi);
+  gcm_v8_polymul(&H3_lo, &H3_hi, H1_lo, H1_hi, H2_lo, H2_hi);
+  gcm_v8_polymul(&H4_lo, &H4_hi, H2_lo, H2_hi, H2_lo, H2_hi);
+
+  // Store at the v8 byte offsets. v8_htable_store handles the final
+  // vext.8 H,H,#8 swap and the LE-store for memory.
+  v8_htable_store(htable_bytes +   0, H1_lo, H1_hi);    // slot 0
+  v8_htable_store(htable_bytes +  16, H1_lo, H2_lo);    // slot 1: h12k (placeholder)
+  v8_htable_store(htable_bytes +  32, H2_lo, H2_hi);    // slot 2: H^2
+  v8_htable_store(htable_bytes +  48, H3_lo, H3_hi);    // slot 3: H^3
+  v8_htable_store(htable_bytes +  64, H3_lo, H4_lo);    // slot 4: h34k (placeholder)
+  v8_htable_store(htable_bytes +  80, H4_lo, H4_hi);    // slot 5: H^4
+  // Slots 6..11 (H^5, h56k, H^6, H^7, h78k, H^8): zeroed (encrypt kernel
+  // does not read them).
+  memset(htable_bytes + 96, 0, 96);
 }
 
-// Update Xi by feeding it one 16-byte block. Matches the kernel: read Xi as
-// big-endian (Xi_hi:Xi_lo), XOR in the new block (also big-endian), multiply
-// by H.
-static void gcm_ghash_block(uint8_t Xi[16], uint64_t H_lo, uint64_t H_hi,
-                            const uint8_t *block)
-{ uint64_t state[2];
-  state[0] = load_u64_be(Xi + 8) ^ load_u64_be(block + 8);
-  state[1] = load_u64_be(Xi)     ^ load_u64_be(block);
-  gcm_polyval_ref(state, H_lo, H_hi);
-  store_u64_be(Xi + 8, state[0]);
-  store_u64_be(Xi, state[1]);
-}
 
 // ***************************************************************************
 // Full AES-128-GCM end-to-end reference encrypt — used to validate the test
@@ -316,7 +337,6 @@ static void ref_aes128_gcm_encrypt(const uint8_t key_bytes[16],
   uint8_t  H_raw[16];
   uint8_t  zero[16] = {0};
   uint64_t H_lo, H_hi;
-  uint64_t H_pair[2];
   uint8_t  Xi[16] = {0};
   uint8_t  J0[16];
   uint8_t  J0_plus1[16];
@@ -329,11 +349,15 @@ static void ref_aes128_gcm_encrypt(const uint8_t key_bytes[16],
 
   ref_aes128_expand_key(key_bytes, &key);
 
-  // H = AES_E(K, 0^128); twist for the algebra layer
-  ref_aes128_encrypt_block(zero, H_raw, &key);
-  gcm_twist_h(H_pair, H_raw);
-  H_lo = H_pair[0];
-  H_hi = H_pair[1];
+  // H = AES_E(K, 0^128); compute v8-internal (H_lo, H_hi) pair the same
+  // way gcm_init_v8 does, so the GHASH update agrees with the kernel.
+  {
+    uint64_t IN_d0, IN_d1;
+    ref_aes128_encrypt_block(zero, H_raw, &key);
+    IN_d0 = load_u64_le(H_raw + 8);   // after vext.8 swap of LE-loaded halves
+    IN_d1 = load_u64_le(H_raw);
+    gcm_v8_twist(&H_lo, &H_hi, IN_d0, IN_d1);
+  }
 
   // J0 = nonce || 0^31 || 1  (NIST 800-38D Section 7.1, |IV|=96 case)
   memcpy(J0, nonce, 12);
@@ -353,11 +377,11 @@ static void ref_aes128_gcm_encrypt(const uint8_t key_bytes[16],
 
   // GHASH AAD blocks
   for (off = 0; off + 16 <= aad_len; off += 16)
-    gcm_ghash_block(Xi, H_lo, H_hi, aad + off);
+    gcm_ghash_block_v8(Xi, aad + off, H_lo, H_hi);
   if (off < aad_len)
    { uint8_t pad[16] = {0};
      memcpy(pad, aad + off, aad_len - off);
-     gcm_ghash_block(Xi, H_lo, H_hi, pad);
+     gcm_ghash_block_v8(Xi, pad, H_lo, H_hi);
    }
 
   // CTR encrypt + GHASH ciphertext
@@ -374,7 +398,7 @@ static void ref_aes128_gcm_encrypt(const uint8_t key_bytes[16],
      ref_aes128_encrypt_block(ctr_block, ks_block, &key);
      for (i = 0; i < 16; ++i)
        ciphertext[off + i] = plaintext[off + i] ^ ks_block[i];
-     gcm_ghash_block(Xi, H_lo, H_hi, ciphertext + off);
+     gcm_ghash_block_v8(Xi, ciphertext + off, H_lo, H_hi);
      ctr32 += 1;
    }
   if (off < pt_len)
@@ -389,14 +413,14 @@ static void ref_aes128_gcm_encrypt(const uint8_t key_bytes[16],
      for (i = 0; i < rem; ++i)
        ciphertext[off + i] = plaintext[off + i] ^ ks_block[i];
      memcpy(pad, ciphertext + off, rem);
-     gcm_ghash_block(Xi, H_lo, H_hi, pad);
+     gcm_ghash_block_v8(Xi, pad, H_lo, H_hi);
    }
 
   // Final length block: 64-bit big-endian aad bit-len, 64-bit big-endian
   // ciphertext bit-len.
   store_u64_be(len_block,     (uint64_t)aad_len * 8);
   store_u64_be(len_block + 8, (uint64_t)pt_len  * 8);
-  gcm_ghash_block(Xi, H_lo, H_hi, len_block);
+  gcm_ghash_block_v8(Xi, len_block, H_lo, H_hi);
 
   // Tag = AES_E(K, J0) XOR Xi
   ref_aes128_encrypt_block(J0, EKJ0, &key);
@@ -424,8 +448,9 @@ static void ref_aes_gcm_enc_kernel(const uint8_t *in, uint64_t bit_len,
                                    uint8_t ivec_io[16],
                                    const s2n_bignum_AES_KEY *key,
                                    const uint64_t *Htable)
-{ uint64_t H_lo = Htable[0];
-  uint64_t H_hi = Htable[1];
+{ // Decode H^1 from the v8-format Htable[0] (16 bytes at offset 0) into
+  // the (H_lo, H_hi) internal pair.
+  uint64_t H_lo, H_hi;
   uint64_t bytes = bit_len >> 3;
   uint64_t blocks = bytes >> 4;
   uint64_t b;
@@ -434,6 +459,8 @@ static void ref_aes_gcm_enc_kernel(const uint8_t *in, uint64_t bit_len,
                     ((uint32_t)ivec_io[13] << 16) |
                     ((uint32_t)ivec_io[14] <<  8) |
                      (uint32_t)ivec_io[15];
+
+  v8_htable_load(&H_lo, &H_hi, (const uint8_t *)Htable);
 
   for (b = 0; b < blocks; ++b)
    { uint8_t ctr_block[16];
@@ -457,8 +484,9 @@ static void ref_aes_gcm_enc_kernel(const uint8_t *in, uint64_t bit_len,
 
      memcpy(out + 16*b, cblock, 16);
 
-     // GHASH-update on the ciphertext block
-     gcm_ghash_block(Xi_bytes, H_lo, H_hi, cblock);
+     // GHASH-update on the ciphertext block (using the v8-internal H
+     // representation that matches the kernel's bytes at Htable[0]).
+     gcm_ghash_block_v8(Xi_bytes, cblock, H_lo, H_hi);
 
      // Increment the 32-bit big-endian counter (with wrap)
      ctr32 += 1;
