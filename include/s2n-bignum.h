@@ -36,6 +36,24 @@ struct s2n_bignum_aes_key_st {
 };
 typedef struct s2n_bignum_aes_key_st s2n_bignum_AES_KEY;
 
+// AES_GCM_ENC_KERNEL (AES-128 only fork — encrypt N full 16-byte blocks)
+// Encrypts (bit_len/8) bytes from in[] to out[], maintaining the GCM 16-byte
+// counter at ivec[16] and the running GHASH tag bytes Xi_io[16]. The key
+// schedule is the AES-128 expanded key (11 round keys + rounds field, laid
+// out as the s2n_bignum_AES_KEY struct above). The Htable is the standard
+// 12-slot Karatsuba-laid-out powers-of-H table produced by aws-lc's
+// gcm_init_v8 (offsets 0/32/48/80 hold H, H^2, H^3, H^4 respectively).
+//
+// This kernel only processes (bit_len/8/16)*16 bytes — i.e. it requires
+// the byte count to be a multiple of 16 and processes only full 16-byte
+// AES blocks. Tail bytes (length not a multiple of 16) must be handled
+// by the caller (typically via a second non-kernel invocation).
+extern void aes_gcm_enc_kernel(const uint8_t *in, uint64_t bit_len, uint8_t *out,
+        uint64_t Xi_io[S2N_BIGNUM_STATIC 2],
+        uint8_t ivec_io[S2N_BIGNUM_STATIC 16],
+        const s2n_bignum_AES_KEY *key_schedule,
+        const uint64_t *Htable);
+
 // AES_XTS_DECRYPT (256-bit)
 // Inputs in[length], length, key1[244], key2[244], iv[16]; output out[length]
 extern void aes_xts_decrypt(const uint8_t *in, uint8_t *out, size_t length,
