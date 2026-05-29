@@ -1,0 +1,269 @@
+(*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0 OR ISC OR MIT-0
+ *)
+
+(* ========================================================================= *)
+(* AES-128-GCM specification.                                                *)
+(*                                                                           *)
+(* Layered on:                                                               *)
+(*   - aes128_cipher  (common/fips197.ml)         FIPS 197 block cipher.     *)
+(*   - nist_ghash     (common/ghash_nist_bridge.ml) NIST GHASH Horner fold.  *)
+(*                                                                           *)
+(* This spec describes the byte-level computation that the                   *)
+(* `aes_gcm_enc_kernel` AArch64 routine implements (AES-128 fork, encrypt    *)
+(* only).  Two layers:                                                       *)
+(*                                                                           *)
+(*   (a) `aes_gcm_encrypt_blocks`: kernel-level block-wise AES-CTR keystream *)
+(*       XOR plaintext + NIST-GHASH update over the resulting ciphertext     *)
+(*       blocks.  The signature mirrors what the kernel takes:               *)
+(*       (number of full blocks, plaintext blocks, current Y_i counter,      *)
+(*        running NIST GHASH tag, AES-128 key schedule, GHASH key H) ->      *)
+(*        (ciphertext blocks, updated NIST GHASH tag, updated Y_i counter).  *)
+(*                                                                           *)
+(*   (b) `aes_gcm_encrypt_bytes` / `aes_gcm_decrypt_bytes`: full NIST AES-   *)
+(*       128-GCM byte-level wrappers driving the kernel block math plus      *)
+(*       AAD GHASH, length block, and tag finalization.  This is the         *)
+(*       byte-level KAT shape used in tests/test.c::kernel_aes128_gcm_       *)
+(*       encrypt.                                                            *)
+(*                                                                           *)
+(* Byte conventions: NIST byte order throughout.  Byte 0 of any 16-byte      *)
+(* buffer corresponds to the most-significant 8 bits of the 128-bit word     *)
+(* used by aes128_cipher and nist_ghash.  This matches both FIPS 197         *)
+(* (`fips197_*` in common/fips197.ml) and NIST SP 800-38D.                   *)
+(* ========================================================================= *)
+
+needs "common/fips197.ml";;
+needs "common/ghash_nist_bridge.ml";;
+
+(* ------------------------------------------------------------------------- *)
+(* NIST byte order conversion: byte 0 is the most-significant 8 bits.        *)
+(* This differs from `bytes_to_int128` in aes_xts_common_spec.ml, which uses *)
+(* little-endian (byte 0 = LSB).  GCM tests pass plaintext in NIST order, so *)
+(* a NIST-byte form is the natural shape for the spec.                       *)
+(* ------------------------------------------------------------------------- *)
+
+let nist_bytes_to_int128 = define
+ `nist_bytes_to_int128 (bs:byte list) : int128 =
+    word_join
+      (word_join
+        (word_join (word_join (EL 0 bs)  (EL 1 bs)  : int16)
+                   (word_join (EL 2 bs)  (EL 3 bs)  : int16) : int32)
+        (word_join (word_join (EL 4 bs)  (EL 5 bs)  : int16)
+                   (word_join (EL 6 bs)  (EL 7 bs)  : int16) : int32) : int64)
+      (word_join
+        (word_join (word_join (EL 8 bs)  (EL 9 bs)  : int16)
+                   (word_join (EL 10 bs) (EL 11 bs) : int16) : int32)
+        (word_join (word_join (EL 12 bs) (EL 13 bs) : int16)
+                   (word_join (EL 14 bs) (EL 15 bs) : int16) : int32) : int64)`;;
+
+let int128_to_nist_bytes = define
+ `int128_to_nist_bytes (w:int128) : byte list =
+    [word_subword w (120, 8); word_subword w (112, 8);
+     word_subword w (104, 8); word_subword w  (96, 8);
+     word_subword w  (88, 8); word_subword w  (80, 8);
+     word_subword w  (72, 8); word_subword w  (64, 8);
+     word_subword w  (56, 8); word_subword w  (48, 8);
+     word_subword w  (40, 8); word_subword w  (32, 8);
+     word_subword w  (24, 8); word_subword w  (16, 8);
+     word_subword w   (8, 8); word_subword w   (0, 8)]`;;
+
+(* ------------------------------------------------------------------------- *)
+(* Counter increment.                                                        *)
+(*                                                                           *)
+(* The kernel maintains the Y_i counter as a 16-byte value where the upper   *)
+(* 12 bytes are fixed (the IV-derived prefix) and the lower 4 bytes are a    *)
+(* big-endian 32-bit counter that increments per block, with wrap.  At the   *)
+(* int128 level the lower 4 bytes occupy bits [0..31] (since byte 15 is the  *)
+(* LSB in NIST order).                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let aes_gcm_ctr_increment = new_definition
+ `aes_gcm_ctr_increment (c:int128) : int128 =
+    word_or
+      (word_and c (word 0xffffffffffffffffffffffff00000000))
+      (word_zx
+         (word_add (word_subword c (0,32) : int32) (word 1) : int32))`;;
+
+(* ------------------------------------------------------------------------- *)
+(* Kernel-level AES-CTR keystream + NIST-GHASH update.                       *)
+(*                                                                           *)
+(* `aes_gcm_encrypt_blocks num_blocks plaintext ctr0 tag0 keysched H` walks  *)
+(*   over num_blocks 128-bit plaintext blocks, producing:                    *)
+(*     - the ciphertext block list (same length),                            *)
+(*     - the NIST-GHASH tag obtained by feeding the ciphertext blocks into   *)
+(*       `nist_ghash H` starting from `tag0`,                                *)
+(*     - the counter value reached after num_blocks BE-32 increments         *)
+(*       (which the kernel stores back to ivec_io).                          *)
+(*                                                                           *)
+(* This is exactly the byte-level computation `ref_aes_gcm_enc_kernel` does  *)
+(* in tests/ref_aes_gcm.c, restated at the int128 level.                     *)
+(* ------------------------------------------------------------------------- *)
+
+let aes_gcm_encrypt_blocks = define
+ `(aes_gcm_encrypt_blocks 0 (plaintext:int128 list) (ctr:int128) (tag:int128)
+                            (keysched:int128 list) (h:int128) =
+        ([]:int128 list, tag, ctr)) /\
+  (aes_gcm_encrypt_blocks (SUC n) plaintext ctr tag keysched h =
+     let ks = aes128_cipher ctr keysched in
+     let cblock = word_xor (HD plaintext) ks in
+     let new_tag = nist_dot (word_xor tag cblock) h in
+     let new_ctr = aes_gcm_ctr_increment ctr in
+     let rec_ct, rec_tag, rec_ctr =
+       aes_gcm_encrypt_blocks n (TL plaintext) new_ctr new_tag keysched h in
+     (CONS cblock rec_ct, rec_tag, rec_ctr))`;;
+
+(* ------------------------------------------------------------------------- *)
+(* J0 derivation for the standard 96-bit IV case (NIST SP 800-38D 7.1).      *)
+(* J0 = nonce || 0x00000001 (16 bytes total).                                *)
+(* ------------------------------------------------------------------------- *)
+
+let aes_gcm_j0_96bit_iv = new_definition
+ `aes_gcm_j0_96bit_iv (nonce:byte list) : int128 =
+    nist_bytes_to_int128
+      (APPEND nonce
+              [word 0; word 0; word 0; word 1])`;;
+
+(* ------------------------------------------------------------------------- *)
+(* AAD GHASH: feed each 16-byte block of AAD (zero-padded last block) into   *)
+(* nist_ghash, starting from the all-zero accumulator.                       *)
+(* ------------------------------------------------------------------------- *)
+
+(* Pack a 16-byte chunk of `bs` starting at byte offset `i*16`, padding with *)
+(* zero bytes if `bs` is exhausted before the chunk is full.                 *)
+let aes_gcm_block_at = define
+ `aes_gcm_block_at (bs:byte list) (i:num) : int128 =
+    nist_bytes_to_int128
+      (MAP (\j. if i * 16 + j < LENGTH bs then EL (i * 16 + j) bs
+                else word 0) [0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15])`;;
+
+(* Number of GHASH blocks needed for a byte buffer (rounded up to 16).       *)
+let aes_gcm_num_blocks = new_definition
+ `aes_gcm_num_blocks (n:num) : num = (n + 15) DIV 16`;;
+
+(* Convert a byte buffer into a list of n int128 blocks (zero-padding the   *)
+(* last short block if needed).  Used to feed AAD or ciphertext bytes into  *)
+(* `nist_ghash`.                                                             *)
+let aes_gcm_blocks_of_bytes = define
+ `(aes_gcm_blocks_of_bytes 0 (bs:byte list) : int128 list = []) /\
+  (aes_gcm_blocks_of_bytes (SUC n) bs =
+     CONS (aes_gcm_block_at bs 0)
+          (aes_gcm_blocks_of_bytes n
+             (SUB_LIST (16, LENGTH bs - 16) bs)))`;;
+
+(* ------------------------------------------------------------------------- *)
+(* Byte-level AES-128-GCM full encrypt (mirrors NIST SP 800-38D Algo 4).     *)
+(*                                                                           *)
+(* Inputs:                                                                   *)
+(*   key    : 16-byte AES-128 key (we accept the expanded schedule directly *)
+(*            as a (128 word) list of length 11 for proof convenience)      *)
+(*   nonce  : 12-byte IV (only 96-bit IVs supported, matching the kernel)   *)
+(*   pt     : plaintext byte list                                           *)
+(*   aad    : associated data byte list                                     *)
+(*                                                                           *)
+(* Output: (ciphertext byte list, 16-byte tag).                              *)
+(*                                                                           *)
+(* The structure exactly mirrors tests/ref_aes_gcm.c::ref_aes128_gcm_encrypt *)
+(* and tests/test.c::kernel_aes128_gcm_encrypt.                              *)
+(* ------------------------------------------------------------------------- *)
+
+(* CTR-mode keystream: produces a list of `n` 128-bit keystream blocks       *)
+(* starting from counter `ctr` (which is BE-incremented per block).         *)
+let aes_gcm_ctr_keystream = define
+ `(aes_gcm_ctr_keystream 0 (ctr:int128) (keysched:int128 list)
+       : int128 list = []) /\
+  (aes_gcm_ctr_keystream (SUC n) ctr keysched =
+     CONS (aes128_cipher ctr keysched)
+          (aes_gcm_ctr_keystream n (aes_gcm_ctr_increment ctr) keysched))`;;
+
+(* Block-level AES-CTR over a list of plaintext blocks (full blocks only).  *)
+let aes_gcm_ctr_encrypt_blocks = new_definition
+ `aes_gcm_ctr_encrypt_blocks (pt:int128 list) (ctr:int128)
+                              (keysched:int128 list) : int128 list =
+    MAP2 word_xor pt (aes_gcm_ctr_keystream (LENGTH pt) ctr keysched)`;;
+
+(* Byte-level AES-CTR over an arbitrary byte list.                          *)
+(* Implementation strategy: produce ceil(LENGTH bs / 16) full keystream     *)
+(* blocks, flatten to a byte list, XOR pointwise with the (zero-padded)    *)
+(* plaintext byte list, then truncate back to LENGTH bs.  This avoids the  *)
+(* well-founded-recursion overhead and matches what the kernel computes.    *)
+
+(* Concatenate a list of int128 blocks into a byte list (NIST byte order). *)
+let aes_gcm_bytes_of_blocks = define
+ `(aes_gcm_bytes_of_blocks ([]:int128 list) : byte list = []) /\
+  (aes_gcm_bytes_of_blocks (CONS w ws) =
+     APPEND (int128_to_nist_bytes w) (aes_gcm_bytes_of_blocks ws))`;;
+
+let aes_gcm_ctr_encrypt_bytes = new_definition
+ `aes_gcm_ctr_encrypt_bytes (bs:byte list) (ctr:int128)
+                             (keysched:int128 list) : byte list =
+    let n = aes_gcm_num_blocks (LENGTH bs) in
+    let ks_bytes =
+      aes_gcm_bytes_of_blocks (aes_gcm_ctr_keystream n ctr keysched) in
+    SUB_LIST (0, LENGTH bs)
+             (MAP2 word_xor
+                   (APPEND bs (REPLICATE (16 * n - LENGTH bs) (word 0)))
+                   ks_bytes)`;;
+
+(* H = AES_E(K, 0^128); the "raw" GHASH key value used by the NIST spec.    *)
+let aes_gcm_h_raw = new_definition
+ `aes_gcm_h_raw (keysched:int128 list) : int128 =
+    aes128_cipher (word 0) keysched`;;
+
+(* Final 128-bit length block: 64-bit BE aad-bit-len || 64-bit BE pt-bit-len *)
+let aes_gcm_len_block = new_definition
+ `aes_gcm_len_block (aad_bytes:num) (pt_bytes:num) : int128 =
+    word_join
+      (word (8 * aad_bytes) : int64)
+      (word (8 * pt_bytes)  : int64)`;;
+
+(* Full-encrypt entry point.                                                 *)
+(* Returns (ciphertext, tag).                                                *)
+let aes_gcm_encrypt_bytes = new_definition
+ `aes_gcm_encrypt_bytes (keysched:int128 list) (nonce:byte list)
+                         (pt:byte list) (aad:byte list)
+        : (byte list)#(byte list) =
+    let h    = aes_gcm_h_raw keysched in
+    let j0   = aes_gcm_j0_96bit_iv nonce in
+    let ctr0 = aes_gcm_ctr_increment j0 in
+    let n_aad   = aes_gcm_num_blocks (LENGTH aad) in
+    let aad_blocks = aes_gcm_blocks_of_bytes n_aad aad in
+    let tag1 = nist_ghash h (word 0) aad_blocks in
+    let ct = aes_gcm_ctr_encrypt_bytes pt ctr0 keysched in
+    let n_ct   = aes_gcm_num_blocks (LENGTH ct) in
+    let ct_blocks = aes_gcm_blocks_of_bytes n_ct ct in
+    let tag2 = nist_ghash h tag1 ct_blocks in
+    let len_blk = aes_gcm_len_block (LENGTH aad) (LENGTH pt) in
+    let tag3 = nist_ghash h tag2 [len_blk] in
+    let ekj0 = aes128_cipher j0 keysched in
+    let tag  = word_xor ekj0 tag3 in
+    (ct, int128_to_nist_bytes tag)`;;
+
+(* Decrypt is the same on the keystream side (CTR is symmetric); the tag    *)
+(* is computed over the ciphertext exactly as on encrypt.  The caller is   *)
+(* expected to compare against the received tag.                            *)
+let aes_gcm_decrypt_bytes = new_definition
+ `aes_gcm_decrypt_bytes (keysched:int128 list) (nonce:byte list)
+                         (ct:byte list) (aad:byte list)
+        : (byte list)#(byte list) =
+    let h    = aes_gcm_h_raw keysched in
+    let j0   = aes_gcm_j0_96bit_iv nonce in
+    let ctr0 = aes_gcm_ctr_increment j0 in
+
+    let n_aad   = aes_gcm_num_blocks (LENGTH aad) in
+    let aad_blocks = aes_gcm_blocks_of_bytes n_aad aad in
+    let tag1 = nist_ghash h (word 0) aad_blocks in
+
+    let n_ct   = aes_gcm_num_blocks (LENGTH ct) in
+    let ct_blocks = aes_gcm_blocks_of_bytes n_ct ct in
+    let tag2 = nist_ghash h tag1 ct_blocks in
+
+    let len_blk = aes_gcm_len_block (LENGTH aad) (LENGTH ct) in
+    let tag3 = nist_ghash h tag2 [len_blk] in
+
+    let pt = aes_gcm_ctr_encrypt_bytes ct ctr0 keysched in
+
+    let ekj0 = aes128_cipher j0 keysched in
+    let tag  = word_xor ekj0 tag3 in
+
+    (pt, int128_to_nist_bytes tag)`;;
