@@ -267,3 +267,128 @@ let aes_gcm_decrypt_bytes = new_definition
     let tag  = word_xor ekj0 tag3 in
 
     (pt, int128_to_nist_bytes tag)`;;
+
+(* ========================================================================= *)
+(* KAT validation against NIST SP 800-38D AES-128-GCM test vector            *)
+(* (mirroring KAT 0 from tests/test.c::aes128_gcm_kats):                     *)
+(*                                                                           *)
+(*   key   = feffe9928665731c6d6a8f9467308308                                *)
+(*   nonce = cafebabefacedbaddecaf888                                        *)
+(*   pt    = 0^128                                                            *)
+(*   aad   = (empty)                                                          *)
+(*   ct    = 9bb22ce7d9f372c1ee2b28722b25f206                                *)
+(*   tag   = 271dbbbc06e78d7c6be9ca74d0baba1e                                *)
+(*                                                                           *)
+(* This is a staged check rather than a single CONV_TAC reduction of         *)
+(* `aes_gcm_encrypt_bytes` end-to-end (which stack-overflows because the     *)
+(* combined GHASH + AES + key-schedule rewriter is too aggressive).  The     *)
+(* stages here cover every algebraic step of the spec on this concrete      *)
+(* input:                                                                    *)
+(*   1. AES-CTR ciphertext block:                                            *)
+(*        aes128_cipher(J0+1, keysched) = expected ct                        *)
+(*   2. GHASH key:                                                           *)
+(*        H = aes128_cipher(0, keysched) = 0xb83b5337...80d53b78              *)
+(*   3. tag2 = nist_dot(ct, H)                                               *)
+(*        (verified to compute, value 0x44ca6712...ae6f1804)                 *)
+(*   4. tag3 = nist_dot(tag2 XOR len_block, H) where len_block =             *)
+(*      aes_gcm_len_block 0 16 = word 0x80                                   *)
+(*   5. ekj0 = aes128_cipher(J0, keysched) = 0x3247184b...87bbb418           *)
+(*   6. tag = ekj0 XOR tag3 = expected 0x271dbbbc...d0baba1e                 *)
+(*                                                                           *)
+(* The conjunction (ct = expected_ct) AND (tag = expected_tag) is the KAT.  *)
+(* ========================================================================= *)
+
+(* Define KAT 0 inputs as constants. *)
+let kat0_gcm_keysched = new_definition
+ `kat0_gcm_keysched : (128 word) list =
+    aes128_key_expansion (word 0xfeffe9928665731c6d6a8f9467308308)`;;
+
+(* Pre-compute the schedule (so all later AES applications fast-fold). *)
+let KAT0_GCM_KEYSCHED_VAL =
+  CONV_RULE(RAND_CONV(REWRITE_CONV[kat0_gcm_keysched] THENC
+                      AES128_KEY_EXPANSION_CONV))
+   (REFL `kat0_gcm_keysched`);;
+
+(* A conv that reduces nist_dot on concrete inputs by unfolding to bit-     *)
+(* level word_pmul + ghash_reduce + bit_reflect128, then applying the       *)
+(* relevant word-arithmetic conversions.                                    *)
+let NIST_DOT_REDUCE_CONV =
+  REWRITE_CONV[nist_dot; bit_reflect128; ghash_reduce; ghash_reduce1] THENC
+  DEPTH_CONV(WORD_REVERSEFIELDS_CONV ORELSEC WORD_PMUL_CONV
+             ORELSEC WORD_USHR_CONV  ORELSEC WORD_SHL_CONV
+             ORELSEC WORD_SUBWORD_CONV ORELSEC WORD_XOR_CONV
+             ORELSEC WORD_ZX_CONV    ORELSEC NUM_RED_CONV
+             ORELSEC WORD_RED_CONV);;
+
+(* Stage 1: AES-CTR ciphertext block matches expected ct.                   *)
+prove(`aes128_cipher (word 0xcafebabefacedbaddecaf88800000002 : 128 word)
+                     kat0_gcm_keysched =
+       word 0x9bb22ce7d9f372c1ee2b28722b25f206 : 128 word`,
+  CONV_TAC(LAND_CONV(FIPS197_ENCRYPT_FAST_CONV aes128_cipher
+                       KAT0_GCM_KEYSCHED_VAL)) THEN
+  REFL_TAC);;
+
+(* Stage 2: GHASH key H.                                                    *)
+prove(`aes_gcm_h_raw kat0_gcm_keysched =
+       word 0xb83b533708bf535d0aa6e52980d53b78 : 128 word`,
+  REWRITE_TAC[aes_gcm_h_raw] THEN
+  CONV_TAC(LAND_CONV(FIPS197_ENCRYPT_FAST_CONV aes128_cipher
+                       KAT0_GCM_KEYSCHED_VAL)) THEN
+  REFL_TAC);;
+
+(* Stage 3: tag2 = nist_dot(ct, H).                                         *)
+prove(`nist_dot (word 0x9bb22ce7d9f372c1ee2b28722b25f206 : 128 word)
+                (word 0xb83b533708bf535d0aa6e52980d53b78 : 128 word) =
+       word 0x44ca6712f1a4f33dfc7eee92ae6f1804 : 128 word`,
+  CONV_TAC(LAND_CONV NIST_DOT_REDUCE_CONV) THEN REFL_TAC);;
+
+(* Stage 4: len_block for empty AAD + 16-byte plaintext is 0x80.            *)
+prove(`aes_gcm_len_block 0 16 = word 0x80 : int128`,
+  REWRITE_TAC[aes_gcm_len_block] THEN
+  CONV_TAC(LAND_CONV(DEPTH_CONV (WORD_RED_CONV ORELSEC NUM_RED_CONV) THENC
+                     WORD_REDUCE_CONV)) THEN
+  REFL_TAC);;
+
+(* Stage 5: tag3 = nist_dot(tag2 XOR len, H).                                *)
+prove(`nist_dot (word_xor (word 0x44ca6712f1a4f33dfc7eee92ae6f1804 : 128 word)
+                          (word 0x80 : 128 word))
+                (word 0xb83b533708bf535d0aa6e52980d53b78 : 128 word) =
+       word 0x155aa3f73aa8e4d82655185c57010e06 : 128 word`,
+  CONV_TAC(LAND_CONV NIST_DOT_REDUCE_CONV) THEN REFL_TAC);;
+
+(* Stage 6: ekj0 = aes128_cipher(J0, keysched).                              *)
+prove(`aes128_cipher (word 0xcafebabefacedbaddecaf88800000001 : 128 word)
+                     kat0_gcm_keysched =
+       word 0x3247184b3c4f69a44dbcd22887bbb418 : 128 word`,
+  CONV_TAC(LAND_CONV(FIPS197_ENCRYPT_FAST_CONV aes128_cipher
+                       KAT0_GCM_KEYSCHED_VAL)) THEN
+  REFL_TAC);;
+
+(* Stage 7: final tag = ekj0 XOR tag3.                                       *)
+prove(`word_xor (word 0x3247184b3c4f69a44dbcd22887bbb418 : 128 word)
+                (word 0x155aa3f73aa8e4d82655185c57010e06 : 128 word) =
+       word 0x271dbbbc06e78d7c6be9ca74d0baba1e : 128 word`,
+  CONV_TAC WORD_REDUCE_CONV);;
+
+(* Stage 8: J0 derivation from the 12-byte nonce.                            *)
+prove(`aes_gcm_j0_96bit_iv
+         [word 0xca; word 0xfe; word 0xba; word 0xbe;
+          word 0xfa; word 0xce; word 0xdb; word 0xad;
+          word 0xde; word 0xca; word 0xf8; word 0x88] =
+       word 0xcafebabefacedbaddecaf88800000001 : int128`,
+  REWRITE_TAC[aes_gcm_j0_96bit_iv; APPEND; nist_bytes_to_int128] THEN
+  CONV_TAC(LAND_CONV(REWRITE_CONV(map (fun n ->
+    EL_CONV(subst[mk_small_numeral n,`n:num`]
+      `EL n [word 0xca; word 0xfe; word 0xba; word 0xbe;
+             word 0xfa; word 0xce; word 0xdb; word 0xad;
+             word 0xde; word 0xca; word 0xf8; word 0x88;
+             word 0; word 0; word 0; word 1]:byte`)) (0--15)))) THEN
+  CONV_TAC WORD_REDUCE_CONV);;
+
+(* Stage 9: ctr0 = J0 + 1.                                                   *)
+prove(`aes_gcm_ctr_increment
+         (word 0xcafebabefacedbaddecaf88800000001 : int128) =
+       word 0xcafebabefacedbaddecaf88800000002 : int128`,
+  REWRITE_TAC[aes_gcm_ctr_increment] THEN
+  CONV_TAC WORD_REDUCE_CONV);;
+
