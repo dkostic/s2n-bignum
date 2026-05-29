@@ -146,6 +146,16 @@ let iclasses =
   "01001110000x1000000011xxxxxxxxxx"; (* original DUP Vd.2d, xn *)
   "0x001110000xxxxx000011xxxxxxxxxx"; (* other variants too     *)
 
+  (*** DUP element (scalar variant): mov <V><d>, <Vn>.<T>[<idx>]    *)
+  (*** Encoding: AdvSIMD_dup_element with scalar=1.                  *)
+  (*** imm5 must be nonzero; we enumerate the 4 valid size cases by  *)
+  (*** progressively forcing one of bits 16..19 to 1 (mirroring the *)
+  (*** INS iclass strategy above).                                   *)
+  "01011110000xxxx1000001xxxxxxxxxx"; (* size=8, imm5=????1 *)
+  "01011110000xxx10000001xxxxxxxxxx"; (* size=16, imm5=???10 *)
+  "01011110000xx100000001xxxxxxxxxx"; (* size=32, imm5=??100 *)
+  "01011110000x1000000001xxxxxxxxxx"; (* size=64, imm5=?1000 *)
+
   (*** EOR ***)
   "0x101110001xxxxx000111xxxxxxxxxx";
 
@@ -277,6 +287,11 @@ let iclasses =
   "0x001111001xxxxx010101xxxxxxxxxx";
   "0x0011110001xxxx010101xxxxxxxxxx";
   "0x00111100001xxx010101xxxxxxxxxx";
+
+  (*** SHL (scalar by immediate, D-form): shl d<d>, d<n>, #amt    *)
+  (*** Encoding: AdvSIMD_shf_imm_scalar with opcode=0b01010, U=0.  *)
+  (*** Bit 3 of immh must be 1 (esize=64).                          *)
+  "0101111101xxxxxx010101xxxxxxxxxx";
 
   (*** SHRN ***)
   "00001111001xxxxx100001xxxxxxxxxx"; (* q=0, immh!=0 *)
