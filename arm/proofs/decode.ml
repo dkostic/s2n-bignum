@@ -821,6 +821,21 @@ let decode = new_definition `!w:int32. decode w =
       let amt = val(word_join immh immb:7 word) - esize in
       SOME (arm_SHL_VEC (QREG' Rd) (QREG' Rn) amt esize datasize)
 
+  | [0b01:2; 0b0111110:7; immh:4; immb:3; 0b010101:6; Rn:5; Rd:5] ->
+    // SHL (scalar by immediate, D-form: shl d<d>, d<n>, #imm)
+    // Encoding AdvSIMD_shf_imm_scalar with opcode=0b01010, U=0.
+    // For the scalar form esize=datasize=64 always, requiring bit 3 of immh.
+    // We use QREG' here, not DREG', because arm_SHL_VEC is typed in the
+    // 128-bit Q register: its 64-bit datasize branch already extracts the
+    // low 64 bits of Rn and zero-extends the result back to 128 bits, which
+    // matches the architectural D-register semantics (upper 64 bits of the
+    // containing Q are cleared).
+    if ~(bit 3 immh) then NONE // "UNDEFINED" (esize must be 64)
+    else
+      let esize = 64 in
+      let amt = val(word_join immh immb:7 word) - esize in
+      SOME (arm_SHL_VEC (QREG' Rd) (QREG' Rn) amt esize 64)
+
   | [0:1; q; 0b0011110:7; immh:4; immb:3; 0b101001:6; Rn:5; Rd:5] ->
     // SSHLL, SSHLL2 (or MOVI with cmode=1010 when immh=0 and Q=1)
     if immh = (word 0b0:(4)word) then

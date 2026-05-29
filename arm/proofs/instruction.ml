@@ -1529,7 +1529,8 @@ let arm_SHL_VEC = define
         else
           let n:(64)word = word_subword n (0,64) in
           let d:(64)word =
-            if esize = 32 then usimd2 (\x. word_shl x amt) n
+            if esize = 64 then word_shl n amt
+            else if esize = 32 then usimd2 (\x. word_shl x amt) n
             else if esize = 16 then usimd4 (\x. word_shl x amt) n
             else usimd8 (\x. word_shl x amt) n in
           (Rd := word_zx d:(128)word) s`;;
