@@ -510,6 +510,87 @@ let MEMORY_BYTELIST_SPLIT = prove
   ASM_REWRITE_TAC[GSYM READ_COMPONENT_COMPOSE]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Branch A tail-only closure (Path C extraction).                           *)
+(*                                                                           *)
+(* Standalone ensures lemma covering PC range [pc + 0xbc, pc + 0x268) under  *)
+(* the small-buffer hypothesis `len < 16` ONLY. No iters parameterization,   *)
+(* no SUB_LIST, no LOOP16 prefix — just a clean residue case-split over the  *)
+(* 4 TBZ-gated tail blocks (8B/4B/2B/1B) plus the 7-EOR XOR reduction.       *)
+(*                                                                           *)
+(* This decouples Branch A's tail proof from Branch B's parameterized-form   *)
+(* main-loop continuation (which carries an iters universal that interacts   *)
+(* badly with the Branch A iters=0 reshape — see s050 bisection result).    *)
+(*                                                                           *)
+(* Body is CHEAT_TAC for now; residue cases will be ported case-by-case      *)
+(* from the Branch B template (each ~50 lines, 16 cases total).             *)
+(* ------------------------------------------------------------------------- *)
+
+let BRANCH_A_TAIL_CLOSURE = prove
+ (`!a0 a1 a2 a3 a4 a5 a6 a7
+    (bs0:byte list) (bs1:byte list) (bs2:byte list) (bs3:byte list)
+    (bs4:byte list) (bs5:byte list) (bs6:byte list) (bs7:byte list)
+    len pc sp_in.
+        len < 16 /\
+        LENGTH bs0 = len /\ LENGTH bs1 = len /\
+        LENGTH bs2 = len /\ LENGTH bs3 = len /\
+        LENGTH bs4 = len /\ LENGTH bs5 = len /\
+        LENGTH bs6 = len /\ LENGTH bs7 = len /\
+        PAIRWISE nonoverlapping
+         [(word pc, LENGTH crc32c_octo_zerofill_xor_mc);
+          (a0, len); (a1, len); (a2, len); (a3, len);
+          (a4, len); (a5, len); (a6, len); (a7, len)]
+        ==> ensures arm
+             (\s. aligned_bytes_loaded s (word pc)
+                    crc32c_octo_zerofill_xor_mc /\
+                  read PC s = word(pc + 0xbc) /\
+                  read SP s = sp_in /\
+                  read X0 s = a0 /\ read X1 s = a1 /\
+                  read X2 s = a2 /\ read X3 s = a3 /\
+                  read X4 s = a4 /\ read X5 s = a5 /\
+                  read X6 s = a6 /\ read X7 s = a7 /\
+                  read X8 s = word 0xFFFFFFFF /\
+                  read X9 s = word 0xFFFFFFFF /\
+                  read X10 s = word 0xFFFFFFFF /\
+                  read X11 s = word 0xFFFFFFFF /\
+                  read X12 s = word 0xFFFFFFFF /\
+                  read X13 s = word 0xFFFFFFFF /\
+                  read X14 s = word 0xFFFFFFFF /\
+                  read X15 s = word 0xFFFFFFFF /\
+                  read X19 s = word len /\
+                  read (memory :> bytelist (a0, len)) s = bs0 /\
+                  read (memory :> bytelist (a1, len)) s = bs1 /\
+                  read (memory :> bytelist (a2, len)) s = bs2 /\
+                  read (memory :> bytelist (a3, len)) s = bs3 /\
+                  read (memory :> bytelist (a4, len)) s = bs4 /\
+                  read (memory :> bytelist (a5, len)) s = bs5 /\
+                  read (memory :> bytelist (a6, len)) s = bs6 /\
+                  read (memory :> bytelist (a7, len)) s = bs7)
+             (\s. read PC s = word(pc + 0x268) /\
+                  read W0 s = crc32c_xor8 bs0 bs1 bs2 bs3 bs4 bs5 bs6 bs7 /\
+                  read SP s = sp_in /\
+                  read (memory :> bytelist (a0, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a1, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a2, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a3, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a4, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a5, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a6, len)) s = REPLICATE len (word 0) /\
+                  read (memory :> bytelist (a7, len)) s = REPLICATE len (word 0))
+          (MAYCHANGE [PC; X0; X1; X2; X3; X4; X5; X6; X7;
+                      X8; X9; X10; X11; X12; X13; X14; X15;
+                      X16; X17; X19] ,,
+           MAYCHANGE SOME_FLAGS ,, MAYCHANGE [events] ,,
+           MAYCHANGE [memory :> bytes(a0, len);
+                      memory :> bytes(a1, len);
+                      memory :> bytes(a2, len);
+                      memory :> bytes(a3, len);
+                      memory :> bytes(a4, len);
+                      memory :> bytes(a5, len);
+                      memory :> bytes(a6, len);
+                      memory :> bytes(a7, len)])`,
+  CHEAT_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* CORE correctness theorem (Phase 9 — body proof, post-prologue).            *)
 (*                                                                           *)
 (* CORE covers PC range [pc + 8, pc + 0x268), i.e. starting after the         *)
