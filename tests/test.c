@@ -16086,8 +16086,10 @@ static void kernel_aes128_gcm_encrypt(const uint8_t key_bytes[16],
   ref_aes128_encrypt_block(zero, H_raw, &key);
   {
     uint64_t IN_d0, IN_d1;
-    IN_d0 = load_u64_le(H_raw + 8);
-    IN_d1 = load_u64_le(H_raw);
+    // Match aws-lc's gcm_init_v8: caller passes H[2] BE-loaded from H_raw,
+    // asm vld1.64 reads t1.D[k] = H[k], then vext swaps the halves.
+    IN_d0 = load_u64_be(H_raw + 8);
+    IN_d1 = load_u64_be(H_raw);
     gcm_v8_twist(&H_lo, &H_hi, IN_d0, IN_d1);
   }
   ref_gcm_init_htable(Htable, &key);

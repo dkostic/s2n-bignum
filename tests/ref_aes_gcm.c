@@ -286,12 +286,12 @@ static void ref_gcm_init_htable(uint64_t Htable[12*2],  // 12 × 16-byte slots
   // H = AES_E(K, 0)
   ref_aes128_encrypt_block(zero, H_raw, key);
 
-  // Replicate gcm_init_v8's prologue:
-  //   t1 = vld1(H_raw)            -- t1.d[0] = LE-load(H_raw[0..7]),
-  //                                  t1.d[1] = LE-load(H_raw[8..15])
-  //   IN = vext(t1, t1, #8)        -- IN.d[0] = t1.d[1], IN.d[1] = t1.d[0]
-  t1_d0 = load_u64_le(H_raw);
-  t1_d1 = load_u64_le(H_raw + 8);
+  // Replicate gcm_init_v8's prologue. aws-lc's caller passes H[2] where
+  // H[0] = load_be64(H_raw), H[1] = load_be64(H_raw+8); the asm vld1.64
+  // {t1},[x1] reads t1.d[k] = H[k]. Then vext.8 IN, t1, t1, #8 swaps the
+  // halves: IN.d[0] = t1.d[1], IN.d[1] = t1.d[0].
+  t1_d0 = load_u64_be(H_raw);
+  t1_d1 = load_u64_be(H_raw + 8);
   IN_d0 = t1_d1;
   IN_d1 = t1_d0;
 
@@ -354,8 +354,8 @@ static void ref_aes128_gcm_encrypt(const uint8_t key_bytes[16],
   {
     uint64_t IN_d0, IN_d1;
     ref_aes128_encrypt_block(zero, H_raw, &key);
-    IN_d0 = load_u64_le(H_raw + 8);   // after vext.8 swap of LE-loaded halves
-    IN_d1 = load_u64_le(H_raw);
+    IN_d0 = load_u64_be(H_raw + 8);   // after vext.8 swap of BE-loaded halves
+    IN_d1 = load_u64_be(H_raw);
     gcm_v8_twist(&H_lo, &H_hi, IN_d0, IN_d1);
   }
 
