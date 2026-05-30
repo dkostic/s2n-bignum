@@ -232,6 +232,37 @@ let BYTES64_FROM_BYTELIST = prove
   DISCH_THEN(SUBST1_TAC o SYM) THEN REFL_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* SUB_LIST_SUB_LIST: nested SUB_LIST collapse for the case where the outer  *)
+(* slice (offset p, width n) lies fully inside the inner zero-offset slice   *)
+(* of width m (i.e. p + n <= m). Used by the BRANCH_A_TAIL_CLOSURE 3-way     *)
+(* composites (residues 7, 11, 13, 14, 15) where mid-layer RESIDUE_X_UPDATE  *)
+(* helpers stage their bs on `SUB_LIST(0,m) bs0` so the resulting SUB_LIST   *)
+(* (k, w) (SUB_LIST(0,m) bs0) terms must collapse to SUB_LIST(k,w) bs0.      *)
+(* The companion `SUB_LIST_MIN` (in common/misc.ml) only handles the         *)
+(* zero-offset outer slice; this lemma extends to non-zero offsets.          *)
+(* ------------------------------------------------------------------------- *)
+
+let SUB_LIST_SUB_LIST = prove
+ (`!(l:A list) p n m.
+        p + n <= m ==> SUB_LIST(p, n) (SUB_LIST(0, m) l) = SUB_LIST(p, n) l`,
+  LIST_INDUCT_TAC THEN REWRITE_TAC[SUB_LIST_CLAUSES] THEN
+  INDUCT_TAC THENL
+   [REWRITE_TAC[ADD_CLAUSES] THEN
+    INDUCT_TAC THEN REWRITE_TAC[SUB_LIST_CLAUSES] THEN
+    INDUCT_TAC THEN
+    REWRITE_TAC[ARITH_RULE `SUC n <= 0 <=> F`;
+                SUB_LIST_CLAUSES; LE_SUC] THEN
+    STRIP_TAC THEN AP_TERM_TAC THEN
+    FIRST_X_ASSUM(MP_TAC o SPECL [`0:num`; `n:num`; `m:num`]) THEN
+    ASM_REWRITE_TAC[ADD_CLAUSES];
+    GEN_TAC THEN INDUCT_TAC THEN
+    REWRITE_TAC[ARITH_RULE `SUC p + n <= 0 <=> F`;
+                SUB_LIST_CLAUSES; ADD_CLAUSES; LE_SUC] THEN
+    STRIP_TAC THEN
+    FIRST_X_ASSUM(MP_TAC o SPECL [`p:num`; `n:num`; `m:num`]) THEN
+    ASM_REWRITE_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
 (* BYTES8_FROM_BYTELIST: 1-byte analogue of BYTES64_FROM_BYTELIST. Used      *)
 (* when a single LDRB reads from inside a region whose bytelist contents    *)
 (* are pinned in the precondition.                                           *)
