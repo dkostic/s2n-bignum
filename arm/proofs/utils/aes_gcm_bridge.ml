@@ -78,11 +78,14 @@ let AESMC_AESE_AS_ARM_ROUND = prove
  (`!s k. aesmc (aese s k) = aes_arm_round s k`,
   REWRITE_TAC[aesmc; aese; aes_arm_round]);;
 
-(* The AES-NI primitive bridge for the final round: the ARM `aese`           *)
-(* (without AESMC) followed by an EOR with the last round key computes       *)
-(* `aes_arm_final_round`.                                                    *)
-let AESE_EOR_AS_ARM_FINAL_ROUND = prove
- (`!s k0 k1. word_xor (aese s k0) k1 = word_xor (aes_arm_final_round s k0) k1`,
+(* The AES-NI primitive bridge for the last AES round:  ARM `aese` (with no  *)
+(* trailing AESMC) directly computes `aes_arm_final_round`.  This is a       *)
+(* renaming bridge — the right-hand side has the same definition shape, but  *)
+(* downstream proofs work with `aes_arm_final_round`/`aes_arm_round` only,   *)
+(* not the raw `aese`/`aesmc` primitives.  The kernel's final round is then  *)
+(* `word_xor (aes_arm_final_round s9 k9) k10` after one application.         *)
+let AESE_AS_ARM_FINAL_ROUND = prove
+ (`!s k. aese s k = aes_arm_final_round s k`,
   REWRITE_TAC[aese; aes_arm_final_round]);;
 
 (* AES-128 cipher in AES-NI shape: 1 initial XOR (absorbed into round 1's    *)
@@ -156,19 +159,17 @@ let aes_gcm_rev64_int128 = new_definition
       (word_bytereverse (word_subword x ( 0,64) : int64) : int64)`;;
 
 (* `ext v, v, v, #8` rotates an int128 by 64 bits — equivalent to swapping  *)
-(* the high and low halves.                                                  *)
-let aes_gcm_ext_swap_int128 = new_definition
- `aes_gcm_ext_swap_int128 (x:int128) : int128 =
-    word_join
-      (word_subword x ( 0,64) : int64)
-      (word_subword x (64,64) : int64)`;;
+(* the high and low halves.  This is exactly `byteswap128` from              *)
+(* `common/polyval_ghash.ml` (the half-swap variant used in `htable_mem` to  *)
+(* describe the kernel's H-table layout).  We use `byteswap128` directly     *)
+(* downstream rather than introducing an alias.                              *)
 
 (* The composition of `rev64` then `ext..., #8` is full byte-reversal.       *)
 let REV64_EXT_IS_BYTEREVERSE = prove
  (`!x:int128.
-    aes_gcm_ext_swap_int128 (aes_gcm_rev64_int128 x) = word_bytereverse x`,
+    byteswap128 (aes_gcm_rev64_int128 x) = word_bytereverse x`,
   GEN_TAC THEN
-  REWRITE_TAC[aes_gcm_ext_swap_int128; aes_gcm_rev64_int128] THEN
+  REWRITE_TAC[byteswap128; aes_gcm_rev64_int128] THEN
   BITBLAST_TAC);;
 
 (* The same composition the other way: ext-then-rev64 also yields byte-     *)
@@ -176,25 +177,15 @@ let REV64_EXT_IS_BYTEREVERSE = prove
 (* swapped.                                                                  *)
 let EXT_REV64_IS_BYTEREVERSE = prove
  (`!x:int128.
-    aes_gcm_rev64_int128 (aes_gcm_ext_swap_int128 x) = word_bytereverse x`,
+    aes_gcm_rev64_int128 (byteswap128 x) = word_bytereverse x`,
   GEN_TAC THEN
-  REWRITE_TAC[aes_gcm_ext_swap_int128; aes_gcm_rev64_int128] THEN
+  REWRITE_TAC[byteswap128; aes_gcm_rev64_int128] THEN
   BITBLAST_TAC);;
 
-(* `byteswap128` from common/polyval_ghash.ml is the half-swap variant       *)
-(* used in `htable_mem` to describe the kernel's H-table layout (the         *)
-(* kernel stores `H_power_k` with halves swapped relative to the             *)
-(* algebraic form).  This is the same operation as `aes_gcm_ext_swap_int128` *)
-(* — reused under both names for ergonomic reasons.                          *)
-let AES_GCM_EXT_SWAP_IS_BYTESWAP128 = prove
- (`!x:int128. aes_gcm_ext_swap_int128 x = byteswap128 x`,
-  GEN_TAC THEN REWRITE_TAC[aes_gcm_ext_swap_int128; byteswap128]);;
-
-(* The reverse direction: byte-reversal can be obtained by composing         *)
-(* `aes_gcm_rev64_int128` and `aes_gcm_ext_swap_int128`.                     *)
+(* The reverse direction: byte-reversal decomposes into rev64 then ext.     *)
 let WORD_BYTEREVERSE_AS_REV64_EXT = prove
  (`!x:int128.
-    word_bytereverse x = aes_gcm_ext_swap_int128 (aes_gcm_rev64_int128 x)`,
+    word_bytereverse x = byteswap128 (aes_gcm_rev64_int128 x)`,
   REWRITE_TAC[REV64_EXT_IS_BYTEREVERSE]);;
 
 (* ========================================================================= *)
