@@ -514,3 +514,22 @@ a length counter) transfers to any function with TBZ-gated tail blocks.
 - **~16,000 lines** of HOL Light proof artifact across 9 .ml files.
 - **0 admissions** in the final proof (no `cheat`, no `mk_thm`, no
   `new_axiom`, no `SORRY_TAC`).
+
+---
+
+## Closure (s071)
+
+The dev-artifact cleanup landed at commit `8091d045` ("crc32c: remove
+Phase 5-8 dev stepping-stone .S files; clean signatures regen"). The
+four stepping-stone `.S` files in `arm/crc32/` and their entries in
+`arm/Makefile`'s `CRC32_OBJ` are removed; `tools/collect-signatures.py`
+reruns clean post-removal with no diff to `subroutine_signatures.ml`;
+`make test && ./test` passes all 376 cases including
+`test_crc32c_octo_zerofill_xor`. The matching `.ml` proof files stay in
+`arm/proofs/` as reusable verification examples per a deliberate
+project-level decision (different from the SHA-256 pilot's stepping-stone
+removal in `1ae7f21d`, which removed `.ml` files too).
+
+**The CRC32C verification project is closed end-to-end** at HEAD
+`8091d045`: spec-faithful, machine-checked, zero admissions, integrated
+into s2n-bignum's build/test/benchmark/signatures pipeline.
