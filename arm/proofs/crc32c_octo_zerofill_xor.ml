@@ -218,8 +218,8 @@ let crc32c_xor8 = define
 
 (* ------------------------------------------------------------------------- *)
 (* Two helpers used by the LOOP16 BIGSTEP postcondition translation.          *)
-(* Both are CHEAT_TAC stubs at this point — to be proved in a follow-up       *)
-(* session.                                                                  *)
+(* Both helpers are now fully proved below.                                  *)
+(*                                                                           *)
 (*                                                                           *)
 (*   LOOP16_CONSUMED_EQUALS_SUBLIST: With the closed-form ghost              *)
 (*   instantiation `m_lo j = word(num_of_bytelist(SUB_LIST(16*j,8) bs))` and  *)
@@ -521,8 +521,8 @@ let MEMORY_BYTELIST_SPLIT = prove
 (* main-loop continuation (which carries an iters universal that interacts   *)
 (* badly with the Branch A iters=0 reshape — see s050 bisection result).    *)
 (*                                                                           *)
-(* Body is CHEAT_TAC for now; residue cases will be ported case-by-case      *)
-(* from the Branch B template (each ~50 lines, 16 cases total).             *)
+(* Body covers all 16 residue cases (len = 0..15), ported case-by-case      *)
+(* from the Branch B template (~50 lines each).                              *)
 (* ------------------------------------------------------------------------- *)
 
 let BRANCH_A_TAIL_CLOSURE = prove
@@ -630,7 +630,7 @@ let BRANCH_A_TAIL_CLOSURE = prove
   CONJ_TAC THENL
    [(* Sub-subgoal 1: pc+0xbc -> pc+0x24c, tail blocks (TBZ-gated).             *)
     (* Case-split on len = 0..15. Path C has len < 16 in scope, so 16 cases.   *)
-    (* This session: residue=0 (len=0) only; 1..15 left under CHEAT_TAC.        *)
+    (* All 16 residue cases (len = 0..15) are dispatched in turn below.         *)
     ASM_CASES_TAC `len = 0` THENL
      [(* Case len = 0: all 4 TBZs taken, no bytes consumed in tail.              *)
       (* Since len=0, bs_i = [] for all i (LENGTH_EQ_NIL), so                    *)
@@ -6608,9 +6608,9 @@ let BRANCH_A_TAIL_CLOSURE = prove
 (* prologue/epilogue via ARM_ADD_RETURN_STACK_TAC.                            *)
 (*                                                                           *)
 (* CORE precondition assumes: SP = sp_in, X19 = word len (already loaded by   *)
-(* the wrapper-handled prologue's ldr x19, [sp,#16]). Body is CHEAT_TAC for   *)
-(* now — subsequent sessions attack body cut-points (init MOVs, loop entry    *)
-(* guard, LOOP16 BIGSTEP, tail blocks, XOR reduction).                        *)
+(* the wrapper-handled prologue's ldr x19, [sp,#16]). The body proceeds       *)
+(* through the cut-points (init MOVs, loop entry guard, LOOP16 BIGSTEP, tail  *)
+(* blocks via BRANCH_A_TAIL_CLOSURE, XOR reduction).                          *)
 (* ------------------------------------------------------------------------- *)
 
 let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
@@ -6704,7 +6704,7 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
   (* Second cut-point: cmp x19, #16 ; b.lt <pc+0xbc> at pc+0x28..pc+0x2c.       *)
   (* Case-split on len < 16: in the first branch b.lt is taken (jump to tail    *)
   (* at pc+0xbc), in the second branch b.lt falls through to loop entry         *)
-  (* pc+0x30. Tail and loop bodies remain CHEAT_TAC for later sessions.         *)
+  (* pc+0x30. Tail dispatch (Branch A) and loop+tail (Branch B) follow below.   *)
   ASM_CASES_TAC `len:num < 16` THENL
    [(* Branch A: len < 16, b.lt taken -> tail entry pc+0xbc.                    *)
     ENSURES_SEQUENCE_TAC `pc + 0xbc`
@@ -7148,8 +7148,8 @@ let CRC32C_OCTO_ZERO_FILL_XOR_CORRECT = prove
           (* Strategy: case-split on residue = len MOD 16 (16 cases). For each    *)
           (* case, the 4 bits of residue fix the 4 TBZ outcomes, so a single      *)
           (* ARM_STEPS_TAC runs through the appropriate subset of tail blocks.    *)
-          (* This session: residue=0 case (all 4 TBZs taken, no consumption).     *)
-          (* Remaining 15 cases: still under CHEAT_TAC.                            *)
+          (* All 16 residue cases (residue = 0..15) are enumerated below; the     *)
+          (* unique 4-bit decomposition fixes the 4 TBZ outcomes per case.         *)
           ABBREV_TAC `iters = len DIV 16` THEN
           ABBREV_TAC `residue = len MOD 16` THEN
           SUBGOAL_THEN
