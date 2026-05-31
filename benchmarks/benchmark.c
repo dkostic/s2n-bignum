@@ -1146,6 +1146,9 @@ void call_aes_xts_decrypt_128(void) {}
 void call_aes_xts_decrypt_256(void) {}
 void call_aes_xts_decrypt_512(void) {}
 
+void call_crc32c_octo_zerofill_xor__16(void) {}
+void call_crc32c_octo_zerofill_xor__256(void) {}
+
 #else
 
 void call_mldsa_intt(void) repeat(mldsa_intt_arm((int32_t*)b0,(const int32_t*)b1,(const int32_t*)b2))
@@ -1226,6 +1229,17 @@ void call_aes_xts_decrypt_64(void) { repeat(aes_xts_decrypt_helper(64)); }
 void call_aes_xts_decrypt_128(void) { repeat(aes_xts_decrypt_helper(128)); }
 void call_aes_xts_decrypt_256(void) { repeat(aes_xts_decrypt_helper(256)); }
 void call_aes_xts_decrypt_512(void) { repeatfewer(10,aes_xts_decrypt_helper(512)); }
+
+// crc32c_octo_zerofill_xor benchmark wrappers. Each call processes 8 buffers of
+// `len` bytes; the kernel zero-fills the buffers as a side effect, so after the
+// first iteration the input is all zeros (still valid for measuring kernel
+// throughput, though not exercising the CRC instructions over varied data).
+void call_crc32c_octo_zerofill_xor__16(void)
+  repeat(crc32c_octo_zerofill_xor((uint8_t*)bb[0],(uint8_t*)bb[1],(uint8_t*)bb[2],(uint8_t*)bb[3],
+                                  (uint8_t*)bb[4],(uint8_t*)bb[5],(uint8_t*)bb[6],(uint8_t*)bb[7],16))
+void call_crc32c_octo_zerofill_xor__256(void)
+  repeat(crc32c_octo_zerofill_xor((uint8_t*)bb[0],(uint8_t*)bb[1],(uint8_t*)bb[2],(uint8_t*)bb[3],
+                                  (uint8_t*)bb[4],(uint8_t*)bb[5],(uint8_t*)bb[6],(uint8_t*)bb[7],256))
 
 #endif
 
@@ -1583,6 +1597,8 @@ int main(int argc, char *argv[])
   timingtest(all,"bignum_triple_p521_alt",call_bignum_triple_p521_alt);
   timingtest(bmi,"bignum_triple_sm2",call_bignum_triple_sm2);
   timingtest(all,"bignum_triple_sm2_alt",call_bignum_triple_sm2_alt);
+  timingtest(arm,"crc32c_octo_zerofill_xor (8x16 bytes)",call_crc32c_octo_zerofill_xor__16);
+  timingtest(arm,"crc32c_octo_zerofill_xor (8x256 bytes)",call_crc32c_octo_zerofill_xor__256);
   timingtest(bmi,"curve25519_ladderstep",call_curve25519_ladderstep);
   timingtest(all,"curve25519_ladderstep_alt",call_curve25519_ladderstep_alt);
   timingtest(bmi,"curve25519_pxscalarmul",call_curve25519_pxscalarmul);
