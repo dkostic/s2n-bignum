@@ -373,11 +373,31 @@ let KERNEL_MODULO_CORRECT = prove
   REWRITE_TAC[PMUL_W_64_128] THEN
   CONV_TAC BITBLAST_RULE);;
 
-(* The end-to-end 4-block bridge.  Composes via NIST_GHASH_IS_POLYVAL,       *)
-(* GHASH_BATCHED_FROM_HTABLE, the byteswap-vs-polyval-dot relation, and the  *)
-(* per-block Karatsuba lemma.                                                *)
-(*                                                                           *)
-(* TODO: state and prove.                                                    *)
+(* Per-block bridge: composing KARATSUBA_COMPONENTS_BYTESWAP +              *)
+(* KARATSUBA_PMUL_NATURAL + KERNEL_MODULO_CORRECT shows that the kernel's   *)
+(* full per-block "Karatsuba + reduction" sequence (applied to one block    *)
+(* with one H-power, both byteswapped per htable_mem) equals exactly        *)
+(* `polyval_dot block H` — the basic POLYVAL multiplication primitive.      *)
+let KERNEL_PER_BLOCK_BRIDGE = prove
+ (`!block H:int128.
+    (let (h, l, m) = karatsuba_components (byteswap128 block) (byteswap128 H) in
+     kernel_modulo h l m) = polyval_dot block H`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KARATSUBA_COMPONENTS_BYTESWAP] THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
+  REWRITE_TAC[KERNEL_MODULO_CORRECT] THEN
+  REWRITE_TAC[polyval_dot] THEN
+  AP_TERM_TAC THEN
+  MP_TAC(ISPECL [`block:int128`; `H:int128`] KARATSUBA_PMUL_NATURAL) THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
+  REWRITE_TAC[]);;
+
+(* TODO (next session): The end-to-end 4-block bridge.  Composes            *)
+(* KERNEL_PER_BLOCK_BRIDGE across 4 blocks, then routes through             *)
+(* GHASH_BATCHED_FROM_HTABLE and NIST_GHASH_IS_POLYVAL to land in the       *)
+(* `nist_ghash` form the kernel actually computes.                          *)
 
 (* ========================================================================= *)
 (* End Phase 3b/c framework.                                                 *)
