@@ -319,17 +319,59 @@ let KARATSUBA_COMPONENTS_BYTESWAP = prove
               (word_subword b (64,64) :64 word)`] THEN
   REFL_TAC);;
 
-(* The kernel's "modulo" reduction step: takes an h, l, m triple and         *)
-(* combines them through the polyval reduction (matches the assembly         *)
-(* sequence `movi v8.8b, #0xc2; shl d8, d8, #56; pmull v7,v9,v8;             *)
-(*  ext v9,v9,v9,#8; eor v10,v10,v4; eor v10,v10,v7; pmull v9,v10,v8;        *)
-(*  eor v10,v10,v9` at lines 356–402 of the kernel).                          *)
+(* The kernel's "modulo" reduction step: takes an (h, l, m) triple and       *)
+(* combines them through the polyval reduction.  Mirrors the kernel's        *)
+(* assembly sequence at lines 356–414 of                                     *)
+(* arm/aes-gcm/aes_gcm_enc_kernel_aes128.S:                                  *)
 (*                                                                           *)
-(* The expected algebraic content: `kernel_modulo(h, l, m)` = `byteswap128`  *)
-(* of `polyval_reduce_prop3(karatsuba_combine(h, l, m))`.                    *)
+(*   movi v8.8b, #0xc2;  shl d8, d8, #56          // c64 = 0xC2..0:64 word   *)
+(*   eor  v4, v11, v9                              // v4 = l XOR h           *)
+(*   pmull v7, v9, v8                              // v7 = pmul(h_lo, c64)   *)
+(*   ext  v9, v9, v9, #8                           // h_swap = byteswap128 h *)
+(*   eor  v10, v10, v4                             // v10 = m XOR l XOR h    *)
+(*   eor  v7, v9, v7                               // v7 = h_swap XOR v7     *)
+(*   eor  v10, v10, v7                             // v10 = M XOR L XOR H    *)
+(*                                                 //       XOR h_swap XOR pmul(h_lo,c64) *)
+(*   pmull v9, v10, v8                             // v9 = pmul(v10_lo, c64) *)
+(*   eor  v11, v11, v9                             // v11 = l XOR v9_new     *)
+(*   ext  v10, v10, v10, #8                        // v10 = byteswap128 v10  *)
+(*   eor  v11, v11, v10                            // final = v11 XOR v10    *)
 (*                                                                           *)
-(* TODO: define `kernel_modulo` from the kernel's actual assembly and prove  *)
-(* the algebraic equality.                                                   *)
+(* `kernel_modulo h l m` is the kernel's MODULO step abstracted: the kernel  *)
+(* names its accumulators "high" (v9 ↦ h), "low" (v11 ↦ l), and "mid"        *)
+(* (v10 ↦ m), and we keep that calling convention here.                      *)
+let kernel_modulo = new_definition
+ `kernel_modulo (h:int128) (l:int128) (m:int128) : int128 =
+   let c64 = (word 0xC200000000000000 : 64 word) in
+   let v4 = word_xor l h in
+   let v7 = (word_pmul (word_subword h (0,64) : 64 word) c64 : int128) in
+   let h_swap = byteswap128 h in
+   let v10_a = word_xor m v4 in
+   let v7_a = word_xor h_swap v7 in
+   let v10_b = word_xor v10_a v7_a in
+   let v9_new = (word_pmul (word_subword v10_b (0,64) : 64 word) c64 : int128) in
+   let v11_a = word_xor l v9_new in
+   let v10_swap = byteswap128 v10_b in
+   word_xor v11_a v10_swap`;;
+
+(* The kernel's MODULO chain computes exactly `polyval_reduce_prop3` of      *)
+(* the natural Karatsuba assembly with arguments swapped.  The argument     *)
+(* swap reflects that the kernel applies pmull2/pmull on byteswap128'd      *)
+(* operands (since `htable_mem` stores the H-power table in byteswapped     *)
+(* form), so the kernel's "h" accumulator (v9, computed via pmull2) holds   *)
+(* the natural-low Karatsuba product, and its "l" accumulator (v11,         *)
+(* computed via pmull) holds the natural-high product.                       *)
+(*                                                                           *)
+(* Proof: BITBLAST after expanding pmul-by-c64 via PMUL_W_64_128 (so the     *)
+(* 256-bit BDD reduces to shifts + XORs; ~4s).                               *)
+let KERNEL_MODULO_CORRECT = prove
+ (`!h l m:int128.
+    kernel_modulo h l m = polyval_reduce_prop3 (karatsuba_combine l h m)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[kernel_modulo; karatsuba_combine; polyval_reduce_prop3;
+              byteswap128; LET_DEF; LET_END_DEF] THEN
+  REWRITE_TAC[PMUL_W_64_128] THEN
+  CONV_TAC BITBLAST_RULE);;
 
 (* The end-to-end 4-block bridge.  Composes via NIST_GHASH_IS_POLYVAL,       *)
 (* GHASH_BATCHED_FROM_HTABLE, the byteswap-vs-polyval-dot relation, and the  *)
