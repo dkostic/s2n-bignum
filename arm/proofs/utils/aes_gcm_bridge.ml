@@ -394,6 +394,47 @@ let KERNEL_PER_BLOCK_BRIDGE = prove
   CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
   REWRITE_TAC[]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Bilinearity / linearity facts used to chain per-block bridges into the    *)
+(* 4-block accumulator the kernel actually executes.                         *)
+(*                                                                           *)
+(* The kernel does NOT call `kernel_modulo` 4 times; instead it XOR-         *)
+(* accumulates the per-block triples (h_i, l_i, m_i) componentwise, then     *)
+(* runs `kernel_modulo` once on the summed triple.  By:                      *)
+(*                                                                           *)
+(*   * KARATSUBA_COMBINE_XOR  — `karatsuba_combine` distributes over xor in  *)
+(*     each of its three inputs (a tri-linearity statement, since the kernel *)
+(*     XOR-accumulates all three), and                                       *)
+(*                                                                           *)
+(*   * POLYVAL_REDUCE_PROP3_XOR — `polyval_reduce_prop3` distributes over    *)
+(*     XOR (the reduction is a linear function of its 256-bit input),        *)
+(*                                                                           *)
+(* the kernel's "accumulate-then-reduce" pattern equals "reduce-then-        *)
+(* accumulate", which lets us apply KERNEL_PER_BLOCK_BRIDGE four times.      *)
+(* ------------------------------------------------------------------------- *)
+
+(* `karatsuba_combine` is XOR-linear in each of (h, l, m): summing the inputs *)
+(* componentwise and combining gives the same result as combining each block  *)
+(* and XORing the outputs.                                                    *)
+let KARATSUBA_COMBINE_XOR = prove
+ (`!h1 h2 l1 l2 m1 m2:int128.
+    karatsuba_combine (word_xor h1 h2) (word_xor l1 l2) (word_xor m1 m2) =
+    word_xor (karatsuba_combine h1 l1 m1) (karatsuba_combine h2 l2 m2)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[karatsuba_combine] THEN
+  CONV_TAC BITBLAST_RULE);;
+
+(* `polyval_reduce_prop3` is XOR-linear: `prop3 (a XOR b) = prop3 a XOR       *)
+(* prop3 b`.  This is a 4-second BITBLAST after expanding pmul-by-c64 via     *)
+(* PMUL_W_64_128 (the same workaround as KERNEL_MODULO_CORRECT).             *)
+let POLYVAL_REDUCE_PROP3_XOR = prove
+ (`!a b:256 word.
+    polyval_reduce_prop3 (word_xor a b) =
+    word_xor (polyval_reduce_prop3 a) (polyval_reduce_prop3 b)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[polyval_reduce_prop3; LET_DEF; LET_END_DEF; PMUL_W_64_128] THEN
+  CONV_TAC BITBLAST_RULE);;
+
 (* TODO (next session): The end-to-end 4-block bridge.  Composes            *)
 (* KERNEL_PER_BLOCK_BRIDGE across 4 blocks, then routes through             *)
 (* GHASH_BATCHED_FROM_HTABLE and NIST_GHASH_IS_POLYVAL to land in the       *)
