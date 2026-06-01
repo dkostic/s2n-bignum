@@ -11,6 +11,15 @@
 
 import os
 
+# Dev stepping-stone artifacts that have no public C ABI; they exist only as
+# ELF objects for proof-side mk_mc_from_elf consumption.
+_STEPPING_STONES = {
+  ("arm", "crc32", "crc32c_step_reg.S"),
+  ("arm", "crc32", "crc32c_block16_one.S"),
+  ("arm", "crc32", "crc32c_loop16_body.S"),
+  ("arm", "crc32", "crc32c_loop16.S"),
+}
+
 
 class FnDecl:
   def __init__(self,
@@ -248,6 +257,8 @@ for arch in ["arm", "x86"]:
     asm_files = sorted(list(os.listdir(p)))
     for filename in asm_files:
       if not filename.endswith(".S"):
+        continue
+      if (arch, dirname, filename) in _STEPPING_STONES:
         continue
 
       pp = os.path.join(p, filename)

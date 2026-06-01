@@ -533,3 +533,27 @@ removal in `1ae7f21d`, which removed `.ml` files too).
 **The CRC32C verification project is closed end-to-end** at HEAD
 `8091d045`: spec-faithful, machine-checked, zero admissions, integrated
 into s2n-bignum's build/test/benchmark/signatures pipeline.
+
+## Regression fix (s072)
+
+The s071 cleanup (`8091d045`) removed the four dev `.S`/`.o` files from
+`arm/crc32/` but kept their matching `.ml` proof files in `arm/proofs/`,
+where they call `define_assert_from_elf "..._mc" "arm/crc32/<name>.o"`
+at load time. Because the main proof's `needs` chain pulls in
+`crc32c_loop16.ml -> crc32c_loop16_body.ml`, running
+`make crc32/crc32c_octo_zerofill_xor.correct` failed with
+`Sys_error("arm/crc32/crc32c_loop16_body.o: No such file or directory")`.
+The s071 review only ran the C-level `make test && ./test` smoke,
+which doesn't exercise the proof-build chain.
+
+s072 restored the four `.S` files (and the three tracked `.o` files;
+`crc32c_loop16.o` was untracked at `8091d045^` and regenerates from
+the `%.o : %.S` rule), restored `arm/Makefile`'s 5-entry `CRC32_OBJ`,
+and added a surgical 4-entry `_STEPPING_STONES` exclusion to
+`tools/collect-signatures.py` so the script no longer trips on
+`crc32c_step_reg.S`'s `// extern` decl. After the restoration:
+`tools/collect-signatures.py` runs clean with zero diff;
+`make crc32/crc32c_octo_zerofill_xor.correct` builds the .native
+binary and runs the proof end-to-end in 1018 sec (~17 min) producing
+`CRC32C_OCTO_ZERO_FILL_XOR_SUBROUTINE_CORRECT : thm`; and
+`make test && ./test` continues to pass all 376 cases.

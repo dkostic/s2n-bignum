@@ -413,7 +413,11 @@ UNOPT_OBJ = p256/unopt/bignum_montmul_p256_base.o \
 AES_XTS_OBJ = aes-xts/aes_xts_decrypt.o \
               aes-xts/aes_xts_encrypt.o
 
-CRC32_OBJ = crc32/crc32c_octo_zerofill_xor.o
+CRC32_OBJ = crc32/crc32c_octo_zerofill_xor.o \
+            crc32/crc32c_step_reg.o \
+            crc32/crc32c_block16_one.o \
+            crc32/crc32c_loop16_body.o \
+            crc32/crc32c_loop16.o
 
 
 OBJ = $(POINT_OBJ) $(BIGNUM_OBJ) $(AES_XTS_OBJ) $(CRC32_OBJ)
