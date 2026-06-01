@@ -36,7 +36,8 @@ endif
 # statically removed; the decrypt kernel is dropped).
 
 OBJ = aes_gcm.o \
-      aes_gcm_enc_kernel_aes128.o
+      aes_gcm_enc_kernel_aes128.o \
+      aes4way_round.o
 
 %.o : %.S ; $(CC) -E -I../../include $< | $(GAS) -o $@ -
 
