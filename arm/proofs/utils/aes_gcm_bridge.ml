@@ -289,15 +289,35 @@ let KARATSUBA_PMUL_NATURAL = prove
               (word_subword b (0,64) :64 word)`] THEN
   CONV_TAC BITBLAST_RULE);;
 
-(* The kernel's pmulls operate on byteswap128'd H-power operands (since       *)
+(* The kernel's pmulls operate on byteswap128'd H-power operands (since      *)
 (* htable_mem stores `byteswap128(h_power h k)`).  The Karatsuba components  *)
-(* with byteswap128'd a and b are related to natural ones by:                *)
-(*   karatsuba_components (byteswap128 a) (byteswap128 b)                    *)
-(*     = (l_natural, h_natural, m_natural)                                    *)
-(* (the high-half pmul becomes the low-half pmul, and vice versa, because    *)
-(* byteswap128 swaps the halves).  Mid term is preserved (commutative XOR).  *)
-(* TODO: state and prove via REWRITE_TAC[karatsuba_components; byteswap128]  *)
-(* + WORD_SUBWORD_JOIN_LOWER/UPPER + numeric reasoning.                      *)
+(* with byteswap128'd a and b are related to natural ones by                  *)
+(* swapping h↔l (since byteswap128 swaps the 64-bit halves of its             *)
+(* operand).  The mid term is preserved because XOR is commutative.           *)
+let KARATSUBA_COMPONENTS_BYTESWAP = prove
+ (`!a b:int128.
+    karatsuba_components (byteswap128 a) (byteswap128 b) =
+      (let h, l, m = karatsuba_components a b in (l, h, m))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[karatsuba_components; byteswap128] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  SIMP_TAC[WORD_SUBWORD_JOIN_LOWER; WORD_SUBWORD_JOIN_UPPER;
+           DIMINDEX_64; DIMINDEX_128; LE_REFL; ARITH] THEN
+  SIMP_TAC[WORD_SUBWORD_TRIVIAL; DIMINDEX_64; LE_REFL; ARITH;
+           SUB_REFL] THEN
+  REWRITE_TAC[PAIR_EQ] THEN
+  REPEAT CONJ_TAC THEN TRY REFL_TAC THEN
+  ONCE_REWRITE_TAC[WORD_RULE
+    `word_xor (word_subword (a:int128) (64,64) :64 word)
+              (word_subword a (0,64) :64 word) =
+     word_xor (word_subword a (0,64) :64 word)
+              (word_subword a (64,64) :64 word)`;
+   WORD_RULE
+    `word_xor (word_subword (b:int128) (64,64) :64 word)
+              (word_subword b (0,64) :64 word) =
+     word_xor (word_subword b (0,64) :64 word)
+              (word_subword b (64,64) :64 word)`] THEN
+  REFL_TAC);;
 
 (* The kernel's "modulo" reduction step: takes an h, l, m triple and         *)
 (* combines them through the polyval reduction (matches the assembly         *)
