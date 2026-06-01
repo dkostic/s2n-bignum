@@ -530,10 +530,33 @@ let KERNEL_4BLOCK_GHASH_BRIDGE = prove
   REPEAT GEN_TAC THEN
   REWRITE_TAC[KERNEL_4BLOCK_BRIDGE; GHASH_POLYVAL_ACC_4DOT]);;
 
-(* TODO (next session): chain `KERNEL_4BLOCK_GHASH_BRIDGE` through            *)
-(* `NIST_GHASH_IS_POLYVAL` from common/ghash_nist_bridge.ml to land in the    *)
-(* `nist_ghash` form the kernel actually computes (since the spec uses        *)
-(* `nist_ghash`, not `ghash_polyval_acc` directly).                           *)
+(* The end-to-end NIST 4-block bridge.  The kernel pre-twists its H input    *)
+(* at htable-init time (so the H-power table holds powers of                  *)
+(* `ghash_twist h` rather than `h`), and the spec uses `nist_ghash`, which   *)
+(* by NIST_GHASH_IS_POLYVAL equals `ghash_polyval_acc (ghash_twist h) ...`.  *)
+(*                                                                           *)
+(* So this is just KERNEL_4BLOCK_GHASH_BRIDGE with `h ↦ ghash_twist h_spec`,  *)
+(* combined with NIST_GHASH_IS_POLYVAL.                                       *)
+let KERNEL_4BLOCK_NIST_BRIDGE = prove
+ (`!h prev_tag ct0 ct1 ct2 ct3:int128.
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power (ghash_twist h) 3)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1)
+                            (byteswap128 (h_power (ghash_twist h) 2)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2)
+                            (byteswap128 (h_power (ghash_twist h) 1)) in
+     let h3,l3,m3 =
+       karatsuba_components (byteswap128 ct3)
+                            (byteswap128 (h_power (ghash_twist h) 0)) in
+     kernel_modulo (word_xor (word_xor h0 h1) (word_xor h2 h3))
+                   (word_xor (word_xor l0 l1) (word_xor l2 l3))
+                   (word_xor (word_xor m0 m1) (word_xor m2 m3))) =
+    nist_ghash h prev_tag [ct0; ct1; ct2; ct3]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[NIST_GHASH_IS_POLYVAL; KERNEL_4BLOCK_GHASH_BRIDGE]);;
 
 (* ========================================================================= *)
 (* End Phase 3b/c framework.                                                 *)
