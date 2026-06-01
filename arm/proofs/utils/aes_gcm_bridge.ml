@@ -34,6 +34,7 @@
 
 needs "arm/proofs/utils/aes_gcm_spec.ml";;
 needs "arm/proofs/utils/aes.ml";;
+needs "common/karatsuba_pmul.ml";;
 
 (* ========================================================================= *)
 (* Phase 3a: AES round bridge.                                               *)
@@ -263,9 +264,30 @@ let karatsuba_combine = new_definition
       (word_shl (word_zx (word_xor h (word_xor l m)) : 256 word) 64)`;;
 
 (* The natural identity: Karatsuba assembly equals straight pmul on the      *)
-(* original operands (by polynomial algebra).  Proof: BITBLAST_TAC at the   *)
-(* 256-bit level (it is all bit-level polynomial arithmetic).               *)
-(* TODO: state and prove.                                                    *)
+(* original operands.  Discharged via `PMUL_KARATSUBA` from                  *)
+(* `common/karatsuba_pmul.ml` (the standard schoolbook + char-2 tidy-up      *)
+(* result), bridged across XOR-commutativity on the cross-term and the      *)
+(* word_join/word_zx shape difference between the two formulations.         *)
+let KARATSUBA_PMUL_NATURAL = prove
+ (`!a b:int128.
+    let h, l, m = karatsuba_components a b in
+    karatsuba_combine h l m = (word_pmul a b : 256 word)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[karatsuba_components; karatsuba_combine] THEN
+  CONV_TAC(TOP_DEPTH_CONV let_CONV) THEN
+  GEN_REWRITE_TAC RAND_CONV
+    [REWRITE_RULE[LET_DEF; LET_END_DEF] PMUL_KARATSUBA] THEN
+  ONCE_REWRITE_TAC[WORD_RULE
+    `word_xor (word_subword (a:int128) (0,64) :64 word)
+              (word_subword a (64,64) :64 word) =
+     word_xor (word_subword a (64,64) :64 word)
+              (word_subword a (0,64) :64 word)`;
+   WORD_RULE
+    `word_xor (word_subword (b:int128) (0,64) :64 word)
+              (word_subword b (64,64) :64 word) =
+     word_xor (word_subword b (64,64) :64 word)
+              (word_subword b (0,64) :64 word)`] THEN
+  CONV_TAC BITBLAST_RULE);;
 
 (* The kernel's pmulls operate on byteswap128'd H-power operands (since       *)
 (* htable_mem stores `byteswap128(h_power h k)`).  The Karatsuba components  *)
