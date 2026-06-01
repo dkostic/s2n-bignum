@@ -103,3 +103,88 @@ let AES4WAY_ROUND_CORRECT = prove
   ARM_STEPS_TAC AES4WAY_ROUND_EXEC (1--8) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 5 pilot — round-key memory load + 4-way AES round + ciphertext      *)
+(* memory store.  Same shape as Phase 4 plus a 128-bit memory load (LDR Q23) *)
+(* and a 128-bit memory store (STR Q0).                                      *)
+(*                                                                           *)
+(* The 10 instructions are:                                                  *)
+(*                                                                           *)
+(*   ldr   q23, [x8, #80]        ; load round key from memory (kernel rk5)  *)
+(*   aese  v0.16b, v23.16b ; aesmc v0.16b, v0.16b   ; round on block 0      *)
+(*   aese  v1.16b, v23.16b ; aesmc v1.16b, v1.16b   ; round on block 1      *)
+(*   aese  v3.16b, v23.16b ; aesmc v3.16b, v3.16b   ; round on block 3      *)
+(*   aese  v2.16b, v23.16b ; aesmc v2.16b, v2.16b   ; round on block 2      *)
+(*   st1   { v0.16b }, [x2]      ; store ciphertext block 0 to memory       *)
+(*                                                                           *)
+(* The pilot validates: (a) a Q-register memory load propagates through the *)
+(* AES bridge correctly, (b) a Q-register memory store produces the bridged *)
+(* output in memory.  No GHASH, no loop.  TODO: replace once the full       *)
+(* kernel _mc is loadable in tree (currently blocked by the s2n-arm         *)
+(* checkpoint pre-dating Phase 0b decoder additions; see STATE.md           *)
+(* "Current Step" for the resolution path).                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let aes4way_round_mem_mc = define_assert_from_elf "aes4way_round_mem_mc"
+                                              "arm/aes-gcm/aes4way_round_mem.o"
+[
+  0x3dc01517;       (* arm_LDR Q23 X8 (Immediate_Offset (word 80)) *)
+  0x4e284ae0;       (* arm_AESE Q0 Q23 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ae1;       (* arm_AESE Q1 Q23 *)
+  0x4e286821;       (* arm_AESMC Q1 Q1 *)
+  0x4e284ae3;       (* arm_AESE Q3 Q23 *)
+  0x4e286863;       (* arm_AESMC Q3 Q3 *)
+  0x4e284ae2;       (* arm_AESE Q2 Q23 *)
+  0x4e286842;       (* arm_AESMC Q2 Q2 *)
+  0x4c007040        (* arm_STR Q0 X2 No_Offset *)
+];;
+
+let AES4WAY_ROUND_MEM_EXEC = ARM_MK_EXEC_RULE aes4way_round_mem_mc;;
+
+(* Pilot ensures: round-key load + 4-way AES round + ciphertext store.       *)
+(*                                                                           *)
+(* Inputs:                                                                   *)
+(*   X8     = round-key base pointer (round key at +80 holds the key)       *)
+(*   X2     = ciphertext destination pointer                                *)
+(*   Q0..Q3 = state blocks `b0`..`b3`                                       *)
+(*   memory at X8+80 = round key `rk`                                       *)
+(*                                                                           *)
+(* Outputs:                                                                  *)
+(*   Q0..Q3 = `aes_arm_round bi rk`                                          *)
+(*   memory at X2 = `aes_arm_round b0 rk` (the ciphertext block)             *)
+(*                                                                           *)
+(* The MAYCHANGE frame includes `events` (LDR/STR generate uarch events) and *)
+(* `memory :> bytes128 cptr` (the 16-byte store).  The instruction stream's *)
+(* nonoverlapping with the ciphertext region rules out self-modification.   *)
+let AES4WAY_ROUND_MEM_CORRECT = prove
+ (`!pc kptr cptr (b0:int128) (b1:int128) (b2:int128) (b3:int128) (rk:int128).
+    nonoverlapping (word pc, LENGTH aes4way_round_mem_mc)
+                   (cptr:int64, 16)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes4way_round_mem_mc /\
+              read PC s = word pc /\
+              read X8 s = kptr /\
+              read X2 s = cptr /\
+              read Q0 s = b0 /\
+              read Q1 s = b1 /\
+              read Q2 s = b2 /\
+              read Q3 s = b3 /\
+              read (memory :> bytes128(word_add kptr (word 80))) s = rk)
+         (\s. read PC s = word (pc + 0x28) /\
+              read Q0 s = aes_arm_round b0 rk /\
+              read Q1 s = aes_arm_round b1 rk /\
+              read Q2 s = aes_arm_round b2 rk /\
+              read Q3 s = aes_arm_round b3 rk /\
+              read (memory :> bytes128 cptr) s = aes_arm_round b0 rk)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q23] ,,
+          MAYCHANGE [events] ,,
+          MAYCHANGE [memory :> bytes128 cptr])`,
+  REWRITE_TAC[fst AES4WAY_ROUND_MEM_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES4WAY_ROUND_MEM_EXEC (1--10) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
