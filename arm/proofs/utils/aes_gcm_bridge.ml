@@ -435,10 +435,61 @@ let POLYVAL_REDUCE_PROP3_XOR = prove
   REWRITE_TAC[polyval_reduce_prop3; LET_DEF; LET_END_DEF; PMUL_W_64_128] THEN
   CONV_TAC BITBLAST_RULE);;
 
-(* TODO (next session): The end-to-end 4-block bridge.  Composes            *)
-(* KERNEL_PER_BLOCK_BRIDGE across 4 blocks, then routes through             *)
-(* GHASH_BATCHED_FROM_HTABLE and NIST_GHASH_IS_POLYVAL to land in the       *)
-(* `nist_ghash` form the kernel actually computes.                          *)
+(* `kernel_modulo` is XOR-trilinear (linear in each of (h, l, m)), an        *)
+(* immediate consequence of KERNEL_MODULO_CORRECT + KARATSUBA_COMBINE_XOR +  *)
+(* POLYVAL_REDUCE_PROP3_XOR.  This is what makes the kernel's "accumulate    *)
+(* triples first, reduce once" pattern equivalent to "reduce per block,      *)
+(* sum results".                                                             *)
+let KERNEL_MODULO_XOR = prove
+ (`!h1 h2 l1 l2 m1 m2:int128.
+    kernel_modulo (word_xor h1 h2) (word_xor l1 l2) (word_xor m1 m2) =
+    word_xor (kernel_modulo h1 l1 m1) (kernel_modulo h2 l2 m2)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_MODULO_CORRECT;
+              KARATSUBA_COMBINE_XOR;
+              POLYVAL_REDUCE_PROP3_XOR]);;
+
+(* The 4-block bridge.  The kernel computes its 4-block GHASH by:           *)
+(*                                                                           *)
+(*   1. Decomposing each ciphertext block c_i and corresponding H-power H_i  *)
+(*      (both held in byteswap128'd form per `htable_mem`) into Karatsuba    *)
+(*      components (h_i, l_i, m_i).                                          *)
+(*   2. Componentwise XOR-accumulating the four triples into a single         *)
+(*      summed triple (H, L, M).                                              *)
+(*   3. Running the kernel's MODULO chain on the summed triple.               *)
+(*                                                                           *)
+(* By KERNEL_MODULO_XOR followed by KERNEL_PER_BLOCK_BRIDGE applied per       *)
+(* block, the resulting 128-bit value equals the XOR of four `polyval_dot`s  *)
+(* (one per block × power pair).                                              *)
+let KERNEL_4BLOCK_BRIDGE = prove
+ (`!c0 c1 c2 c3 H0 H1 H2 H3:int128.
+    (let h0,l0,m0 = karatsuba_components (byteswap128 c0) (byteswap128 H0) in
+     let h1,l1,m1 = karatsuba_components (byteswap128 c1) (byteswap128 H1) in
+     let h2,l2,m2 = karatsuba_components (byteswap128 c2) (byteswap128 H2) in
+     let h3,l3,m3 = karatsuba_components (byteswap128 c3) (byteswap128 H3) in
+     kernel_modulo (word_xor (word_xor h0 h1) (word_xor h2 h3))
+                   (word_xor (word_xor l0 l1) (word_xor l2 l3))
+                   (word_xor (word_xor m0 m1) (word_xor m2 m3))) =
+    word_xor (word_xor (polyval_dot c0 H0) (polyval_dot c1 H1))
+             (word_xor (polyval_dot c2 H2) (polyval_dot c3 H3))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_MODULO_XOR] THEN
+  MP_TAC(SPECL [`c0:int128`; `H0:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  MP_TAC(SPECL [`c1:int128`; `H1:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  MP_TAC(SPECL [`c2:int128`; `H2:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  MP_TAC(SPECL [`c3:int128`; `H3:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
+  REPEAT(DISCH_THEN SUBST1_TAC) THEN
+  REFL_TAC);;
+
+(* TODO (next session): wire `KERNEL_4BLOCK_BRIDGE` into                    *)
+(* `GHASH_POLYVAL_ACC_BATCHED` from common/polyval_ghash.ml.  The XOR of     *)
+(* four `polyval_dot c_i H^{n+1-i}` terms equals `ghash_polyval_acc h prev`  *)
+(* of a 4-block list (with `prev` XOR'd into the first block, matching the   *)
+(* kernel's `prev_tag XOR c0` stage).  Then chain through                    *)
+(* NIST_GHASH_IS_POLYVAL to land in the `nist_ghash` form the kernel         *)
+(* actually computes.                                                        *)
 
 (* ========================================================================= *)
 (* End Phase 3b/c framework.                                                 *)
