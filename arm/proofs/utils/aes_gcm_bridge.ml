@@ -483,13 +483,57 @@ let KERNEL_4BLOCK_BRIDGE = prove
   REPEAT(DISCH_THEN SUBST1_TAC) THEN
   REFL_TAC);;
 
-(* TODO (next session): wire `KERNEL_4BLOCK_BRIDGE` into                    *)
-(* `GHASH_POLYVAL_ACC_BATCHED` from common/polyval_ghash.ml.  The XOR of     *)
-(* four `polyval_dot c_i H^{n+1-i}` terms equals `ghash_polyval_acc h prev`  *)
-(* of a 4-block list (with `prev` XOR'd into the first block, matching the   *)
-(* kernel's `prev_tag XOR c0` stage).  Then chain through                    *)
-(* NIST_GHASH_IS_POLYVAL to land in the `nist_ghash` form the kernel         *)
-(* actually computes.                                                        *)
+(* `ghash_polyval_acc h a [b0; b1; b2; b3]` expressed as the XOR of four    *)
+(* `polyval_dot` terms.  Direct unfolding of the BATCHED form +              *)
+(* prop3-linearity.  This is the form the kernel's per-block bridge          *)
+(* matches.                                                                  *)
+let GHASH_POLYVAL_ACC_4DOT = prove
+ (`!h a b0 b1 b2 b3:int128.
+    ghash_polyval_acc h a [b0;b1;b2;b3] =
+    word_xor (word_xor (polyval_dot (word_xor a b0) (h_power h 3))
+                       (polyval_dot b1 (h_power h 2)))
+             (word_xor (polyval_dot b2 (h_power h 1))
+                       (polyval_dot b3 (h_power h 0)))`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(SPECL [`h:int128`; `[b1:int128; b2; b3]`; `a:int128`; `b0:int128`]
+    GHASH_POLYVAL_ACC_BATCHED) THEN
+  REWRITE_TAC[LENGTH; ghash_wide; ARITH] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[polyval_dot; WORD_XOR_0] THEN
+  REWRITE_TAC[POLYVAL_REDUCE_PROP3_XOR; WORD_XOR_ASSOC]);;
+
+(* The end-to-end 4-block kernel ↔ GHASH bridge.  The kernel's per-iteration *)
+(* main-loop work — Karatsuba decompose 4 ciphertext blocks against H^4..H^1 *)
+(* (in the kernel's stored byteswap128 form), accumulate componentwise,      *)
+(* MODULO-reduce — equals `ghash_polyval_acc h prev_tag [ct0;ct1;ct2;ct3]`.  *)
+(*                                                                           *)
+(* The kernel naturally XORs `prev_tag` into the first ciphertext block      *)
+(* before the per-block Karatsuba, matching `word_xor prev_tag ct0` here.    *)
+(*                                                                           *)
+(* Discharge: KERNEL_4BLOCK_BRIDGE rewrites the LHS into XOR of polyval_dots; *)
+(* GHASH_POLYVAL_ACC_4DOT rewrites the RHS into the same XOR of polyval_dots.*)
+let KERNEL_4BLOCK_GHASH_BRIDGE = prove
+ (`!h prev_tag ct0 ct1 ct2 ct3:int128.
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power h 3)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1) (byteswap128 (h_power h 2)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2) (byteswap128 (h_power h 1)) in
+     let h3,l3,m3 =
+       karatsuba_components (byteswap128 ct3) (byteswap128 (h_power h 0)) in
+     kernel_modulo (word_xor (word_xor h0 h1) (word_xor h2 h3))
+                   (word_xor (word_xor l0 l1) (word_xor l2 l3))
+                   (word_xor (word_xor m0 m1) (word_xor m2 m3))) =
+    ghash_polyval_acc h prev_tag [ct0; ct1; ct2; ct3]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_4BLOCK_BRIDGE; GHASH_POLYVAL_ACC_4DOT]);;
+
+(* TODO (next session): chain `KERNEL_4BLOCK_GHASH_BRIDGE` through            *)
+(* `NIST_GHASH_IS_POLYVAL` from common/ghash_nist_bridge.ml to land in the    *)
+(* `nist_ghash` form the kernel actually computes (since the spec uses        *)
+(* `nist_ghash`, not `ghash_polyval_acc` directly).                           *)
 
 (* ========================================================================= *)
 (* End Phase 3b/c framework.                                                 *)
