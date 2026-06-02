@@ -2812,4 +2812,88 @@ let AES_GCM_MAIN_LOOP_BODY_AES_8ROUNDS_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--137) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 FULL BODY composition cut: all 175 instructions.                  *)
+(*                                                                           *)
+(* Composes the full 17-cut chain (R0_BLOCKS012 through TAIL) into a single *)
+(* `ensures arm` over the entire body slice (offsets 0..0x2bc).             *)
+(*                                                                           *)
+(* This cut intentionally has a *minimal* postcondition: only the           *)
+(* preserved round keys (Q18..Q26, Q31), plus the advanced PC and cptr.    *)
+(* The Q0..Q3 (cipher state), Q4..Q11 (GHASH state) and X registers all    *)
+(* sit in MAYCHANGE without value-tracking.  This is the right shape for    *)
+(* compositions that *don't* need to express the AES outputs algebraically *)
+(* — e.g. when the loop wrapper only needs to know the round keys are     *)
+(* preserved across the iteration and ciphertext memory got written.        *)
+(*                                                                           *)
+(* For a value-tracking composition that asserts each block's final         *)
+(* ciphertext = `aes_arm_final_round (aes_arm_round^9 b_i [rk0..rk8]) rk9   *)
+(* XOR plaintext_i`, see AES_GCM_MAIN_LOOP_BODY_AES_8ROUNDS_CORRECT for     *)
+(* the partial form (ends at round 8, no XOR-with-plaintext or stores).    *)
+(*                                                                           *)
+(* The closing tactic combines AESMC_AESE_AS_ARM_ROUND (rounds 0..8) and   *)
+(* AESE_AS_ARM_FINAL_ROUND (round 9) in one ASM_REWRITE_TAC pass.           *)
+(* SOME_FLAGS is unfolded before STRIP_TAC for the SUBS instruction at     *)
+(* offset 0x240.  cptr nonoverlap ensures the four STR Q4..Q7 stores at   *)
+(* offsets 0x278/0x28c/0x2a0/0x2b8 don't smash the program text.            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_FULL_AES_CORRECT = prove
+ (`!pc (cptr:int64) (b0:int128) (b1:int128) (b2:int128) (b11:int128)
+        (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+        (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+        (sx9:int64) (sx10:int64) (sx13:int64) (sx14:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word pc /\
+              read X2 s = cptr /\
+              read Q0 s = b0 /\
+              read Q1 s = b1 /\
+              read Q2 s = b2 /\
+              read Q11 s = b11 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
+              read Q31 s = rk9 /\
+              read X9 s = sx9 /\
+              read X10 s = sx10 /\
+              read X13 s = sx13 /\
+              read X14 s = sx14)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X2 s = word_add cptr (word 64) /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
+              read Q31 s = rk9)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7;
+                     Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12;
+                     X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--175) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND; AESE_AS_ARM_FINAL_ROUND]);;
 (* ------------------------------------------------------------------------- *)
