@@ -3388,6 +3388,83 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-3-MID pmull + block-3 HIGH/LOW/MID XOR accumulators  *)
+(* + Q8 movi/shl + Q5 fmov-CTR-clobber.                                      *)
+(*                                                                           *)
+(* Window: slice instr 115..122 (offsets 0x1c8..0x1e8, 8 instructions) — a  *)
+(* PREFIX of the existing AES_GCM_MAIN_LOOP_BODY_GHASH_MODULO_CORRECT cut,  *)
+(* with FULL value tracking on Q4/Q9/Q10/Q11.  This is the "pre-Karatsuba- *)
+(* tidy" portion of the MODULO chain: after this window, the kernel has    *)
+(* finished accumulating the per-block contributions into Q9/Q10/Q11 but   *)
+(* has not yet started the c64-pmull reduction (`v4 := l XOR h`).           *)
+(*                                                                           *)
+(*   instr 115 (offset 0x1c8): arm_MOVI Q8 (...0xc2 in low 8 bits...)        *)
+(*   instr 116 (offset 0x1cc): arm_PMULL_VEC Q4 Q4 Q16 64                   *)
+(*                             ^ Q4 := pmull(q4_in_lo, q16_lo) — blk-3 MID *)
+(*   instr 117 (offset 0x1d0): arm_EOR_VEC Q9 Q9 Q5 128                     *)
+(*                             ^ Q9 := q9_in XOR q5 — blk-3 HIGH accum     *)
+(*   instr 118 (offset 0x1d4): arm_FMOV_ItoF Q5 X19 0  (Q5 clobbered)       *)
+(*   instr 119 (offset 0x1d8): arm_LDP X6 X7 X0 #0     (memory event)       *)
+(*   instr 120 (offset 0x1dc): arm_SHL_VEC Q8 Q8 56 64 64                   *)
+(*   instr 121 (offset 0x1e0): arm_EOR_VEC Q11 Q11 Q6 128                   *)
+(*                             ^ Q11 := q11_in XOR q6 — blk-3 LOW accum    *)
+(*   instr 122 (offset 0x1e4): arm_EOR_VEC Q10 Q10 Q4 128                   *)
+(*                             ^ Q10 := q10_in XOR Q4_just_set              *)
+(*                                    = q10_in XOR pmull(q4_in_lo, q16_lo)  *)
+(*                             — blk-3 MID accum (using Q4 = blk-3 MID)    *)
+(*                                                                           *)
+(* Postcondition tracks 4 GHASH writes:                                      *)
+(*   Q4 = pmull(subword q4_in (0,64)) (subword q16 (0,64)) — blk-3 MID    *)
+(*   Q9 = q9_in XOR q5 — block-3 HIGH XOR accumulator                       *)
+(*   Q10 = q10_in XOR pmull(q4_in_lo, q16_lo) — block-3 MID accumulator    *)
+(*         (using NEW Q4 from instr 116)                                    *)
+(*   Q11 = q11_in XOR q6 — block-3 LOW XOR accumulator                      *)
+(*                                                                           *)
+(* MAYCHANGE includes [events] to absorb the LDP X6 X7 X0 memory event;    *)
+(* X6/X7 also clobbered by the LDP.  Q5 and Q8 land in MAYCHANGE without    *)
+(* value tracking (Q5 := word_zx X19 from FMOV; Q8 := shifted MOVI const).  *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + plain WORD_BLAST.  All 4 conjuncts are        *)
+(* opaque-pmull-friendly XOR-commutativity; no AP_THM_TAC needed.            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK3_MID_AND_ACCUMS_CORRECT = prove
+ (`!pc (q4_in:int128) (q5:int128) (q6:int128) (q9_in:int128)
+        (q10_in:int128) (q11_in:int128) (q16:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x1c8) /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5 /\
+          read Q6 s = q6 /\
+          read Q9 s = q9_in /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in /\
+          read Q16 s = q16)
+     (\s. read PC s = word (pc + 0x1e8) /\
+          read Q4 s = (word_pmul (word_subword q4_in (0,64) :64 word)
+                                 (word_subword q16 (0,64) :64 word)
+                       :int128) /\
+          read Q9 s = word_xor q9_in q5 /\
+          read Q10 s = word_xor q10_in
+                          (word_pmul (word_subword q4_in (0,64) :64 word)
+                                     (word_subword q16 (0,64) :64 word)
+                            :int128) /\
+          read Q11 s = word_xor q11_in q6 /\
+          read Q16 s = q16)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q5; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [X6; X7] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--8) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-block-2-MID accumulator (Q10 ^= Q8) cut.                    *)
 (*                                                                           *)
 (* Window: slice instr 106..114 (offsets 0x1a4..0x1c8, 9 instructions) —    *)
