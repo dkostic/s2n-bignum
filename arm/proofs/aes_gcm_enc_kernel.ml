@@ -2972,8 +2972,8 @@ let AES_GCM_MAIN_LOOP_BODY_AES_8ROUNDS_CORRECT = prove
 
 let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
  (`!pc (b0:int128) (b1:int128) (b2:int128)
-        (rk0:int128) (rk1:int128) (rk2:int128)
-        (sx9:int64) (sx10:int64)
+        (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+        (sx9:int64) (sx10:int64) (sx13:int64)
         (q4_pre:int128) (q11_pre:int128)
         (q15:int128) (q17:int128).
     ensures arm
@@ -2989,12 +2989,15 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
           read Q18 s = rk0 /\
           read Q19 s = rk1 /\
           read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
           read X9 s = sx9 /\
-          read X10 s = sx10)
+          read X10 s = sx10 /\
+          read X13 s = sx13)
      (\s. read PC s = word (pc + 0x54) /\
           read Q0 s = aes_arm_round (aes_arm_round (aes_arm_round b0 rk0) rk1) rk2 /\
           read Q1 s = aes_arm_round (aes_arm_round b1 rk0) rk1 /\
           read Q2 s = aes_arm_round (aes_arm_round b2 rk0) rk1 /\
+          read Q3 s = word_insert (word_zx sx10 :int128) (64,64) sx9 /\
           read Q4 s = word_xor (aes_gcm_rev64_int128 q4_pre)
                                (byteswap128 q11_pre) /\
           read Q11 s = byteswap128 q11_pre /\
@@ -3002,7 +3005,9 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
           read Q17 s = q17 /\
           read Q18 s = rk0 /\
           read Q19 s = rk1 /\
-          read Q20 s = rk2)
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X13 s = sx13)
      (MAYCHANGE [PC] ,,
       MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q11] ,,
       MAYCHANGE [X21; X22; X23; X24] ,,
