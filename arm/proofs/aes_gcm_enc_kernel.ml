@@ -1609,3 +1609,51 @@ let aes_gcm_enc_kernel_mc = define_assert_from_elf "aes_gcm_enc_kernel_mc"
 ];;
 
 let AES_GCM_ENC_KERNEL_EXEC = ARM_MK_EXEC_RULE aes_gcm_enc_kernel_mc;;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 smoke-test — slice promotion of `AES4WAY_ROUND_CORRECT`.          *)
+(*                                                                           *)
+(* The pilot `AES4WAY_ROUND_CORRECT` (above) targets a freestanding-mc copy  *)
+(* of the kernel's round-5 4-way AES step.  This block re-states the same    *)
+(* property against a slice of the *full* kernel mc carved out via           *)
+(* `mk_sublist_of_mc`, validating that proofs against `aes_gcm_enc_kernel_mc`*)
+(* slices are ergonomic before scaling to the loop-body big-cut.             *)
+(*                                                                           *)
+(* The 8-instruction slice covers kernel byte offsets 0x18c..0x1ac, which    *)
+(* are exactly the round-5 AESE/AESMC pairs for blocks 0, 1, 3, 2 inside     *)
+(* `Lenc_finish_first_blocks`.                                               *)
+(*                                                                           *)
+(* Same closing tactic as the freestanding pilot.                            *)
+(* ------------------------------------------------------------------------- *)
+
+let aes4way_round_kernel_slice_mc_def,
+    aes4way_round_kernel_slice_mc,
+    AES4WAY_ROUND_KERNEL_SLICE_EXEC =
+  mk_sublist_of_mc "aes4way_round_kernel_slice_mc"
+    aes_gcm_enc_kernel_mc
+    (`0x18c`,`0x20`)
+    (fst AES_GCM_ENC_KERNEL_EXEC);;
+
+let AES4WAY_ROUND_KERNEL_SLICE_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (b3:int128) (rk:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes4way_round_kernel_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q3 s = b3 /\
+          read Q23 s = rk)
+     (\s. read PC s = word (pc + 0x20) /\
+          read Q0 s = aes_arm_round b0 rk /\
+          read Q1 s = aes_arm_round b1 rk /\
+          read Q2 s = aes_arm_round b2 rk /\
+          read Q3 s = aes_arm_round b3 rk /\
+          read Q23 s = rk)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES4WAY_ROUND_KERNEL_SLICE_EXEC (1--8) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
