@@ -368,3 +368,81 @@ let GHASH_MODULO_CORRECT = prove
    [EXPAND_TAC "y" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
   ASM_REWRITE_TAC[] THEN
   CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 6 sub-pilot — per-block Karatsuba decomposition.                    *)
+(*                                                                           *)
+(* The kernel computes (h, l, m) = karatsuba_components c H per block, with  *)
+(* the karatsuba_mid of the H power supplied separately (precomputed at     *)
+(* htable-init time and stored in v17 / v16 with two k's joined per the     *)
+(* `htable_mem` layout in `common/polyval_ghash.ml`).  The 5-instruction    *)
+(* sequence at `arm/aes-gcm/ghash_perblock.S` (a register-only extract from *)
+(* the kernel's `Lenc_main_loop` per-block code) computes:                   *)
+(*                                                                           *)
+(*   pmull2 v9.1q,  v4.2d,  v15.2d         ; v9 = pmul(high64 c, high64 H)  *)
+(*   pmull  v11.1q, v4.1d,  v15.1d         ; v11 = pmul(low64 c, low64 H)   *)
+(*   mov    d8,     v4.d[1]                ; d8 = high64 c                  *)
+(*   eor    v8.8b,  v8.8b,  v4.8b          ; d8 = high64 c XOR low64 c      *)
+(*   pmull  v10.1q, v8.1d,  v17.1d         ; v10 = pmul(mid_c, kmid_H)      *)
+(*                                                                           *)
+(* The pilot exercises the Phase 0b DUP-from-element decoder addition       *)
+(* (`mov d8, v4.d[1]` decodes to `arm_DUP_GEN_FROM_ELEM Q8 Q4 64 64 1`).    *)
+(*                                                                           *)
+(* TODO: replace once the full kernel _mc is loadable in tree (Phase 7+).   *)
+(* ------------------------------------------------------------------------- *)
+
+let ghash_perblock_mc = define_assert_from_elf "ghash_perblock_mc"
+                                               "arm/aes-gcm/ghash_perblock.o"
+[
+  0x4eefe089;       (* arm_PMULL2_VEC Q9 Q4 Q15 64 *)
+  0x0eefe08b;       (* arm_PMULL_VEC Q11 Q4 Q15 64 *)
+  0x5e180488;       (* arm_DUP_GEN_FROM_ELEM Q8 Q4 64 64 1 *)
+  0x2e241d08;       (* arm_EOR_VEC Q8 Q8 Q4 64 *)
+  0x0ef1e10a        (* arm_PMULL_VEC Q10 Q8 Q17 64 *)
+];;
+
+let GHASH_PERBLOCK_EXEC = ARM_MK_EXEC_RULE ghash_perblock_mc;;
+
+(* Pilot ensures: per-block Karatsuba decomposition.                         *)
+(*                                                                           *)
+(* Inputs:                                                                   *)
+(*   Q4         = c   (one ciphertext block, byteswap128'd by rev64+ext     *)
+(*                    upstream)                                              *)
+(*   Q15        = H   (one H power, byteswap128'd by `htable_mem`)           *)
+(*   Q17 lo64   = kmid_H = karatsuba_mid H                                   *)
+(*   (Q17 hi64 is `kmid_other` — irrelevant, the pmull only reads `.1d`)    *)
+(*                                                                           *)
+(* Outputs:                                                                  *)
+(*   Q9  = pmul(high64 c, high64 H)             -- h-component               *)
+(*   Q11 = pmul(low64 c, low64 H)               -- l-component               *)
+(*   Q10 = pmul(low64 c XOR high64 c, kmid_H)   -- m-component               *)
+(*                                                                           *)
+(* By `karatsuba_components` (def in `arm/proofs/utils/aes_gcm_bridge.ml`),  *)
+(* (Q9, Q11, Q10) = karatsuba_components c H                                 *)
+(* given the v17 lo64 precondition.                                          *)
+
+let GHASH_PERBLOCK_CORRECT = prove
+ (`!pc (c:int128) (H:int128) (kmid_other:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) ghash_perblock_mc /\
+          read PC s = word pc /\
+          read Q4 s = c /\
+          read Q15 s = H /\
+          read Q17 s = word_join kmid_other (karatsuba_mid H) :int128)
+     (\s. read PC s = word (pc + 0x14) /\
+          read Q9 s = (word_pmul (word_subword c (64,64) :64 word)
+                                 (word_subword H (64,64) :64 word) :int128) /\
+          read Q11 s = (word_pmul (word_subword c (0,64) :64 word)
+                                  (word_subword H (0,64) :64 word) :int128) /\
+          read Q10 s = (word_pmul
+                          (word_xor (word_subword c (0,64) :64 word)
+                                    (word_subword c (64,64) :64 word))
+                          (karatsuba_mid H) :int128))
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q8; Q9; Q10; Q11])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC GHASH_PERBLOCK_EXEC (1--5) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  BINOP_TAC THEN CONV_TAC WORD_BLAST);;

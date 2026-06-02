@@ -40,7 +40,8 @@ OBJ = aes_gcm.o \
       aes4way_round.o \
       aes4way_round_mem.o \
       aes_load_block.o \
-      ghash_modulo.o
+      ghash_modulo.o \
+      ghash_perblock.o
 
 %.o : %.S ; $(CC) -E -I../../include $< | $(GAS) -o $@ -
 
