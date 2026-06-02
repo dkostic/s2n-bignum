@@ -4186,6 +4186,11 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK2_MID_BLOCK3_HIGH_CORRECT = prove
      (\s. read PC s = word (pc + 0x1a4) /\
           read Q1 s = aes_arm_round b1 rk8 /\
           read Q2 s = aes_arm_round (aes_arm_round b2 rk6) rk7 /\
+          read Q4 s = (word_zx (word_subword
+                         (word_xor q7
+                            (word_zx (word_subword q7 (64,64) :64 word)
+                             :int128))
+                         (0,64) :64 word) :int128) /\
           read Q5 s = (word_pmul (word_subword q7 (64,64) :64 word)
                                  (word_subword q12 (64,64) :64 word)
                        :int128) /\
