@@ -105,6 +105,86 @@ let AES4WAY_ROUND_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7a sub-pilot — 4-way 2-round AES chain (register-only).             *)
+(*                                                                           *)
+(* This extends the Phase 4 single-round pilot to a 2-round chain on the     *)
+(* same four state registers Q0..Q3 with two distinct round keys (Q22 = rk4, *)
+(* Q23 = rk5).  The 16 instructions are an exact copy of the round-4 +       *)
+(* round-5 4-way step in `aes_gcm_enc_kernel_aes128.S` (kernel offsets       *)
+(* 0x16c..0x1a8); the kernel emits round 4 in the order 2, 0, 1, 3 and       *)
+(* round 5 in the order 0, 1, 3, 2.                                          *)
+(*                                                                           *)
+(* The pilot validates that AES round chains compose cleanly via repeated    *)
+(* `AESMC_AESE_AS_ARM_ROUND` rewrites without term explosion — this is the   *)
+(* load-bearing question for Phase 7 proper, where the loop body interleaves *)
+(* 9 round chains with GHASH.  No memory loads, no GHASH, no loop.           *)
+(* ------------------------------------------------------------------------- *)
+
+let aes4way_2rounds_mc = define_assert_from_elf "aes4way_2rounds_mc"
+                                                "arm/aes-gcm/aes4way_2rounds.o"
+[
+  (* round 4 (rk4 in Q22), block order 2, 0, 1, 3 *)
+  0x4e284ac2;       (* arm_AESE Q2 Q22 *)
+  0x4e286842;       (* arm_AESMC Q2 Q2 *)
+  0x4e284ac0;       (* arm_AESE Q0 Q22 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ac1;       (* arm_AESE Q1 Q22 *)
+  0x4e286821;       (* arm_AESMC Q1 Q1 *)
+  0x4e284ac3;       (* arm_AESE Q3 Q22 *)
+  0x4e286863;       (* arm_AESMC Q3 Q3 *)
+  (* round 5 (rk5 in Q23), block order 0, 1, 3, 2 *)
+  0x4e284ae0;       (* arm_AESE Q0 Q23 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ae1;       (* arm_AESE Q1 Q23 *)
+  0x4e286821;       (* arm_AESMC Q1 Q1 *)
+  0x4e284ae3;       (* arm_AESE Q3 Q23 *)
+  0x4e286863;       (* arm_AESMC Q3 Q3 *)
+  0x4e284ae2;       (* arm_AESE Q2 Q23 *)
+  0x4e286842        (* arm_AESMC Q2 Q2 *)
+];;
+
+let AES4WAY_2ROUNDS_EXEC = ARM_MK_EXEC_RULE aes4way_2rounds_mc;;
+
+(* Pilot ensures: 4-way 2-round AES chain.                                    *)
+(*                                                                            *)
+(* Inputs:                                                                    *)
+(*   Q0..Q3 = state blocks `b0`..`b3` (counters in the live kernel)           *)
+(*   Q22    = round-4 key `rk4`                                               *)
+(*   Q23    = round-5 key `rk5`                                               *)
+(*                                                                            *)
+(* Outputs:                                                                   *)
+(*   Q0..Q3 = `aes_arm_round (aes_arm_round bi rk4) rk5` for each block       *)
+(*                                                                            *)
+(* Q22 and Q23 are preserved (round keys are read-only).                      *)
+
+let AES4WAY_2ROUNDS_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (b3:int128)
+       (rk4:int128) (rk5:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes4way_2rounds_mc /\
+          read PC s = word pc /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q3 s = b3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (\s. read PC s = word (pc + 0x40) /\
+          read Q0 s = aes_arm_round (aes_arm_round b0 rk4) rk5 /\
+          read Q1 s = aes_arm_round (aes_arm_round b1 rk4) rk5 /\
+          read Q2 s = aes_arm_round (aes_arm_round b2 rk4) rk5 /\
+          read Q3 s = aes_arm_round (aes_arm_round b3 rk4) rk5 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES4WAY_2ROUNDS_EXEC (1--16) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 5 pilot — round-key memory load + 4-way AES round + ciphertext      *)
 (* memory store.  Same shape as Phase 4 plus a 128-bit memory load (LDR Q23) *)
 (* and a 128-bit memory store (STR Q0).                                      *)
