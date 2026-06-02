@@ -3388,6 +3388,66 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-2-MID accumulator (Q10 ^= Q8) cut.                    *)
+(*                                                                           *)
+(* Window: slice instr 106..114 (offsets 0x1a4..0x1c8, 9 instructions) —    *)
+(* same as the existing AES_GCM_MAIN_LOOP_BODY_R8_B2_R7R8_B3_CORRECT cut    *)
+(* but with full GHASH value tracking on Q10.                                *)
+(*                                                                           *)
+(*   instr 106 (offset 0x1a4): arm_EOR X19 X19 X13   ; AES blk 4k+5 round N  *)
+(*   instr 107 (offset 0x1a8): arm_AESE Q2 Q26       ; AES rd 8 b2          *)
+(*   instr 108 (offset 0x1ac): arm_AESMC Q2 Q2                               *)
+(*   instr 109 (offset 0x1b0): arm_EOR_VEC Q10 Q10 Q8 128 ; blk-2 MID accum *)
+(*                             ^ Q10 ^= Q8 (using Q8 from BLOCK1_MID exit:  *)
+(*                               Q8 = word_zx (xor q6_lo q6_hi))             *)
+(*   instr 110 (offset 0x1b4): arm_AESE Q3 Q25       ; AES rd 7 b3          *)
+(*   instr 111 (offset 0x1b8): arm_AESMC Q3 Q3                               *)
+(*   instr 112 (offset 0x1bc): arm_EOR X21 X21 X13   ; AES blk 4k+6 round N  *)
+(*   instr 113 (offset 0x1c0): arm_AESE Q3 Q26       ; AES rd 8 b3          *)
+(*   instr 114 (offset 0x1c4): arm_AESMC Q3 Q3                               *)
+(*                                                                           *)
+(* Postcondition: Q10 = q10_in XOR q8_in (block-2 MID XOR accumulator).      *)
+(* AES round advances: Q2 → rk8 (one round), Q3 → rk7 → rk8 (two rounds).    *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain; the only non-trivial conjunct is    *)
+(* Q10 (XOR-commutativity simulator-side q8_in q10_in vs. postcondition      *)
+(* q10_in q8_in) which closes via plain CONV_TAC WORD_BLAST.                 *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK2_MID_ACCUM_CORRECT = prove
+ (`!pc (b2:int128) (b3:int128) (q8_in:int128) (q10_in:int128)
+        (rk6:int128) (rk7:int128) (rk8:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x1a4) /\
+          read Q2 s = b2 /\
+          read Q3 s = b3 /\
+          read Q8 s = q8_in /\
+          read Q10 s = q10_in /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (\s. read PC s = word (pc + 0x1c8) /\
+          read Q2 s = aes_arm_round b2 rk8 /\
+          read Q3 s = aes_arm_round (aes_arm_round b3 rk7) rk8 /\
+          read Q8 s = q8_in /\
+          read Q10 s = word_xor q10_in q8_in /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q2; Q3; Q10] ,,
+      MAYCHANGE [X19; X21])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--9) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-block-1-MID pmull cut + block-2-MID DUP_GEN/prep + Q11      *)
 (* block-1-LOW XOR accumulator.                                              *)
 (*                                                                           *)
