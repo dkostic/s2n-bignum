@@ -4021,6 +4021,9 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_GAP_AES_CORRECT = prove
           read Q2 s = aes_arm_round b2 rk5 /\
           read Q3 s = aes_arm_round b3 rk5 /\
           read Q4 s = q4_in /\
+          read Q8 s = (word_insert q8_in (64,64)
+                        (word_subword (word_subword q8_in (0,64) :64 word)
+                                      (0,64) :64 word) :int128) /\
           read Q11 s = q11_in /\
           read Q23 s = rk5 /\
           read Q24 s = rk6 /\
@@ -4032,7 +4035,8 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_GAP_AES_CORRECT = prove
   ENSURES_INIT_TAC "s0" THEN
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--13) THEN
   ENSURES_FINAL_STATE_TAC THEN
-  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  CONV_TAC WORD_BLAST);;
 
 (* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-block-2-HIGH+LOW + block-3-LOW + EOR-accumulators cut.     *)
