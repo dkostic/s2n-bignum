@@ -2672,4 +2672,55 @@ let AES_GCM_MAIN_LOOP_BODY_TAIL_CORRECT = prove
 (* prelude/back-edge invariants.  The cleanest approach is probably to      *)
 (* prove a sequence of intermediate lemmas FIRST (one per AES round group  *)
 (* + per-block GHASH Karatsuba), then compose into the body big-cut.       *)
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 composition pilot: R0_BLOCKS012 + R1_BLOCKS012 fused.             *)
+(*                                                                           *)
+(* This is the smallest meaningful composition of two adjacent body-slice    *)
+(* cuts.  It validates that the natural "compose by re-running symbolic      *)
+(* execution over the union range" pattern works cleanly when each cut's    *)
+(* closing tactic is the same shape (`ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_     *)
+(* ROUND]`).  The composed cut covers slice instructions 1..17 (offsets    *)
+(* 0..0x44), which is the full union of R0_BLOCKS012's 8 instructions       *)
+(* with R1_BLOCKS012's 9.                                                   *)
+(*                                                                           *)
+(* Note: the composition is by re-running symbolic execution rather than    *)
+(* by cut-point machinery (MATCH_MP_TAC of each individual cut).  The       *)
+(* trade-off: re-running adds ~17 instructions of `ARM_STEPS_TAC` time     *)
+(* (~0.2s wall) but uses the exact same closing tactic as each individual  *)
+(* cut.  The cut-point composition path requires `ENSURES_FRAME_SUBSUMED`  *)
+(* + `ENSURES_PRECONDITION_THM` plumbing per cut and a subsumption proof   *)
+(* on each step's MAYCHANGE — much heavier per-step but linear in the     *)
+(* number of cuts.  For 17 cuts the brute-force re-execution is simpler    *)
+(* and still fast (~2s total).                                              *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R0R1_BLOCKS012_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (b11:int128)
+        (rk0:int128) (rk1:int128) (sx9:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q11 s = b11 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read X9 s = sx9)
+     (\s. read PC s = word (pc + 0x44) /\
+          read Q0 s = aes_arm_round (aes_arm_round b0 rk0) rk1 /\
+          read Q1 s = aes_arm_round (aes_arm_round b1 rk0) rk1 /\
+          read Q2 s = aes_arm_round (aes_arm_round b2 rk0) rk1 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q11] ,,
+      MAYCHANGE [X23; X24] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--17) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 (* ------------------------------------------------------------------------- *)
