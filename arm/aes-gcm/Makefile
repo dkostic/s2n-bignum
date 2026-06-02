@@ -39,7 +39,8 @@ OBJ = aes_gcm.o \
       aes_gcm_enc_kernel_aes128.o \
       aes4way_round.o \
       aes4way_round_mem.o \
-      aes_load_block.o
+      aes_load_block.o \
+      ghash_modulo.o
 
 %.o : %.S ; $(CC) -E -I../../include $< | $(GAS) -o $@ -
 

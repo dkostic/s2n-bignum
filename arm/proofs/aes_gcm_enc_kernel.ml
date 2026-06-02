@@ -247,3 +247,124 @@ let AES_LOAD_BLOCK_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 6 pilot — GHASH MODULO reduction step.                              *)
+(*                                                                           *)
+(* The MODULO chain is the polynomial-reduction tail of the kernel's 4-block *)
+(* GHASH update.  At kernel offsets ~0x4d0..0x55c (filtered to the pure      *)
+(* GHASH-MODULO ops, no interleaved AES/CTR work), the kernel computes:      *)
+(*                                                                           *)
+(*   movi  v8.8b, #0xc2                  ; mod_constant low byte             *)
+(*   shl   d8, d8, #56                   ; mod_constant: 0xc200000000000000  *)
+(*   eor   v4.16b, v11.16b, v9.16b       ; v4 = l XOR h                      *)
+(*   pmull v7.1q, v9.1d, v8.1d           ; v7 = pmul(h_lo, c64)              *)
+(*   ext   v9.16b, v9.16b, v9.16b, #8    ; v9 := byteswap128 h               *)
+(*   eor   v10.16b, v10.16b, v4.16b      ; v10 := m XOR (l XOR h)            *)
+(*   eor   v7.16b, v9.16b, v7.16b        ; v7  := h_swap XOR pmul(h_lo,c64)  *)
+(*   eor   v10.16b, v10.16b, v7.16b      ; v10 := m XOR l XOR h XOR (...)   *)
+(*   pmull v9.1q, v10.1d, v8.1d          ; v9_new = pmul(v10_lo, c64)        *)
+(*   ext   v10.16b, v10.16b, v10.16b, #8 ; v10 := byteswap128 v10            *)
+(*   eor   v11.16b, v11.16b, v9.16b      ; v11 := l XOR v9_new               *)
+(*   eor   v11.16b, v11.16b, v10.16b     ; final := v11 XOR v10_swap         *)
+(*                                                                           *)
+(* This sequence implements `kernel_modulo h l m` from                       *)
+(* `arm/proofs/utils/aes_gcm_bridge.ml`, with v9 ↦ h, v10 ↦ m, v11 ↦ l       *)
+(* on input.  By `KERNEL_MODULO_CORRECT`, the output equals                  *)
+(* `polyval_reduce_prop3 (karatsuba_combine l h m)`.                         *)
+(*                                                                           *)
+(* The pilot exercises the Phase 0b scalar-SHL D-form decoder addition       *)
+(* (`shl d8, d8, #56` decodes to `arm_SHL_VEC D8 D8 56 64 64`).  All other   *)
+(* instructions in the chain (movi v.8b, pmull, ext, eor v.16b) are          *)
+(* pre-existing decoder rows.                                                *)
+(*                                                                           *)
+(* TODO: replace once the full kernel _mc is loadable in tree (Phase 7+).    *)
+(* ------------------------------------------------------------------------- *)
+
+let ghash_modulo_mc = define_assert_from_elf "ghash_modulo_mc"
+                                             "arm/aes-gcm/ghash_modulo.o"
+[
+  0x0f06e448;       (* arm_MOVI Q8 (word 49344) 8 *)
+  0x5f785508;       (* arm_SHL_VEC D8 D8 56 64 64 *)
+  0x6e291d64;       (* arm_EOR_VEC Q4 Q11 Q9 128 *)
+  0x0ee8e127;       (* arm_PMULL_VEC Q7 Q9 Q8 64 *)
+  0x6e094129;       (* arm_EXT Q9 Q9 Q9 64 *)
+  0x6e241d4a;       (* arm_EOR_VEC Q10 Q10 Q4 128 *)
+  0x6e271d27;       (* arm_EOR_VEC Q7 Q9 Q7 128 *)
+  0x6e271d4a;       (* arm_EOR_VEC Q10 Q10 Q7 128 *)
+  0x0ee8e149;       (* arm_PMULL_VEC Q9 Q10 Q8 64 *)
+  0x6e0a414a;       (* arm_EXT Q10 Q10 Q10 64 *)
+  0x6e291d6b;       (* arm_EOR_VEC Q11 Q11 Q9 128 *)
+  0x6e2a1d6b        (* arm_EOR_VEC Q11 Q11 Q10 128 *)
+];;
+
+let GHASH_MODULO_EXEC = ARM_MK_EXEC_RULE ghash_modulo_mc;;
+
+(* Pilot ensures: the MODULO reduction step.                                 *)
+(*                                                                           *)
+(* Inputs:                                                                   *)
+(*   Q9  = h-component (kernel's pmull2 high accumulator)                    *)
+(*   Q10 = m-component (kernel's pmull mid accumulator)                      *)
+(*   Q11 = l-component (kernel's pmull low accumulator)                      *)
+(*                                                                           *)
+(* Output:                                                                   *)
+(*   Q11 = kernel_modulo h l m                                               *)
+(*       = polyval_reduce_prop3 (karatsuba_combine l h m)                    *)
+(*         (by KERNEL_MODULO_CORRECT)                                        *)
+(*                                                                           *)
+(* The MAYCHANGE frame lists Q4, Q7..Q11 (all touched by the chain) and PC. *)
+
+let GHASH_MODULO_CORRECT = prove
+ (`!pc (h:int128) (l:int128) (m:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) ghash_modulo_mc /\
+          read PC s = word pc /\
+          read Q9 s = h /\
+          read Q10 s = m /\
+          read Q11 s = l)
+     (\s. read PC s = word (pc + 0x30) /\
+          read Q11 s = kernel_modulo h l m)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q7; Q8; Q9; Q10; Q11])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC GHASH_MODULO_EXEC (1--12) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  (* Equate Q11's stepper output with kernel_modulo h l m.  Both are pure  *)
+  (* word-level expressions in (h, l, m, c64=word 0xC2..0); the only thing  *)
+  (* WORD_BLAST can't see through is `word_pmul` (which is opaque).  So we  *)
+  (* abbreviate the two pmul subterms as `t0` (the inner pmul of low64 h    *)
+  (* with c64) and `t1` (the outer pmul of low64 of the assembled XOR       *)
+  (* chain), unfold `kernel_modulo` and `byteswap128`, normalise the        *)
+  (* `byteswap128 h` shape (the kernel emits it as                           *)
+  (*  `word_subword (word_join h h) (64,128)`, the spec emits it as          *)
+  (*  `word_join (word_subword h (0,64)) (word_subword h (64,64))`),         *)
+  (* and let WORD_BLAST close the residual structural identity.             *)
+  ABBREV_TAC `t0:int128 = word_pmul (word_subword (h:int128) (0,64) :64 word)
+                                    (word 13979173243358019584:64 word)` THEN
+  ABBREV_TAC `y:int128 = word_xor (word_xor t0
+                                            (word_subword
+                                              ((word_join:int128->int128
+                                                ->256 word) h h) (64,128)
+                                              :int128))
+                                  (word_xor (word_xor h l) m)` THEN
+  ABBREV_TAC `t1:int128 = word_pmul (word_subword (y:int128) (0,64) :64 word)
+                                    (word 13979173243358019584:64 word)` THEN
+  REWRITE_TAC[kernel_modulo; byteswap128; LET_DEF; LET_END_DEF] THEN
+  SUBGOAL_THEN
+   `word_join (word_subword (h:int128) (0,64) :64 word)
+              (word_subword h (64,64) :64 word) :int128 =
+    word_subword ((word_join:int128->int128->256 word) h h) (64,128)`
+   ASSUME_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  SUBGOAL_THEN
+   `word_xor (word_xor (m:int128) (word_xor l h))
+             (word_xor
+                (word_subword
+                  ((word_join:int128->int128->256 word) h h) (64,128) :int128)
+                t0) = y`
+   SUBST1_TAC THENL
+   [EXPAND_TAC "y" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC WORD_BLAST);;
