@@ -3388,6 +3388,68 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH FINAL_XOR_AND_CTR with Q9 value-tracking — instr 143..156. *)
+(*                                                                           *)
+(* Window: slice instr 143..156 (offsets 0x238..0x270, 14 instructions) —   *)
+(* same as the existing AES_GCM_MAIN_LOOP_BODY_FINAL_XOR_AND_CTR_CORRECT cut*)
+(* but with full GHASH value tracking on Q9 (the v9_new pmull result).      *)
+(*                                                                           *)
+(* Notable instruction in this window:                                      *)
+(*   instr 147 (offset 0x248): arm_PMULL_VEC Q9 Q10 Q8 64                   *)
+(*                             ^ Q9 := pmull(q10_in_lo, q8_in_lo)           *)
+(*                                    = v9_new in kernel_modulo notation    *)
+(*                              (Q10 holds v10_b from R9_FINAL_B0_B1; Q8    *)
+(*                              still holds c64 = 0xc200000000000000 from   *)
+(*                              MOVI/SHL in BLOCK3_MID_AND_ACCUMS.)          *)
+(*                                                                           *)
+(* Postcondition tracks 1 GHASH write:                                       *)
+(*   Q9 = pmull(subword q10_in (0,64)) (subword q8_in (0,64))               *)
+(*           — kernel_modulo's `v9_new = pmull(v10_b_lo, c64)`              *)
+(*                                                                           *)
+(* Other tracked registers: Q2, Q3, Q8, Q10, Q11 unchanged.                  *)
+(*                                                                           *)
+(* MAYCHANGE includes SOME_FLAGS for the SUBS ZR X0 X5 at instr 145.        *)
+(* REWRITE_TAC[SOME_FLAGS] is applied before ENSURES_INIT_TAC per feedback   *)
+(* memory `some_flags_no_canon.md`.                                          *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain.  All conjuncts close via plain     *)
+(* ASM_REWRITE_TAC or WORD_BLAST.                                            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_FINAL_XOR_AND_CTR_GHASH_CORRECT = prove
+ (`!pc (q2:int128) (q3:int128) (q8_in:int128) (q10_in:int128) (q11_in:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x238) /\
+          read Q2 s = q2 /\
+          read Q3 s = q3 /\
+          read Q8 s = q8_in /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in)
+     (\s. read PC s = word (pc + 0x270) /\
+          read Q2 s = q2 /\
+          read Q3 s = q3 /\
+          read Q8 s = q8_in /\
+          read Q9 s = (word_pmul (word_subword q10_in (0,64) :64 word)
+                                 (word_subword q8_in (0,64) :64 word)
+                       :int128) /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q4; Q5; Q6; Q9] ,,
+      MAYCHANGE [X9; X12] ,,
+      MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--14) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH R9_FINAL_B0_B1 with Q10 value-tracking — instr 138..142.   *)
 (*                                                                           *)
 (* Window: slice instr 138..142 (offsets 0x224..0x238, 5 instructions) —    *)
