@@ -2974,7 +2974,8 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
  (`!pc (b0:int128) (b1:int128) (b2:int128)
         (rk0:int128) (rk1:int128) (rk2:int128)
         (sx9:int64) (sx10:int64)
-        (q4_pre:int128) (q11_pre:int128).
+        (q4_pre:int128) (q11_pre:int128)
+        (q15:int128) (q17:int128).
     ensures arm
      (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
           read PC s = word pc /\
@@ -2983,6 +2984,8 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
           read Q2 s = b2 /\
           read Q4 s = q4_pre /\
           read Q11 s = q11_pre /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
           read Q18 s = rk0 /\
           read Q19 s = rk1 /\
           read Q20 s = rk2 /\
@@ -2995,6 +2998,8 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
           read Q4 s = word_xor (aes_gcm_rev64_int128 q4_pre)
                                (byteswap128 q11_pre) /\
           read Q11 s = byteswap128 q11_pre /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
           read Q18 s = rk0 /\
           read Q19 s = rk1 /\
           read Q20 s = rk2)
