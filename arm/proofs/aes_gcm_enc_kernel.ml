@@ -4227,4 +4227,147 @@ let AES_GCM_MAIN_LOOP_BODY_FULL_AES_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--175) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND; AESE_AS_ARM_FINAL_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH composition cut: full kernel_modulo over offsets             *)
+(* 0x1c8..0x2bc (61 instructions, slice instr 115..175).  Composes the         *)
+(* 6 sequential per-component cuts BLOCK3_MID_AND_ACCUMS through TAIL_GHASH   *)
+(* into a single ensures whose Q11 postcondition is in spec form              *)
+(* `kernel_modulo` (`aes_gcm_bridge.ml:344`).                                 *)
+(*                                                                            *)
+(* The cut starts at slice offset 0x1c8 (kernel pc + 0x308 + 0x1c8 = pc +    *)
+(* 0x4d0) which is BEFORE the kernel's `MOVI Q8 #0xc2 / SHL D8, D8, #56`     *)
+(* that builds Q8 := word 0xC200000000000000 (kernel_modulo's c64 const).   *)
+(* This means the cut window absorbs the c64 constant construction so the    *)
+(* postcondition can refer to `kernel_modulo` directly without exposing Q8   *)
+(* as an explicit precondition.                                              *)
+(*                                                                            *)
+(* Postcondition Q11 = `kernel_modulo (q9_in XOR q5) (q11_in XOR q6)         *)
+(*                                    (q10_in XOR pmull(q4_in_lo,q16_lo))`.  *)
+(* The kernel_modulo's three arguments are the per-block-3-accumulated       *)
+(* HIGH/LOW/MID Karatsuba accumulators:                                       *)
+(*   - h_in = q9_in XOR q5  (kernel's Q9 ^= Q5 at instr 117 = blk-3 HIGH)   *)
+(*   - l_in = q11_in XOR q6 (kernel's Q11 ^= Q6 at instr 121 = blk-3 LOW)   *)
+(*   - m_in = q10_in XOR pmull(q4_in_lo,q16_lo)                             *)
+(*           (kernel's Q10 ^= NEW Q4 at instr 122 where NEW Q4 = block-3   *)
+(*           MID Karatsuba product from PMULL Q4 Q4 Q16 at instr 116)      *)
+(*                                                                            *)
+(* Discharge strategy (exhibits brute-force composition + ABBREV-driven     *)
+(* WORD_RULE close):                                                         *)
+(*   1. Brute-force ARM_STEPS_TAC (1--61) over the union range — wall-clock *)
+(*      ~3 seconds.  Per memory `brute_force_composition.md`.                *)
+(*   2. ENSURES_FINAL_STATE_TAC + ASM_REWRITE_TAC produces a pure word-     *)
+(*      level equation between simulator's Q11 form and kernel_modulo.       *)
+(*   3. REWRITE_TAC[kernel_modulo; byteswap128; LET_DEF; LET_END_DEF] to    *)
+(*      unfold both sides.                                                  *)
+(*   4. Discharge a one-step lemma `subword(join h h, (64,128)) =           *)
+(*      join(subword(h,0,64), subword(h,64,64))` and use ASM_REWRITE_TAC    *)
+(*      to align the LHS's `subword(join h h)` form with the RHS's          *)
+(*      `join(subword,subword)` form.                                       *)
+(*   5. ABBREV_TAC the c64-pmul atom Pinner, the kernel's per-block-3       *)
+(*      Pmid atom, the input XOR sums Hxor/Lxor, the byteswapped form       *)
+(*      Bswapped, and the inner XOR sum Inner — reducing both sides to       *)
+(*      a goal of <300 chars in pure XOR/word_join/word_subword/word_pmul   *)
+(*      atoms.                                                               *)
+(*   6. SUBGOAL_THEN normalises the RHS's inner XOR sum's association to    *)
+(*      match Inner via WORD_RULE.                                          *)
+(*   7. CONV_TAC WORD_RULE closes the ~300-char XOR-rearrangement goal in   *)
+(*      sub-second.                                                         *)
+(*                                                                            *)
+(* This cut is the spec-form companion to the per-component cuts of session *)
+(* 029 — its postcondition is what Phase 8's loop invariant will track for   *)
+(* the running tag.                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT = prove
+ (`!pc (cptr:int64) (q2:int128) (q3:int128) (q4_in:int128) (q5:int128)
+        (q6:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128)
+        (q16:int128) (rk9:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x1c8) /\
+              read X2 s = cptr /\
+              read Q2 s = q2 /\
+              read Q3 s = q3 /\
+              read Q4 s = q4_in /\
+              read Q5 s = q5 /\
+              read Q6 s = q6 /\
+              read Q9 s = q9_in /\
+              read Q10 s = q10_in /\
+              read Q11 s = q11_in /\
+              read Q16 s = q16 /\
+              read Q31 s = rk9)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X2 s = word_add cptr (word 64) /\
+              read Q11 s = kernel_modulo
+                              (word_xor q9_in q5)
+                              (word_xor q11_in q6)
+                              (word_xor q10_in
+                                 (word_pmul (word_subword q4_in (0,64) :64 word)
+                                            (word_subword q16 (0,64) :64 word)
+                                  :int128)))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--61) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[kernel_modulo; byteswap128; LET_DEF; LET_END_DEF] THEN
+  SUBGOAL_THEN
+   `!h:int128.
+       word_subword (word_join h h:256 word) (64,128):int128 =
+       word_join (word_subword h (0,64) :64 word)
+                 (word_subword h (64,64) :64 word)`
+   ASSUME_TAC THENL [GEN_TAC THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  ABBREV_TAC
+   `Pinner:int128 =
+      word_pmul (word_subword (word_xor (q5:int128) (q9_in:int128)) (0,64)
+                 :64 word)
+                (word 13979173243358019584:64 word)` THEN
+  SUBGOAL_THEN
+   `word_xor (q9_in:int128) (q5:int128) = word_xor q5 q9_in /\
+    word_xor (q11_in:int128) (q6:int128) = word_xor q6 q11_in /\
+    word_xor (q10_in:int128)
+             (word_pmul (word_subword (q4_in:int128) (0,64) :64 word)
+                        (word_subword (q16:int128) (0,64) :64 word)
+              :int128) =
+    word_xor (word_pmul (word_subword q4_in (0,64) :64 word)
+                        (word_subword q16 (0,64) :64 word) :int128)
+             q10_in`
+   STRIP_ASSUME_TAC THENL [REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  ABBREV_TAC `Hxor:int128 = word_xor (q5:int128) (q9_in:int128)` THEN
+  ABBREV_TAC `Lxor:int128 = word_xor (q6:int128) (q11_in:int128)` THEN
+  ABBREV_TAC
+   `Pmid:int128 =
+      word_pmul (word_subword (q4_in:int128) (0,64) :64 word)
+                (word_subword (q16:int128) (0,64) :64 word)` THEN
+  ABBREV_TAC
+   `Bswapped:int128 =
+      word_join (word_subword (Hxor:int128) (0,64) :64 word)
+                (word_subword Hxor (64,64) :64 word)` THEN
+  ABBREV_TAC
+   `Inner:int128 =
+      word_xor (word_xor (Pinner:int128) (Bswapped:int128))
+               (word_xor (word_xor (Hxor:int128) (Lxor:int128))
+                         (word_xor (Pmid:int128) (q10_in:int128)))` THEN
+  SUBGOAL_THEN
+   `word_xor (word_xor (word_xor (Pmid:int128) (q10_in:int128))
+                       (word_xor (Lxor:int128) (Hxor:int128)))
+             (word_xor (Bswapped:int128) (Pinner:int128)) = Inner`
+    SUBST1_TAC THENL
+   [EXPAND_TAC "Inner" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  CONV_TAC WORD_RULE);;
+
 (* ------------------------------------------------------------------------- *)
