@@ -2927,6 +2927,90 @@ let AES_GCM_MAIN_LOOP_BODY_AES_8ROUNDS_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-PRELUDE cut: tracks the GHASH `rev64+ext+eor` chain         *)
+(* on Q4 and Q11 across slice instr 1..21 (offsets 0..0x50).                 *)
+(*                                                                           *)
+(* The body's first 21 instructions interleave AES rounds 0..2 for blocks   *)
+(* 0/1/2 with the GHASH PRE chain that prepares Q4 for the per-block        *)
+(* Karatsuba.  The GHASH PRE chain is:                                       *)
+(*                                                                           *)
+(*   instr 3  (offset 0x008): arm_REV64_VEC Q4 Q4 8        ; rev64 v4       *)
+(*   instr 9  (offset 0x020): arm_EXT       Q11 Q11 Q11 64 ; ext q11,q,#8  *)
+(*   instr 21 (offset 0x050): arm_EOR_VEC   Q4 Q4 Q11 128  ; PRE 1          *)
+(*                                                                           *)
+(* For arbitrary input forms `q4_pre` and `q11_pre`, the cut establishes:   *)
+(*                                                                           *)
+(*   read Q11 s = byteswap128 q11_pre                                        *)
+(*   read Q4  s = word_xor (aes_gcm_rev64_int128 q4_pre)                    *)
+(*                         (byteswap128 q11_pre)                             *)
+(*                                                                           *)
+(* Two algebraic identities discovered in this proof (close via WORD_BLAST  *)
+(* on REWRITE_TAC[byteswap128;aes_gcm_rev64_int128] expansion):              *)
+(*                                                                           *)
+(*   (a) word_subword (word_join q11 q11) (64,128) = byteswap128 q11        *)
+(*       — i.e. the kernel's `ext q,q,q,#8` on a 128-bit register equals    *)
+(*       byteswap128 (the 64-bit half-swap), without rev64 within halves.    *)
+(*                                                                           *)
+(*   (b) The 28-byte word_join/word_subword tree from `arm_REV64_VEC` of    *)
+(*       esize=8 collapses to `aes_gcm_rev64_int128 q4_pre`, defined as     *)
+(*       `word_join (word_bytereverse subword_hi)                            *)
+(*                  (word_bytereverse subword_lo)`.                          *)
+(*                                                                           *)
+(* These identities, plus AESMC_AESE_AS_ARM_ROUND for the AES rounds, close *)
+(* under a single CONV_TAC WORD_BLAST after expanding `byteswap128` and    *)
+(* `aes_gcm_rev64_int128` definitions.                                       *)
+(*                                                                           *)
+(* This cut is the GHASH-PRELUDE building block for a future `Q4 =          *)
+(* byteswap128 (running_tag XOR c4_prev)`-shaped cut: that interpretation   *)
+(* requires the byteswap-distributes-over-XOR identity                      *)
+(* `byteswap128 (a XOR b) = byteswap128 a XOR byteswap128 b` AND a          *)
+(* relationship between `aes_gcm_rev64_int128` and `byteswap128` on the    *)
+(* specific kernel-form ciphertext (which is determined by the prior        *)
+(* iteration's exit Q4..Q7 shape — to be discovered when composing across  *)
+(* iterations in Phase 8).                                                   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128)
+        (rk0:int128) (rk1:int128) (rk2:int128)
+        (sx9:int64) (sx10:int64)
+        (q4_pre:int128) (q11_pre:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q4 s = q4_pre /\
+          read Q11 s = q11_pre /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0x54) /\
+          read Q0 s = aes_arm_round (aes_arm_round (aes_arm_round b0 rk0) rk1) rk2 /\
+          read Q1 s = aes_arm_round (aes_arm_round b1 rk0) rk1 /\
+          read Q2 s = aes_arm_round (aes_arm_round b2 rk0) rk1 /\
+          read Q4 s = word_xor (aes_gcm_rev64_int128 q4_pre)
+                               (byteswap128 q11_pre) /\
+          read Q11 s = byteswap128 q11_pre /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q11] ,,
+      MAYCHANGE [X21; X22; X23; X24] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--21) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND;
+                  aes_gcm_rev64_int128; byteswap128] THEN
+  CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 FULL BODY composition cut: all 175 instructions.                  *)
 (*                                                                           *)
 (* Composes the full 17-cut chain (R0_BLOCKS012 through TAIL) into a single *)
