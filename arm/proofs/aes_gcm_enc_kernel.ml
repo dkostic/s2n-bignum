@@ -3388,6 +3388,58 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH R9_FINAL_B0_B1 with Q10 value-tracking — instr 138..142.   *)
+(*                                                                           *)
+(* Window: slice instr 138..142 (offsets 0x224..0x238, 5 instructions) —    *)
+(* same as the existing AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B0_B1_CORRECT cut   *)
+(* but with full GHASH value tracking on Q10.                                *)
+(*                                                                           *)
+(*   instr 138 (offset 0x224): arm_AESE Q0 Q31         ; round 9 final b0  *)
+(*   instr 139 (offset 0x228): arm_FMOV_ItoF Q4 X7 1  (Q4 clobbered)        *)
+(*   instr 140 (offset 0x22c): arm_EOR_VEC Q10 Q10 Q7 128                   *)
+(*                             ^ Q10 := q10_in XOR q7_in                    *)
+(*                                    = v10_a XOR v7_a = v10_b              *)
+(*                               (in kernel_modulo's notation)               *)
+(*   instr 141 (offset 0x230): arm_FMOV_ItoF Q7 X23 0 (Q7 clobbered)        *)
+(*   instr 142 (offset 0x234): arm_AESE Q1 Q31         ; round 9 final b1  *)
+(*                                                                           *)
+(* Postcondition tracks 1 GHASH write:                                       *)
+(*   Q10 = q10_in XOR q7_in — kernel_modulo's `v10_b = v10_a XOR v7_a`     *)
+(*                                                                           *)
+(* Plus AES round-9-final advances on Q0/Q1.                                 *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain.  Q10 closes via plain WORD_BLAST   *)
+(* (XOR commutativity); AES conjuncts close via ASM_REWRITE_TAC after       *)
+(* AESE_AS_ARM_FINAL_ROUND folding.                                         *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B0_B1_GHASH_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (q7_in:int128) (q10_in:int128) (rk9:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x224) /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q7 s = q7_in /\
+          read Q10 s = q10_in /\
+          read Q31 s = rk9)
+     (\s. read PC s = word (pc + 0x238) /\
+          read Q0 s = aes_arm_final_round b0 rk9 /\
+          read Q1 s = aes_arm_final_round b1 rk9 /\
+          read Q10 s = word_xor q10_in q7_in /\
+          read Q31 s = rk9)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q4; Q7; Q10])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--5) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-MODULO-Karatsuba-tidy + h/c64-pmull + h byteswap.           *)
 (*                                                                           *)
 (* Window: slice instr 124..137 (offsets 0x1ec..0x224, 14 instructions) — a *)
