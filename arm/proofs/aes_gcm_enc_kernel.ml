@@ -2294,6 +2294,69 @@ let AES_GCM_MAIN_LOOP_BODY_R8_B2_R7R8_B3_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: GHASH MODULO + plaintext setup, no AES round changes   *)
+(* — slice instr 115..137 (offsets 0x1c8..0x224, 23 instructions).           *)
+(*                                                                           *)
+(* This is the first AES-passthrough cut in the chain: zero AES round       *)
+(* advances on Q0..Q3.  The window covers GHASH 4-block MODULO + counter    *)
+(* advance W12 += 1, plaintext-XOR-with-rk0 staging for blocks 4k+4 and    *)
+(* 4k+5, plus pointer increment X0 += 64.  Many register clobbers absorbed *)
+(* by MAYCHANGE without value tracking.                                     *)
+(*                                                                           *)
+(*   0x1c8  arm_MOVI D8 (word 0xc200000000000000)   ; MODULO constant       *)
+(*   0x1cc  arm_PMULL_VEC Q4 Q4 Q16 64              ; MODULO mid pmul       *)
+(*   0x1d0  arm_EOR_VEC Q9 Q9 Q5 128                ; MODULO high accum     *)
+(*   0x1d4  arm_FMOV_ItoF Q5 X19 0                  ; CTR setup block 4k+5 *)
+(*   0x1d8  arm_LDP X6 X7 X0 #0                     ; load plaintext blk 4k+4*)
+(*   0x1dc  arm_SHL_VEC Q8 Q8 56 64 64              ; MODULO shift          *)
+(*   0x1e0  arm_EOR_VEC Q11 Q11 Q6 128              ; MODULO mid fold       *)
+(*   0x1e4  arm_EOR_VEC Q10 Q10 Q4 128              ; MODULO low fold       *)
+(*   0x1e8  arm_ADD W12 W12 #1                      ; CTR counter advance   *)
+(*   0x1ec  arm_EOR_VEC Q4 Q11 Q9 128               ; MODULO Karatsuba tidy *)
+(*   0x1f0  arm_ADD X0 X0 #64                       ; AES input ptr update *)
+(*   0x1f4  arm_PMULL_VEC Q7 Q9 Q8 64               ; MODULO top mid align *)
+(*   0x1f8  arm_REV W9 W12                          ; CTR byte-swap        *)
+(*   0x1fc  arm_EXT Q9 Q9 Q9 64                     ; MODULO other top     *)
+(*   0x200  arm_EOR X6 X6 X13                       ; AES blk 4k+4 round N low *)
+(*   0x204  arm_EOR_VEC Q10 Q10 Q4 128              ; MODULO low accum     *)
+(*   0x208  arm_EOR X7 X7 X14                       ; AES blk 4k+4 round N high*)
+(*   0x20c  arm_FMOV_ItoF Q4 X6 0                   ; CTR-XOR-PT staging   *)
+(*   0x210  arm_ORR X9 X11 (X9 LSL 32)              ; CTR scratch          *)
+(*   0x214  arm_EOR_VEC Q7 Q9 Q7 128                ; MODULO fold into mid *)
+(*   0x218  arm_EOR X20 X20 X14                     ; AES blk 4k+5 round N high*)
+(*   0x21c  arm_EOR X24 X24 X14                     ; AES blk 4k+7 round N high*)
+(*   0x220  arm_ADD W12 W12 #1                      ; CTR counter advance  *)
+(*                                                                           *)
+(* No AES round changes on Q0..Q3 — all four blocks remain at their post-   *)
+(* round-8 (or earlier) state.  Next cut starts at AESE Q0 Q31 (round 9    *)
+(* final for block 0) at offset 0x224.                                      *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_MODULO_CORRECT = prove
+ (`!pc (q0:int128) (q1:int128) (q2:int128) (q3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x1c8) /\
+          read Q0 s = q0 /\
+          read Q1 s = q1 /\
+          read Q2 s = q2 /\
+          read Q3 s = q3)
+     (\s. read PC s = word (pc + 0x224) /\
+          read Q0 s = q0 /\
+          read Q1 s = q1 /\
+          read Q2 s = q2 /\
+          read Q3 s = q3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q5; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [X0; X6; X7; X9; X12; X20; X24] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--23) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
