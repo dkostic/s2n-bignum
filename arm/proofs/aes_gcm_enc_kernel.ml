@@ -2510,6 +2510,54 @@ let AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B2_B3_CORRECT = prove
   ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: body tail — slice instr 167..175 (offsets             *)
+(* 0x298..0x2bc, the END of the loop body slice, 9 instructions).           *)
+(*                                                                           *)
+(* Final ciphertext stores for blocks 4k+6 and 4k+7, plus the last MODULO  *)
+(* fold and CTR setup tail.                                                 *)
+(*                                                                           *)
+(*   0x298  arm_EOR_VEC Q6 Q6 Q2 128       ; ciphertext block 4k+6         *)
+(*   0x29c  arm_FMOV_ItoF Q2 X10 0         ; CTR setup next iter b2        *)
+(*   0x2a0  arm_STR Q6 X2 #16              ; store ciphertext block 4k+6   *)
+(*   0x2a4  arm_FMOV_ItoF Q2 X9 1          ; CTR setup next iter b2        *)
+(*   0x2a8  arm_REV W9 W12                 ; CTR byte-swap                 *)
+(*   0x2ac  arm_EOR_VEC Q11 Q11 Q10 128    ; MODULO final fold into low    *)
+(*   0x2b0  arm_ORR X9 X11 (X9 LSL 32)     ; CTR scratch                   *)
+(*   0x2b4  arm_EOR_VEC Q7 Q7 Q3 128       ; ciphertext block 4k+7         *)
+(*   0x2b8  arm_STR Q7 X2 #16              ; store ciphertext block 4k+7   *)
+(*                                                                           *)
+(* Q2 is consumed by EOR with Q6 then overwritten with new CTR setup; Q3   *)
+(* is consumed by EOR with Q7.  Cut postcondition does not track Q2/Q3    *)
+(* since their values are no longer relevant (next iteration starts fresh).*)
+(* End PC = pc + 0x2bc = end of body slice.                                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_TAIL_CORRECT = prove
+ (`!pc (cptr:int64) (q2:int128) (q3:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 32)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x298) /\
+              read X2 s = cptr /\
+              read Q2 s = q2 /\
+              read Q3 s = q3)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X2 s = word_add cptr (word 32))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q2; Q6; Q7; Q11] ,,
+          MAYCHANGE [X2; X9; X12] ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16))] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--9) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
