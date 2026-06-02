@@ -44,6 +44,12 @@ static uint64_t b4[BUFFERSIZE];
 
 static uint64_t bb[16][BUFFERSIZE];
 
+// Dedicated 8-buffer storage for the crc32c_octo_zerofill_xor benchmarks.
+// Each call processes 8 buffers of `len` bytes; we size each at 16384 bytes
+// (2048 uint64s) so the largest benchmark length (16384) fits.
+#define CRCBUFSIZE 2048   /* uint64 words = 16384 bytes per buffer */
+static uint64_t crcbb[8][CRCBUFSIZE];
+
 // A really giant one for precomputed point tables
 // Needs to be at least 67584 words for P-256 with block size 9.
 
@@ -1148,6 +1154,14 @@ void call_aes_xts_decrypt_512(void) {}
 
 void call_crc32c_octo_zerofill_xor__16(void) {}
 void call_crc32c_octo_zerofill_xor__256(void) {}
+void call_crc32c_octo_zerofill_xor__1024(void) {}
+void call_crc32c_octo_zerofill_xor__4096(void) {}
+void call_crc32c_octo_zerofill_xor__16384(void) {}
+void call_crc32c_octo_zerofill_xor_v2__16(void) {}
+void call_crc32c_octo_zerofill_xor_v2__256(void) {}
+void call_crc32c_octo_zerofill_xor_v2__1024(void) {}
+void call_crc32c_octo_zerofill_xor_v2__4096(void) {}
+void call_crc32c_octo_zerofill_xor_v2__16384(void) {}
 
 #else
 
@@ -1234,12 +1248,40 @@ void call_aes_xts_decrypt_512(void) { repeatfewer(10,aes_xts_decrypt_helper(512)
 // `len` bytes; the kernel zero-fills the buffers as a side effect, so after the
 // first iteration the input is all zeros (still valid for measuring kernel
 // throughput, though not exercising the CRC instructions over varied data).
+//
+// Uses crcbb[8][CRCBUFSIZE] (each buffer is 16384 bytes) so the larger sizes
+// (1024 / 4096 / 16384) all fit inside the buffer storage.
 void call_crc32c_octo_zerofill_xor__16(void)
-  repeat(crc32c_octo_zerofill_xor((uint8_t*)bb[0],(uint8_t*)bb[1],(uint8_t*)bb[2],(uint8_t*)bb[3],
-                                  (uint8_t*)bb[4],(uint8_t*)bb[5],(uint8_t*)bb[6],(uint8_t*)bb[7],16))
+  repeat(crc32c_octo_zerofill_xor((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                  (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],16))
 void call_crc32c_octo_zerofill_xor__256(void)
-  repeat(crc32c_octo_zerofill_xor((uint8_t*)bb[0],(uint8_t*)bb[1],(uint8_t*)bb[2],(uint8_t*)bb[3],
-                                  (uint8_t*)bb[4],(uint8_t*)bb[5],(uint8_t*)bb[6],(uint8_t*)bb[7],256))
+  repeat(crc32c_octo_zerofill_xor((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                  (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],256))
+void call_crc32c_octo_zerofill_xor__1024(void)
+  repeat(crc32c_octo_zerofill_xor((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                  (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],1024))
+void call_crc32c_octo_zerofill_xor__4096(void)
+  repeatfewer(4,crc32c_octo_zerofill_xor((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                         (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],4096))
+void call_crc32c_octo_zerofill_xor__16384(void)
+  repeatfewer(16,crc32c_octo_zerofill_xor((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                          (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],16384))
+
+void call_crc32c_octo_zerofill_xor_v2__16(void)
+  repeat(crc32c_octo_zerofill_xor_v2((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                     (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],16))
+void call_crc32c_octo_zerofill_xor_v2__256(void)
+  repeat(crc32c_octo_zerofill_xor_v2((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                     (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],256))
+void call_crc32c_octo_zerofill_xor_v2__1024(void)
+  repeat(crc32c_octo_zerofill_xor_v2((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                     (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],1024))
+void call_crc32c_octo_zerofill_xor_v2__4096(void)
+  repeatfewer(4,crc32c_octo_zerofill_xor_v2((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                            (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],4096))
+void call_crc32c_octo_zerofill_xor_v2__16384(void)
+  repeatfewer(16,crc32c_octo_zerofill_xor_v2((uint8_t*)crcbb[0],(uint8_t*)crcbb[1],(uint8_t*)crcbb[2],(uint8_t*)crcbb[3],
+                                             (uint8_t*)crcbb[4],(uint8_t*)crcbb[5],(uint8_t*)crcbb[6],(uint8_t*)crcbb[7],16384))
 
 #endif
 
@@ -1599,6 +1641,14 @@ int main(int argc, char *argv[])
   timingtest(all,"bignum_triple_sm2_alt",call_bignum_triple_sm2_alt);
   timingtest(arm,"crc32c_octo_zerofill_xor (8x16 bytes)",call_crc32c_octo_zerofill_xor__16);
   timingtest(arm,"crc32c_octo_zerofill_xor (8x256 bytes)",call_crc32c_octo_zerofill_xor__256);
+  timingtest(arm,"crc32c_octo_zerofill_xor (8x1024 bytes)",call_crc32c_octo_zerofill_xor__1024);
+  timingtest(arm,"crc32c_octo_zerofill_xor (8x4096 bytes)",call_crc32c_octo_zerofill_xor__4096);
+  timingtest(arm,"crc32c_octo_zerofill_xor (8x16384 bytes)",call_crc32c_octo_zerofill_xor__16384);
+  timingtest(arm,"crc32c_octo_zerofill_xor_v2 (8x16 bytes)",call_crc32c_octo_zerofill_xor_v2__16);
+  timingtest(arm,"crc32c_octo_zerofill_xor_v2 (8x256 bytes)",call_crc32c_octo_zerofill_xor_v2__256);
+  timingtest(arm,"crc32c_octo_zerofill_xor_v2 (8x1024 bytes)",call_crc32c_octo_zerofill_xor_v2__1024);
+  timingtest(arm,"crc32c_octo_zerofill_xor_v2 (8x4096 bytes)",call_crc32c_octo_zerofill_xor_v2__4096);
+  timingtest(arm,"crc32c_octo_zerofill_xor_v2 (8x16384 bytes)",call_crc32c_octo_zerofill_xor_v2__16384);
   timingtest(bmi,"curve25519_ladderstep",call_curve25519_ladderstep);
   timingtest(all,"curve25519_ladderstep_alt",call_curve25519_ladderstep_alt);
   timingtest(bmi,"curve25519_pxscalarmul",call_curve25519_pxscalarmul);

@@ -14946,6 +14946,122 @@ int test_crc32c_octo_zerofill_xor(void)
 #endif
 }
 
+int test_crc32c_octo_zerofill_xor_v2(void)
+{
+#ifdef __x86_64__
+  return 1;
+#else
+  // Per-buffer max for the length sweep (largest len exercised below).
+  // Cover small (1..32 bytes), medium (~256), large (~64 KB), and
+  // edge-case lengths 0,1,15,16,17,31,32,33 etc.
+  enum { MAX_LEN = 65536 };
+  static const size_t lens[] =
+   { 0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 128,
+     129, 255, 256, 257, 1023, 1024, 4096, 16384, 65536 };
+  size_t nlens = sizeof(lens) / sizeof(lens[0]);
+
+  static uint8_t bufs_v1[8][MAX_LEN];
+  static uint8_t bufs_v2[8][MAX_LEN];
+  static uint8_t saved [8][MAX_LEN];
+  size_t li, i, j;
+  size_t total_iters = 0;
+  printf("Testing crc32c_octo_zerofill_xor_v2 with %d cases\n",tests);
+
+  // Test 1: IETF KAT (mirrors v1's KAT).
+  { static const char abc[] = "123456789";
+    size_t klen = sizeof(abc) - 1;     // = 9
+    uint32_t expected_xor = 0;
+    uint32_t r;
+    for (i = 0; i < 8; ++i)
+     { for (j = 0; j < klen; ++j) bufs_v2[i][j] = 0;
+     }
+    for (j = 0; j < klen; ++j) bufs_v2[0][j] = (uint8_t) abc[j];
+    for (i = 0; i < 8; ++i)
+      expected_xor ^= reference_crc32c(bufs_v2[i], klen);
+    r = crc32c_octo_zerofill_xor_v2(bufs_v2[0], bufs_v2[1], bufs_v2[2], bufs_v2[3],
+                                    bufs_v2[4], bufs_v2[5], bufs_v2[6], bufs_v2[7], klen);
+    if (r != expected_xor)
+     { printf("Error: v2 IETF-style KAT mismatch: "
+              "asm=0x%08x ref=0x%08x\n", r, expected_xor);
+       return 1;
+     }
+    for (i = 0; i < 8; ++i)
+     { for (j = 0; j < klen; ++j)
+        { if (bufs_v2[i][j] != 0)
+           { printf("Error: v2 KAT buffer %zu not zerofilled at byte %zu "
+                    "(got 0x%02x)\n", i, j, bufs_v2[i][j]);
+             return 1;
+           }
+        }
+     }
+    if (VERBOSE)
+      printf("OK: v2 KAT (\"123456789\",zero^9 x7,len=9) = 0x%08x\n", r);
+  }
+
+  // Test 2: length sweep.  At each length, compare:
+  //    v2 vs reference_crc32c (sanity)
+  //    v2 vs v1 (cross-check, byte-for-byte)
+  // We aim for >= 1000 randomized iterations across all lengths.
+  for (li = 0; li < nlens; ++li)
+   { size_t len = lens[li];
+     // For very large `len` we don't need many iterations to get coverage.
+     uint64_t iters = (uint64_t) tests;
+     if (len >= 16384) iters = 4;
+     else if (len >= 1024) iters = 8;
+     uint64_t t;
+     for (t = 0; t < iters; ++t)
+      { uint32_t expected_xor = 0;
+        uint32_t r1, r2;
+        for (i = 0; i < 8; ++i)
+         { for (j = 0; j < len; ++j)
+            { uint8_t x = (uint8_t) (rand() & 0xff);
+              saved [i][j] = x;
+              bufs_v1[i][j] = x;
+              bufs_v2[i][j] = x;
+            }
+           expected_xor ^= reference_crc32c(saved[i], len);
+         }
+        r1 = crc32c_octo_zerofill_xor   (bufs_v1[0], bufs_v1[1], bufs_v1[2], bufs_v1[3],
+                                         bufs_v1[4], bufs_v1[5], bufs_v1[6], bufs_v1[7],
+                                         len);
+        r2 = crc32c_octo_zerofill_xor_v2(bufs_v2[0], bufs_v2[1], bufs_v2[2], bufs_v2[3],
+                                         bufs_v2[4], bufs_v2[5], bufs_v2[6], bufs_v2[7],
+                                         len);
+        if (r2 != expected_xor)
+         { printf("Error: v2 XOR mismatch at len=%zu: "
+                  "asm=0x%08x ref=0x%08x\n", len, r2, expected_xor);
+           return 1;
+         }
+        if (r2 != r1)
+         { printf("Error: v2 != v1 at len=%zu: v1=0x%08x v2=0x%08x\n",
+                  len, r1, r2);
+           return 1;
+         }
+        for (i = 0; i < 8; ++i)
+         { for (j = 0; j < len; ++j)
+            { if (bufs_v2[i][j] != 0)
+               { printf("Error: v2 buffer %zu not zerofilled at byte %zu "
+                        "(len=%zu, got 0x%02x)\n",
+                        i, j, len, bufs_v2[i][j]);
+                 return 1;
+               }
+            }
+         }
+        total_iters++;
+        if (VERBOSE)
+         { printf("OK: v2 len=%zu -> 0x%08x (matches v1)\n", len, r2);
+         }
+      }
+   }
+
+  if (total_iters < 1000)
+    printf("(note: cross-check ran %zu iterations; small for default tests, "
+           "raise -tests to push past 1000)\n", total_iters);
+  printf("All OK\n");
+  return 0;
+#endif
+}
+
 int test_sha3_keccak_f1600(void)
 { uint64_t t, i;
   uint64_t a[25], b[25], c[25];
@@ -16985,6 +17101,7 @@ int main(int argc, char *argv[])
     functionaltest(sha3,"sha3_keccak2_f1600_alt",test_sha3_keccak2_f1600_alt);
     functionaltest(sha3,"sha3_keccak4_f1600_alt2",test_sha3_keccak4_f1600_alt2);
     functionaltest(arm,"crc32c_octo_zerofill_xor",test_crc32c_octo_zerofill_xor);
+    functionaltest(arm,"crc32c_octo_zerofill_xor_v2",test_crc32c_octo_zerofill_xor_v2);
     functionaltest(aes,"aes_xts_encrypt",test_aes_xts_encrypt);
     functionaltest(aes,"aes_xts_decrypt",test_aes_xts_decrypt);
     functionaltest(aes,"aes_xts_roundtrip",test_aes_xts_roundtrip);

@@ -414,6 +414,7 @@ AES_XTS_OBJ = aes-xts/aes_xts_decrypt.o \
               aes-xts/aes_xts_encrypt.o
 
 CRC32_OBJ = crc32/crc32c_octo_zerofill_xor.o \
+            crc32/crc32c_octo_zerofill_xor_v2.o \
             crc32/crc32c_step_reg.o \
             crc32/crc32c_block16_one.o \
             crc32/crc32c_loop16_body.o \

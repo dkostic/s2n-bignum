@@ -933,6 +933,12 @@ extern void bignum_triple_sm2_alt (uint64_t z[S2N_BIGNUM_STATIC 4], const uint64
 // Inputs a[len], b[len], c[len], d[len], e[len], f[len], g[len], h[len], len; outputs a[len], b[len], c[len], d[len], e[len], f[len], g[len], h[len], function return
 extern uint32_t crc32c_octo_zerofill_xor(uint8_t *a,uint8_t *b,uint8_t *c,uint8_t *d,uint8_t *e,uint8_t *f,uint8_t *g,uint8_t *h,size_t len);
 
+// EXPERIMENTAL / UNVERIFIED interleaved variant of crc32c_octo_zerofill_xor.
+// Same C ABI / semantics; inner loop reorders CRC32CX issues across the 8
+// chains so consecutive CRC32CXs target different accumulators (hides the
+// CRC32CX latency on cores with a single CRC pipe, e.g. Neoverse-N1).
+extern uint32_t crc32c_octo_zerofill_xor_v2(uint8_t *a,uint8_t *b,uint8_t *c,uint8_t *d,uint8_t *e,uint8_t *f,uint8_t *g,uint8_t *h,size_t len);
+
 // Montgomery ladder step for curve25519
 // Inputs point[8], pp[16], b; output rr[16]
 extern void curve25519_ladderstep(uint64_t rr[16],const uint64_t point[8],const uint64_t pp[16],uint64_t b);
