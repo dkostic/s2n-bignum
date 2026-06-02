@@ -1724,6 +1724,53 @@ let aes_gcm_main_loop_body_slice_mc_def,
     (fst AES_GCM_ENC_KERNEL_EXEC);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 — small body-slice cut: AES round 0 for blocks 0/1/2.             *)
+(*                                                                           *)
+(* The first 8 instructions of the loop-body slice (slice-relative offsets   *)
+(* 0..0x1c, kernel offsets 0x308..0x324) interleave:                         *)
+(*                                                                           *)
+(*   0x000  arm_AESE  Q0 Q18                ; AES block 4k+4 - round 0       *)
+(*   0x004  arm_AESMC Q0 Q0                                                  *)
+(*   0x008  arm_REV64_VEC Q4 Q4 8           ; GHASH PRE for prev ciphertext  *)
+(*   0x00c  arm_AESE  Q1 Q18                ; AES block 4k+5 - round 0       *)
+(*   0x010  arm_AESMC Q1 Q1                                                  *)
+(*   0x014  arm_FMOV_ItoF Q3 X10 0          ; CTR block 4k+7 setup, low half *)
+(*   0x018  arm_AESE  Q2 Q18                ; AES block 4k+6 - round 0       *)
+(*   0x01c  arm_AESMC Q2 Q2                                                  *)
+(*                                                                           *)
+(* Block 4k+7 (Q3) does not get AES round 0 until offset 0x5c (instr 24);    *)
+(* in this 8-instruction window only blocks 0/1/2 advance an AES round, with *)
+(* round-key Q18 (rk0).  Q3 and Q4 are clobbered (CTR setup / GHASH PRE)     *)
+(* and therefore live in the MAYCHANGE frame.                                *)
+(*                                                                           *)
+(* This proof exercises the slice-promotion + AES-round-bridge closing       *)
+(* tactic at minimal risk — same shape as `AES4WAY_ROUND_KERNEL_SLICE_       *)
+(* CORRECT` above, but on the loop body slice.  Subsequent cuts compose.     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R0_BLOCKS012_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (rk0:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q18 s = rk0)
+     (\s. read PC s = word (pc + 0x20) /\
+          read Q0 s = aes_arm_round b0 rk0 /\
+          read Q1 s = aes_arm_round b1 rk0 /\
+          read Q2 s = aes_arm_round b2 rk0 /\
+          read Q18 s = rk0)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--8) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
