@@ -3388,6 +3388,80 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH R9_FINAL_B2_B3 with Q10 and Q11 value-tracking — instr     *)
+(* 157..166.                                                                 *)
+(*                                                                           *)
+(* Window: slice instr 157..166 (offsets 0x270..0x298, 10 instructions) —   *)
+(* same as the existing AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B2_B3_CORRECT cut   *)
+(* but with full GHASH value tracking on Q10 and Q11.                       *)
+(*                                                                           *)
+(* Notable instructions in this window:                                      *)
+(*   instr 161 (offset 0x280): arm_EOR_VEC Q11 Q11 Q9 128                   *)
+(*                             ^ Q11 := q11_in XOR q9_in                    *)
+(*                                    = v11_a in kernel_modulo notation     *)
+(*                                    = l XOR v9_new                        *)
+(*   instr 163 (offset 0x288): arm_EXT Q10 Q10 Q10 64                       *)
+(*                             ^ Q10 := byteswap128 q10_in = v10_swap       *)
+(*                                    (kernel_modulo's `byteswap128 v10_b`) *)
+(*                                                                           *)
+(* Postcondition tracks 2 GHASH writes:                                      *)
+(*   Q10 = byteswap128 q10_in — kernel_modulo's `v10_swap`                  *)
+(*   Q11 = q11_in XOR q9_in — kernel_modulo's `v11_a`                       *)
+(*                                                                           *)
+(* Plus AES round-9-final advances on Q2/Q3 and the two ciphertext stores   *)
+(* (Q4, Q5 written to memory at cptr/cptr+16, X2 advances by 32).            *)
+(*                                                                           *)
+(* nonoverlapping precondition required for the simulator to discharge      *)
+(* "stores will not modify the program code".                                *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain.  Q11 closes via plain WORD_BLAST   *)
+(* (XOR commutativity); Q10 needs `REWRITE_TAC[byteswap128]` then            *)
+(* WORD_BLAST.  AES conjuncts close via ASM_REWRITE after                   *)
+(* AESE_AS_ARM_FINAL_ROUND.                                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B2_B3_GHASH_CORRECT = prove
+ (`!pc (cptr:int64) (b2:int128) (b3:int128) (q9_in:int128) (q10_in:int128)
+        (q11_in:int128) (rk9:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 32)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x270) /\
+              read X2 s = cptr /\
+              read Q2 s = b2 /\
+              read Q3 s = b3 /\
+              read Q9 s = q9_in /\
+              read Q10 s = q10_in /\
+              read Q11 s = q11_in /\
+              read Q31 s = rk9)
+         (\s. read PC s = word (pc + 0x298) /\
+              read X2 s = word_add cptr (word 32) /\
+              read Q2 s = aes_arm_final_round b2 rk9 /\
+              read Q3 s = aes_arm_final_round b3 rk9 /\
+              read Q9 s = q9_in /\
+              read Q10 s = byteswap128 q10_in /\
+              read Q11 s = word_xor q11_in q9_in /\
+              read Q31 s = rk9)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q2; Q3; Q7; Q10; Q11] ,,
+          MAYCHANGE [X2; X9; X12] ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16))] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--10) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (REWRITE_TAC[byteswap128] THEN ASM_REWRITE_TAC[] THEN
+       CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH FINAL_XOR_AND_CTR with Q9 value-tracking — instr 143..156. *)
 (*                                                                           *)
 (* Window: slice instr 143..156 (offsets 0x238..0x270, 14 instructions) —   *)
