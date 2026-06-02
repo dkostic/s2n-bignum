@@ -188,3 +188,62 @@ let AES4WAY_ROUND_MEM_CORRECT = prove
   ARM_STEPS_TAC AES4WAY_ROUND_MEM_EXEC (1--10) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 5b pilot — plaintext load via LDP + FMOV chain.                     *)
+(*                                                                           *)
+(* The kernel routes plaintext blocks from memory into Q registers via       *)
+(*                                                                           *)
+(*   ldp  x6, x7, [x0]            ; two 64-bit reads from plaintext base    *)
+(*   fmov d4, x6                  ; X6 -> Q4 low 64 bits (upper bits zero)  *)
+(*   fmov v4.d[1], x7             ; X7 -> Q4 high 64 bits                   *)
+(*                                                                           *)
+(* (The kernel actually XORs the round-N key bits into x6/x7 between the    *)
+(* `ldp` and the `fmov`s — that's the GCM-specific final-round trick which  *)
+(* we capture later.  This pilot exercises the bare load+assemble pattern  *)
+(* in isolation.)                                                            *)
+(*                                                                           *)
+(* The pilot validates the int128-via-two-int64-loads pattern that any      *)
+(* `ldp x_, y_, [...]` plus `fmov`-pair will produce.  After symbolic       *)
+(* execution, Q4 holds                                                       *)
+(*                                                                           *)
+(*   word_insert (word_zx (word_subword b (0,64))) (64,64)                   *)
+(*               (word_subword b (64,64))                                    *)
+(*                                                                           *)
+(* which equals `b` by `WORD_BLAST` once the precondition's `bytes128`      *)
+(* read is split into two `bytes64` reads via `READ_MEMORY_SPLIT_CONV 1`.   *)
+(* ------------------------------------------------------------------------- *)
+
+let aes_load_block_mc = define_assert_from_elf "aes_load_block_mc"
+                                              "arm/aes-gcm/aes_load_block.o"
+[
+  0xa9401c06;       (* arm_LDP X6 X7 X0 (Immediate_Offset (iword (&0))) *)
+  0x9e6700c4;       (* arm_FMOV_ItoF Q4 X6 0 *)
+  0x9eaf00e4        (* arm_FMOV_ItoF Q4 X7 1 *)
+];;
+
+let AES_LOAD_BLOCK_EXEC = ARM_MK_EXEC_RULE aes_load_block_mc;;
+
+let AES_LOAD_BLOCK_CORRECT = prove
+ (`!pc pptr (b:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_load_block_mc /\
+          read PC s = word pc /\
+          read X0 s = pptr /\
+          read (memory :> bytes128 pptr) s = b)
+     (\s. read PC s = word (pc + 0xc) /\
+          read Q4 s = b)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [X6; X7] ,,
+      MAYCHANGE [Q4] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  FIRST_X_ASSUM(ASSUME_TAC o
+        CONV_RULE(ONCE_DEPTH_CONV(READ_MEMORY_SPLIT_CONV 1)) o
+        check (can (term_match[] `read (memory :> bytes128 a) s = x`) o
+               concl)) THEN
+  ARM_STEPS_TAC AES_LOAD_BLOCK_EXEC (1--3) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC WORD_BLAST);;
