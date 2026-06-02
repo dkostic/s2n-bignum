@@ -559,6 +559,73 @@ let KERNEL_4BLOCK_NIST_BRIDGE = prove
   REPEAT GEN_TAC THEN
   REWRITE_TAC[NIST_GHASH_IS_POLYVAL; KERNEL_4BLOCK_GHASH_BRIDGE]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Input-binding form of the 4-block NIST bridge — matches the shape that    *)
+(* the kernel's GHASH composition cut produces.                              *)
+(*                                                                           *)
+(* The composition cut                                                       *)
+(*   AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT             *)
+(* leaves Q11 in the form                                                    *)
+(*   kernel_modulo (word_xor q9_in q5)                                       *)
+(*                 (word_xor q11_in q6)                                      *)
+(*                 (word_xor q10_in (word_pmul q4_in_lo q16_lo))             *)
+(* where q5/q6 are the per-block-3 high/low Karatsuba products and the      *)
+(* third argument's inner pmul is the per-block-3 mid Karatsuba product.    *)
+(*                                                                           *)
+(* When the per-block 0/1/2 cuts have already accumulated their Karatsuba   *)
+(* contributions into q9_in/q10_in/q11_in (XOR-summed left-associatively   *)
+(* over blocks 0/1/2), the kernel's final XOR with the block-3 contributions*)
+(* corresponds to the left-associated 4-block sum                           *)
+(*   `word_xor (word_xor (word_xor h0 h1) h2) h3` etc.                      *)
+(*                                                                           *)
+(* This bridge takes the kernel's input-binding shape directly (LHS of the  *)
+(* assumption) and concludes the spec-form GHASH update (RHS of the         *)
+(* conclusion).  The proof reduces to the right-associated bridge after     *)
+(* re-associating the 4-block XOR sums.                                     *)
+let KERNEL_4BLOCK_NIST_BRIDGE_LASSOC = prove
+ (`!(h:int128) (prev_tag:int128) (ct0:int128) (ct1:int128) (ct2:int128)
+        (ct3:int128) (q5:int128) (q6:int128) (q9_in:int128) (q10_in:int128)
+        (q11_in:int128) (q4_in:int128) (q16:int128).
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power (ghash_twist h) 3)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1)
+                            (byteswap128 (h_power (ghash_twist h) 2)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2)
+                            (byteswap128 (h_power (ghash_twist h) 1)) in
+     let h3,l3,m3 =
+       karatsuba_components (byteswap128 ct3)
+                            (byteswap128 (h_power (ghash_twist h) 0)) in
+     word_xor q9_in q5 = word_xor (word_xor (word_xor h0 h1) h2) h3 /\
+     word_xor q11_in q6 = word_xor (word_xor (word_xor l0 l1) l2) l3 /\
+     word_xor q10_in
+              (word_pmul (word_subword q4_in (0,64) :64 word)
+                         (word_subword q16 (0,64) :64 word) :int128) =
+     word_xor (word_xor (word_xor m0 m1) m2) m3)
+    ==> kernel_modulo
+            (word_xor q9_in q5) (word_xor q11_in q6)
+            (word_xor q10_in
+                      (word_pmul (word_subword q4_in (0,64) :64 word)
+                                 (word_subword q16 (0,64) :64 word)
+                       :int128)) =
+        nist_ghash h prev_tag [ct0; ct1; ct2; ct3]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  MP_TAC(SPECL [`h:int128`; `prev_tag:int128`; `ct0:int128`;
+                `ct1:int128`; `ct2:int128`; `ct3:int128`]
+               KERNEL_4BLOCK_NIST_BRIDGE) THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  SUBGOAL_THEN
+   `!a b c d:int128.
+       word_xor (word_xor a b) (word_xor c d) =
+       word_xor (word_xor (word_xor a b) c) d`
+   (fun th -> REWRITE_TAC[th]) THEN
+  CONV_TAC WORD_RULE);;
+
 (* ========================================================================= *)
 (* End Phase 3b/c framework.                                                 *)
 (* ========================================================================= *)
