@@ -3084,6 +3084,7 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_HIGH_CORRECT = prove
           read Q9 s = (word_pmul (word_subword q4 (64,64) :64 word)
                                  (word_subword q15 (64,64) :64 word)
                        :int128) /\
+          read Q10 s = (word_zx (word_subword q17 (64,64) :64 word) :int128) /\
           read Q15 s = q15 /\
           read Q17 s = q17 /\
           read Q18 s = rk0 /\
