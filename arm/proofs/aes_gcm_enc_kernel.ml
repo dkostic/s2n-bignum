@@ -3388,6 +3388,95 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-MODULO-Karatsuba-tidy + h/c64-pmull + h byteswap.           *)
+(*                                                                           *)
+(* Window: slice instr 124..137 (offsets 0x1ec..0x224, 14 instructions) — a *)
+(* MIDDLE portion of the existing GHASH_MODULO_CORRECT cut, with full       *)
+(* value tracking on Q7/Q9/Q10.  This is the kernel_modulo's "v4 = l ^ h"  *)
+(* / "v7 = pmull(h, c64)" / "h_swap = byteswap128 h" / "v10_a = m ^ v4"    *)
+(* / "v7_a = h_swap ^ v7" sub-chain — naming the intermediate values       *)
+(* exactly as `kernel_modulo` does in `aes_gcm_bridge.ml:344`.              *)
+(*                                                                           *)
+(*   instr 124 (offset 0x1ec): arm_EOR_VEC Q4 Q11 Q9 128                    *)
+(*                             ^ Q4 := q11_in XOR q9_in (= v4 = l ^ h)      *)
+(*   instr 125 (offset 0x1f0): arm_ADD X0 X0 #64                            *)
+(*   instr 126 (offset 0x1f4): arm_PMULL_VEC Q7 Q9 Q8 64                    *)
+(*                             ^ Q7 := pmull(q9_in_lo, q8_in_lo) (= v7)     *)
+(*   instr 127 (offset 0x1f8): arm_REV W9 W12                               *)
+(*   instr 128 (offset 0x1fc): arm_EXT Q9 Q9 Q9 64                          *)
+(*                             ^ Q9 := byteswap128 q9_in (= h_swap)         *)
+(*                               (note: ext v.16b, v.16b, v.16b, #8 on the *)
+(*                               same operand swaps the two 64-bit halves, *)
+(*                               which is exactly byteswap128 for a value)  *)
+(*   instr 129 (offset 0x200): arm_EOR X6 X6 X13                            *)
+(*   instr 130 (offset 0x204): arm_EOR_VEC Q10 Q10 Q4 128                   *)
+(*                             ^ Q10 := q10_in XOR (q11_in XOR q9_in)       *)
+(*                                    = v10_a (kernel_modulo)               *)
+(*   instr 131 (offset 0x208): arm_EOR X7 X7 X14                            *)
+(*   instr 132 (offset 0x20c): arm_FMOV_ItoF Q4 X6 0  (Q4 clobbered)        *)
+(*   instr 133 (offset 0x210): arm_ORR X9 X11 (X9 LSL 32)                   *)
+(*   instr 134 (offset 0x214): arm_EOR_VEC Q7 Q9 Q7 128                     *)
+(*                             ^ Q7 := byteswap128(q9_in) XOR pmull(...)   *)
+(*                                    = v7_a (kernel_modulo)                *)
+(*   instr 135 (offset 0x218): arm_EOR X20 X20 X14                          *)
+(*   instr 136 (offset 0x21c): arm_EOR X24 X24 X14                          *)
+(*   instr 137 (offset 0x220): arm_ADD W12 W12 #1                           *)
+(*                                                                           *)
+(* Postcondition tracks 5 GHASH writes:                                      *)
+(*   Q7  = byteswap128 q9_in XOR pmull(q9_in_lo, q8_in_lo)                 *)
+(*           — kernel_modulo's `v7_a = h_swap XOR v7`                       *)
+(*   Q8  = q8_in (unchanged)                                                 *)
+(*   Q9  = byteswap128 q9_in — kernel_modulo's `h_swap`                     *)
+(*   Q10 = q10_in XOR (q11_in XOR q9_in) — kernel_modulo's `v10_a`         *)
+(*   Q11 = q11_in (unchanged after blk-3 LOW accum at instr 121)            *)
+(*                                                                           *)
+(* MAYCHANGE includes [events] (no memory event in this window — instr      *)
+(* 119's LDP is OUTSIDE this window — but kept for safety on the X0 ADD    *)
+(* and other scalar ops).  Note also no MAYCHANGE on [events] is needed    *)
+(* since this window has no memory events — but the existing               *)
+(* GHASH_MODULO_CORRECT lists [events] in its MAYCHANGE; aligning here      *)
+(* avoids subsumption gymnastics in composition.                             *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain.  Q9 is `byteswap128 q9_in` —      *)
+(* needs `REWRITE_TAC[byteswap128]` to unfold, then ASM_REWRITE +           *)
+(* WORD_BLAST closes (the kernel's `ext` on a single-operand v.16b is       *)
+(* exactly the byteswap128 = swap-halves operation modulo word_subword     *)
+(* algebra).  Other XOR-commutativity conjuncts close via plain WORD_BLAST. *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_MODULO_KARATSUBA_CORRECT = prove
+ (`!pc (q8_in:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x1ec) /\
+          read Q8 s = q8_in /\
+          read Q9 s = q9_in /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in)
+     (\s. read PC s = word (pc + 0x224) /\
+          read Q7 s = word_xor (byteswap128 q9_in)
+                          (word_pmul (word_subword q9_in (0,64) :64 word)
+                                     (word_subword q8_in (0,64) :64 word)
+                            :int128) /\
+          read Q8 s = q8_in /\
+          read Q9 s = byteswap128 q9_in /\
+          read Q10 s = word_xor q10_in (word_xor q11_in q9_in) /\
+          read Q11 s = q11_in)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q7; Q9; Q10] ,,
+      MAYCHANGE [X0; X6; X7; X9; X12; X20; X24] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--14) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[byteswap128] THEN ASM_REWRITE_TAC[] THEN
+       CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-block-3-MID pmull + block-3 HIGH/LOW/MID XOR accumulators  *)
 (* + Q8 movi/shl + Q5 fmov-CTR-clobber.                                      *)
 (*                                                                           *)
