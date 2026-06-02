@@ -3477,6 +3477,91 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK2_HL_BLOCK3_L_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-2-MID + block-3-HIGH + block-1-LOW-accum cut.        *)
+(*                                                                           *)
+(* Window: slice instr 94..105 (offsets 0x174..0x1a4, 12 instructions),    *)
+(* same as the existing AES_GCM_MAIN_LOOP_BODY_R8R7_LDP_CORRECT but with   *)
+(* full GHASH value tracking on Q5/Q8/Q11.                                  *)
+(*                                                                           *)
+(*   instr 94  (offset 0x174): arm_LDP X19 X20 X0 #16   ; AES blk 4k+5 plt  *)
+(*   instr 95  (offset 0x178): arm_AESE Q1 Q26          ; AES rd 8 blk 1   *)
+(*   instr 96  (offset 0x17c): arm_AESMC Q1 Q1                              *)
+(*   instr 97  (offset 0x180): arm_DUP_GEN_FROM_ELEM Q4 Q7 64 64 1 ; blk-3 mid prep*)
+(*   instr 98  (offset 0x184): arm_AESE Q2 Q24          ; AES rd 6 blk 2   *)
+(*   instr 99  (offset 0x188): arm_AESMC Q2 Q2                              *)
+(*   instr 100 (offset 0x18c): arm_EOR_VEC Q11 Q11 Q5 128 ; blk-2 LOW accum *)
+(*   instr 101 (offset 0x190): arm_PMULL2_VEC Q8 Q8 Q16 ; blk-2 MID         *)
+(*   instr 102 (offset 0x194): arm_PMULL2_VEC Q5 Q7 Q12 ; blk-3 HIGH        *)
+(*   instr 103 (offset 0x198): arm_EOR_VEC Q4 Q4 Q7 64  ; blk-3 mid prep   *)
+(*   instr 104 (offset 0x19c): arm_AESE Q2 Q25          ; AES rd 7 blk 2   *)
+(*   instr 105 (offset 0x1a0): arm_AESMC Q2 Q2                              *)
+(*                                                                           *)
+(* IMPORTANT — Q5 chain:                                                     *)
+(*   - Enters as `q5_in` (from prior cut: blk-2 LOW pmull product)          *)
+(*   - Consumed by EOR Q11 ^= Q5 at instr 100 (using OLD q5_in)             *)
+(*   - Overwritten by PMULL2 Q5 = Q7_HI * Q12_HI at instr 102 (blk-3 HIGH) *)
+(*                                                                           *)
+(* Postcondition tracks 3 GHASH writes:                                      *)
+(*   Q5 = pmull (subword q7 (64,64)) (subword q12 (64,64)) — blk-3 HIGH    *)
+(*   Q8 = pmull (subword q8_in (64,64)) (subword q16 (64,64)) — blk-2 MID  *)
+(*  Q11 = q11_in XOR q5_in (blk-2 LOW XOR accumulator, OLD Q5)              *)
+(*                                                                           *)
+(* Plus AES round advances: Q1 → rk8, Q2 → rk6 → rk7 (2-round advance),    *)
+(* and the LDP X19, X20.  Q4 (DUP_GEN + EOR) sits in MAYCHANGE without     *)
+(* value tracking — its block-3 mid value depends on q7 only and can be    *)
+(* tracked in the next cut.                                                  *)
+(*                                                                           *)
+(* Closes via the standard TRY chain.                                        *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK2_MID_BLOCK3_HIGH_CORRECT = prove
+ (`!pc (b1:int128) (b2:int128) (q5_in:int128) (q7:int128) (q8_in:int128)
+        (q11_in:int128) (q12:int128) (q16:int128)
+        (rk6:int128) (rk7:int128) (rk8:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x174) /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q5 s = q5_in /\
+          read Q7 s = q7 /\
+          read Q8 s = q8_in /\
+          read Q11 s = q11_in /\
+          read Q12 s = q12 /\
+          read Q16 s = q16 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (\s. read PC s = word (pc + 0x1a4) /\
+          read Q1 s = aes_arm_round b1 rk8 /\
+          read Q2 s = aes_arm_round (aes_arm_round b2 rk6) rk7 /\
+          read Q5 s = (word_pmul (word_subword q7 (64,64) :64 word)
+                                 (word_subword q12 (64,64) :64 word)
+                       :int128) /\
+          read Q7 s = q7 /\
+          read Q8 s = (word_pmul (word_subword q8_in (64,64) :64 word)
+                                 (word_subword q16 (64,64) :64 word)
+                       :int128) /\
+          read Q11 s = word_xor q11_in q5_in /\
+          read Q12 s = q12 /\
+          read Q16 s = q16 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q1; Q2; Q4; Q5; Q8; Q11] ,,
+      MAYCHANGE [X19; X20] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--12) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 FULL BODY composition cut: all 175 instructions.                  *)
 (*                                                                           *)
 (* Composes the full 17-cut chain (R0_BLOCKS012 through TAIL) into a single *)
