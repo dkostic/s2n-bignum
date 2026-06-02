@@ -4371,3 +4371,92 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT = prove
   CONV_TAC WORD_RULE);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH SPEC-FORM cut over offsets 0x1c8..0x2bc.                    *)
+(*                                                                           *)
+(* Wraps AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT with    *)
+(* KERNEL_4BLOCK_NIST_BRIDGE_LASSOC to express Q11's exit value in spec form*)
+(* `nist_ghash h prev_tag [ct0;ct1;ct2;ct3]` rather than the kernel's       *)
+(* `kernel_modulo` form.                                                     *)
+(*                                                                           *)
+(* The spec-form precondition is the bridge's input-binding antecedent: the *)
+(* composition cut's q9_in/q10_in/q11_in/q4_in must satisfy the 4-block     *)
+(* left-associated XOR-sum of Karatsuba components against H-power table   *)
+(* entries.  In Phase 8, this antecedent will be discharged by composing    *)
+(* with the per-block 0/1/2 cuts (BLOCK0_HIGH/LOW, BLOCK0_MID_BLOCK1_HIGH,  *)
+(* BLOCK1_LOW/MID, BLOCK2_HL_BLOCK3_L, BLOCK2_MID_BLOCK3_HIGH) which        *)
+(* together establish that q9_in/q10_in/q11_in are the per-block-0/1/2     *)
+(* Karatsuba accumulators and q5/q6 are the block-3 HIGH/LOW products.      *)
+(*                                                                           *)
+(* Discharge: trivially follows from the composition cut + bridge:          *)
+(*   1. MP_TAC the composition cut, ASM_REWRITE_TAC for nonoverlap.        *)
+(*   2. MP_TAC the bridge, ASM_REWRITE_TAC for the input-binding antecedent.*)
+(*   3. The bridge yields a `kernel_modulo (...) = nist_ghash` equality.   *)
+(*      GSYM-rewrite to fold nist_ghash → kernel_modulo in the goal,       *)
+(*      matching the composition cut's postcondition exactly.               *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_SPEC_FORM_CORRECT = prove
+ (`!pc (cptr:int64) (q2:int128) (q3:int128) (q4_in:int128) (q5:int128)
+        (q6:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128)
+        (q16:int128) (rk9:int128) (h:int128) (prev_tag:int128)
+        (ct0:int128) (ct1:int128) (ct2:int128) (ct3:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 64) /\
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power (ghash_twist h) 3)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1)
+                            (byteswap128 (h_power (ghash_twist h) 2)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2)
+                            (byteswap128 (h_power (ghash_twist h) 1)) in
+     let h3,l3,m3 =
+       karatsuba_components (byteswap128 ct3)
+                            (byteswap128 (h_power (ghash_twist h) 0)) in
+     word_xor q9_in q5 = word_xor (word_xor (word_xor h0 h1) h2) h3 /\
+     word_xor q11_in q6 = word_xor (word_xor (word_xor l0 l1) l2) l3 /\
+     word_xor q10_in
+              (word_pmul (word_subword q4_in (0,64) :64 word)
+                         (word_subword q16 (0,64) :64 word) :int128) =
+     word_xor (word_xor (word_xor m0 m1) m2) m3)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x1c8) /\
+              read X2 s = cptr /\
+              read Q2 s = q2 /\
+              read Q3 s = q3 /\
+              read Q4 s = q4_in /\
+              read Q5 s = q5 /\
+              read Q6 s = q6 /\
+              read Q9 s = q9_in /\
+              read Q10 s = q10_in /\
+              read Q11 s = q11_in /\
+              read Q16 s = q16 /\
+              read Q31 s = rk9)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X2 s = word_add cptr (word 64) /\
+              read Q11 s = nist_ghash h prev_tag [ct0; ct1; ct2; ct3])
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  STRIP_TAC THEN
+  MP_TAC(SPECL [`pc:num`; `cptr:int64`; `q2:int128`; `q3:int128`;
+                `q4_in:int128`; `q5:int128`; `q6:int128`; `q9_in:int128`;
+                `q10_in:int128`; `q11_in:int128`; `q16:int128`; `rk9:int128`]
+               AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  MP_TAC(SPECL [`h:int128`; `prev_tag:int128`; `ct0:int128`;
+                `ct1:int128`; `ct2:int128`; `ct3:int128`;
+                `q5:int128`; `q6:int128`; `q9_in:int128`;
+                `q10_in:int128`; `q11_in:int128`; `q4_in:int128`;
+                `q16:int128`]
+               KERNEL_4BLOCK_NIST_BRIDGE_LASSOC) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[GSYM th]));;
+
+(* ------------------------------------------------------------------------- *)
