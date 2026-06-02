@@ -40,6 +40,7 @@ OBJ = aes_gcm.o \
       aes4way_round.o \
       aes4way_2rounds.o \
       aes_block_full.o \
+      aes_block_full_mem.o \
       aes4way_round_mem.o \
       aes_load_block.o \
       ghash_modulo.o \

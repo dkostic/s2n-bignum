@@ -274,6 +274,110 @@ let AES_BLOCK_FULL_CORRECT = prove
   CONV_TAC WORD_RULE);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7a sub-pilot — full single-block AES-128 cipher with memory I/O.    *)
+(*                                                                           *)
+(* This composes:                                                            *)
+(*   - LDR Q0, [X0]   -- load 16-byte plaintext from memory                   *)
+(*   - 9 × (AESE+AESMC) for rounds 0..8 with rk0..rk8 in V18..V26             *)
+(*   - AESE for round 9 (rk9 in V27, no AESMC)                                *)
+(*   - EOR with rk10 in V28 (round-10 key absorption)                         *)
+(*   - STR Q0, [X2]   -- store 16-byte ciphertext to memory                   *)
+(*                                                                           *)
+(* Total: 23 instructions.  Validates that the full AES-128 cipher with      *)
+(* memory plaintext load + memory ciphertext store composes against          *)
+(* `aes128_cipher_arm`.  No GHASH, no loop.  Closes the AES-side memory      *)
+(* plumbing for Phase 7+.                                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let aes_block_full_mem_mc = define_assert_from_elf "aes_block_full_mem_mc"
+                                                   "arm/aes-gcm/aes_block_full_mem.o"
+[
+  0x3dc00000;       (* arm_LDR Q0 X0 (Immediate_Offset (word 0)) *)
+  0x4e284a40;       (* arm_AESE Q0 Q18 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284a60;       (* arm_AESE Q0 Q19 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284a80;       (* arm_AESE Q0 Q20 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284aa0;       (* arm_AESE Q0 Q21 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ac0;       (* arm_AESE Q0 Q22 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ae0;       (* arm_AESE Q0 Q23 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b00;       (* arm_AESE Q0 Q24 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b20;       (* arm_AESE Q0 Q25 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b40;       (* arm_AESE Q0 Q26 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b60;       (* arm_AESE Q0 Q27 *)
+  0x6e3c1c00;       (* arm_EOR_VEC Q0 Q0 Q28 128 *)
+  0x3d800040        (* arm_STR Q0 X2 (Immediate_Offset (word 0)) *)
+];;
+
+let AES_BLOCK_FULL_MEM_EXEC = ARM_MK_EXEC_RULE aes_block_full_mem_mc;;
+
+(* Pilot ensures: full single-block AES-128 cipher with memory I/O.           *)
+(*                                                                            *)
+(* Inputs:                                                                    *)
+(*   X0           = plaintext source pointer                                  *)
+(*   X2           = ciphertext destination pointer                            *)
+(*   memory at X0 = plaintext block `pt`                                      *)
+(*   Q18..Q28     = round keys `rk0`..`rk10`                                  *)
+(*                                                                            *)
+(* Outputs:                                                                   *)
+(*   Q0           = `aes128_cipher_arm pt [rk0;...;rk10]`                     *)
+(*   memory at X2 = `aes128_cipher_arm pt [rk0;...;rk10]`                     *)
+(*                                                                            *)
+(* The MAYCHANGE frame includes `events` (LDR/STR generate uarch events) and *)
+(* `memory :> bytes128 cptr` (the 16-byte store).                             *)
+
+let AES_BLOCK_FULL_MEM_CORRECT = prove
+ (`!pc pptr cptr (pt:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+       (rk10:int128).
+    nonoverlapping (word pc, LENGTH aes_block_full_mem_mc)
+                   (cptr:int64, 16)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_block_full_mem_mc /\
+              read PC s = word pc /\
+              read X0 s = pptr /\
+              read X2 s = cptr /\
+              read (memory :> bytes128 pptr) s = pt /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
+              read Q27 s = rk9 /\
+              read Q28 s = rk10)
+         (\s. read PC s = word (pc + 0x58) /\
+              read Q0 s = aes128_cipher_arm pt
+                            [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;rk10] /\
+              read (memory :> bytes128 cptr) s =
+                aes128_cipher_arm pt
+                  [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;rk10])
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0] ,,
+          MAYCHANGE [events] ,,
+          MAYCHANGE [memory :> bytes128 cptr])`,
+  REWRITE_TAC[fst AES_BLOCK_FULL_MEM_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_BLOCK_FULL_MEM_EXEC (1--22) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND; AESE_AS_ARM_FINAL_ROUND;
+                  aes128_cipher_arm; LET_DEF; LET_END_DEF; EL; HD; TL] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 5 pilot — round-key memory load + 4-way AES round + ciphertext      *)
 (* memory store.  Same shape as Phase 4 plus a 128-bit memory load (LDR Q23) *)
 (* and a 128-bit memory store (STR Q0).                                      *)
