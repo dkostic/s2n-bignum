@@ -1956,6 +1956,47 @@ let AES_GCM_MAIN_LOOP_BODY_R1_BLOCK3_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: AES round 4 for block 0 + round 2 for block 2          *)
+(* (slice instr 35..41).                                                     *)
+(*                                                                           *)
+(* Window (offsets 0x88..0xa0) — heavily GHASH-interleaved:                  *)
+(*                                                                           *)
+(*   0x088  arm_REV64_VEC  Q5 Q5 8       ; GHASH 4k+1 byteswap (Q5)          *)
+(*   0x08c  arm_AESE       Q0 Q22        ; round 4 block 0 (rk4=Q22)         *)
+(*   0x090  arm_AESMC      Q0 Q0                                              *)
+(*   0x094  arm_PMULL_VEC  Q11 Q4 Q15 64 ; GHASH 4k - low (Q11)               *)
+(*   0x098  arm_EOR_VEC    Q8 Q8 Q4 64   ; GHASH 4k - mid (Q8 lo half)        *)
+(*   0x09c  arm_AESE       Q2 Q20        ; round 2 block 2 (rk2=Q20)          *)
+(*   0x0a0  arm_AESMC      Q2 Q2                                              *)
+(*                                                                           *)
+(* Q0 advances rk3→rk4; Q2 advances rk1→rk2.  GHASH side clobbers           *)
+(* Q5/Q8/Q11 — listed in MAYCHANGE without value-tracking.  Block 2 finally  *)
+(* catches up on round 2 (it was idle through cuts R0/R1/R0R3/R1_BLOCK3).   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R4R2_BLOCK0_BLOCK2_CORRECT = prove
+ (`!pc (b0:int128) (b2:int128) (rk2:int128) (rk4:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x88) /\
+          read Q0 s = b0 /\
+          read Q2 s = b2 /\
+          read Q20 s = rk2 /\
+          read Q22 s = rk4)
+     (\s. read PC s = word (pc + 0xa4) /\
+          read Q0 s = aes_arm_round b0 rk4 /\
+          read Q2 s = aes_arm_round b2 rk2 /\
+          read Q20 s = rk2 /\
+          read Q22 s = rk4)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q2; Q5; Q8; Q11])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--7) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
