@@ -185,6 +185,95 @@ let AES4WAY_2ROUNDS_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7a sub-pilot — full single-block AES-128 cipher (register-only).    *)
+(*                                                                           *)
+(* This is 21 instructions of straight-line AES-128 single-block             *)
+(* encryption: 9 × (aese + aesmc) for rounds 0..8 (round keys V18..V26),     *)
+(* then 1 × aese for round 9 (round key V27, no aesmc), then 1 × eor with    *)
+(* V28 to absorb the round-10 key.                                           *)
+(*                                                                           *)
+(* The pilot validates that the full `aes128_cipher_arm` (10 rounds + final  *)
+(* xor) composes cleanly across all rounds: the goal connects to the         *)
+(* spec-side `aes128_cipher_arm` directly via                                *)
+(* `AESMC_AESE_AS_ARM_ROUND` + `AESE_AS_ARM_FINAL_ROUND` + `EL_CONV`.        *)
+(* No memory loads, no GHASH, no loop.                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let aes_block_full_mc = define_assert_from_elf "aes_block_full_mc"
+                                               "arm/aes-gcm/aes_block_full.o"
+[
+  (* 9 rounds of AESE+AESMC with rk0..rk8 in V18..V26 *)
+  0x4e284a40;       (* arm_AESE Q0 Q18 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284a60;       (* arm_AESE Q0 Q19 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284a80;       (* arm_AESE Q0 Q20 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284aa0;       (* arm_AESE Q0 Q21 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ac0;       (* arm_AESE Q0 Q22 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284ae0;       (* arm_AESE Q0 Q23 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b00;       (* arm_AESE Q0 Q24 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b20;       (* arm_AESE Q0 Q25 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  0x4e284b40;       (* arm_AESE Q0 Q26 *)
+  0x4e286800;       (* arm_AESMC Q0 Q0 *)
+  (* round 9: aese with rk9 in V27, no aesmc *)
+  0x4e284b60;       (* arm_AESE Q0 Q27 *)
+  (* round 10: xor with rk10 in V28 *)
+  0x6e3c1c00        (* arm_EOR_VEC Q0 Q0 Q28 128 *)
+];;
+
+let AES_BLOCK_FULL_EXEC = ARM_MK_EXEC_RULE aes_block_full_mc;;
+
+(* Pilot ensures: full single-block AES-128 cipher.                           *)
+(*                                                                            *)
+(* Inputs:                                                                    *)
+(*   Q0           = plaintext block `pt`                                      *)
+(*   Q18..Q28     = round keys `rk0`..`rk10`                                  *)
+(*                                                                            *)
+(* Outputs:                                                                   *)
+(*   Q0           = `aes128_cipher_arm pt [rk0;...;rk10]`                     *)
+(*                                                                            *)
+(* Q18..Q28 are preserved (round keys are read-only).                         *)
+
+let AES_BLOCK_FULL_CORRECT = prove
+ (`!pc (pt:int128) (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+       (rk4:int128) (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+       (rk9:int128) (rk10:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_block_full_mc /\
+          read PC s = word pc /\
+          read Q0 s = pt /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8 /\
+          read Q27 s = rk9 /\
+          read Q28 s = rk10)
+     (\s. read PC s = word (pc + 0x50) /\
+          read Q0 s = aes128_cipher_arm pt
+                        [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;rk10])
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_BLOCK_FULL_EXEC (1--20) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND; AESE_AS_ARM_FINAL_ROUND;
+                  aes128_cipher_arm; LET_DEF; LET_END_DEF; EL; HD; TL] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 5 pilot — round-key memory load + 4-way AES round + ciphertext      *)
 (* memory store.  Same shape as Phase 4 plus a 128-bit memory load (LDR Q23) *)
 (* and a 128-bit memory store (STR Q0).                                      *)
