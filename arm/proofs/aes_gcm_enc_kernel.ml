@@ -3064,7 +3064,7 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
 let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_HIGH_CORRECT = prove
  (`!pc (b0:int128) (b1:int128) (b3:int128)
         (q4:int128) (q15:int128) (q17:int128)
-        (rk0:int128) (rk3:int128) (sx13:int64).
+        (rk0:int128) (rk2:int128) (rk3:int128) (sx13:int64).
     ensures arm
      (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
           read PC s = word (pc + 0x54) /\
@@ -3075,10 +3075,12 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_HIGH_CORRECT = prove
           read Q15 s = q15 /\
           read Q17 s = q17 /\
           read Q18 s = rk0 /\
+          read Q20 s = rk2 /\
           read Q21 s = rk3 /\
           read X13 s = sx13)
      (\s. read PC s = word (pc + 0x78) /\
           read Q0 s = aes_arm_round b0 rk3 /\
+          read Q1 s = aes_arm_round b1 rk2 /\
           read Q3 s = aes_arm_round b3 rk0 /\
           read Q4 s = q4 /\
           read Q9 s = (word_pmul (word_subword q4 (64,64) :64 word)
@@ -3088,6 +3090,7 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_HIGH_CORRECT = prove
           read Q15 s = q15 /\
           read Q17 s = q17 /\
           read Q18 s = rk0 /\
+          read Q20 s = rk2 /\
           read Q21 s = rk3)
      (MAYCHANGE [PC] ,,
       MAYCHANGE [Q0; Q1; Q3; Q9; Q10] ,,
