@@ -2357,6 +2357,46 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_MODULO_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: AES round 9 final (AESE-only, no AESMC) for blocks 0  *)
+(* and 1 — slice instr 138..142 (offsets 0x224..0x238, 5 instructions).      *)
+(*                                                                           *)
+(* First cut applying `AESE_AS_ARM_FINAL_ROUND` instead of                  *)
+(* `AESMC_AESE_AS_ARM_ROUND`.  The kernel encodes AES-128 round 9 (the     *)
+(* "round N-1" in s-file comments) as a bare `AESE Qi, Q31` with no       *)
+(* trailing AESMC — this is exactly `aes_arm_final_round`, with the      *)
+(* word_xor against `EL 10 ks` deferred to a subsequent EOR_VEC.          *)
+(*                                                                           *)
+(*   0x224  arm_AESE Q0 Q31              ; round 9 final block 0 (rk10=Q31) *)
+(*   0x228  arm_FMOV_ItoF Q4 X7 1        ; CTR-XOR-PT staging               *)
+(*   0x22c  arm_EOR_VEC Q10 Q10 Q7 128   ; MODULO fold into low             *)
+(*   0x230  arm_FMOV_ItoF Q7 X23 0       ; CTR setup block 4k+7             *)
+(*   0x234  arm_AESE Q1 Q31              ; round 9 final block 1            *)
+(*                                                                           *)
+(* Q0: post-aes_arm_round-rk8 → aes_arm_final_round-rk10.                  *)
+(* Q1: post-aes_arm_round-rk8 → aes_arm_final_round-rk10.                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B0_B1_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (rk10:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x224) /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q31 s = rk10)
+     (\s. read PC s = word (pc + 0x238) /\
+          read Q0 s = aes_arm_final_round b0 rk10 /\
+          read Q1 s = aes_arm_final_round b1 rk10 /\
+          read Q31 s = rk10)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q4; Q7; Q10])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--5) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
