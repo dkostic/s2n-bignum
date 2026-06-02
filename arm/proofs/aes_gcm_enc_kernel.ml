@@ -540,78 +540,165 @@ let GHASH_4BLOCK_EXEC = ARM_MK_EXEC_RULE ghash_4block_mc;;
 (*                                                                           *)
 (* The MAYCHANGE frame lists Q4..Q11 (all touched by the chain) and PC.     *)
 
-(* ------------------------------------------------------------------------- *)
-(* GHASH_4BLOCK_CORRECT — statement parked, proof not yet closed.            *)
-(*                                                                           *)
-(* The intended `ensures arm` is:                                            *)
-(*                                                                           *)
-(*   !pc (h:int128) (prev_tag:int128)                                        *)
-(*       (c0:int128) (c1:int128) (c2:int128) (c3:int128).                    *)
-(*    ensures arm                                                            *)
-(*     (\s. aligned_bytes_loaded s (word pc) ghash_4block_mc /\              *)
-(*          read PC s = word pc /\                                           *)
-(*          read Q4 s = byteswap128 (word_xor prev_tag c0) /\                *)
-(*          read Q5 s = byteswap128 c1 /\                                    *)
-(*          read Q6 s = byteswap128 c2 /\                                    *)
-(*          read Q7 s = byteswap128 c3 /\                                    *)
-(*          read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\          *)
-(*          read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\          *)
-(*          read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\          *)
-(*          read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\          *)
-(*          read Q16 s =                                                     *)
-(*            (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word) *)
-(*                       (karatsuba_mid (h_power (ghash_twist h) 0):64 word) *)
-(*             :int128) /\                                                   *)
-(*          read Q17 s =                                                     *)
-(*            (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word) *)
-(*                       (karatsuba_mid (h_power (ghash_twist h) 2):64 word) *)
-(*             :int128))                                                     *)
-(*     (\s. read PC s = word (pc + 0xac) /\                                  *)
-(*          read Q11 s = nist_ghash h prev_tag [c0; c1; c2; c3])             *)
-(*     (MAYCHANGE [PC] ,,                                                    *)
-(*      MAYCHANGE [Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11])                        *)
-(*                                                                           *)
-(* Session 014 reduced the residual after `ARM_STEPS_TAC + FINAL_STATE +     *)
-(* ASM_REWRITE_TAC[]` to a pure `<kernel-Q11-expr> = nist_ghash ...`         *)
-(* identity.  Session 015 made progress on Option B (factoring through       *)
-(* `KERNEL_4BLOCK_NIST_BRIDGE`):                                             *)
-(*                                                                           *)
-(*   ONCE_REWRITE_TAC[GSYM KERNEL_4BLOCK_NIST_BRIDGE] THEN                   *)
-(*   ENSURES_FINAL_STATE_TAC THEN                                            *)
-(*   ASM_REWRITE_TAC[] THEN                                                  *)
-(*   REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN            *)
-(*   CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN                                 *)
-(*   ABBREV_TAC `bc0:int128 = byteswap128 (word_xor prev_tag c0)` THEN       *)
-(*   ABBREV_TAC `bc1:int128 = byteswap128 c1` THEN                           *)
-(*   ABBREV_TAC `bc2:int128 = byteswap128 c2` THEN                           *)
-(*   ABBREV_TAC `bc3:int128 = byteswap128 c3` THEN                           *)
-(*   ABBREV_TAC `bH0:int128 = byteswap128 (h_power (ghash_twist h) 0)` THEN  *)
-(*   ABBREV_TAC `bH1:int128 = byteswap128 (h_power (ghash_twist h) 1)` THEN  *)
-(*   ABBREV_TAC `bH2:int128 = byteswap128 (h_power (ghash_twist h) 2)` THEN  *)
-(*   ABBREV_TAC `bH3:int128 = byteswap128 (h_power (ghash_twist h) 3)` THEN  *)
-(*   REWRITE_TAC[karatsuba_mid] THEN                                         *)
-(*   REWRITE_TAC[kernel_modulo; byteswap128; LET_DEF; LET_END_DEF] THEN      *)
-(*   ABBREV_TAC for kmid0..kmid3 over the raw h_power expressions THEN       *)
-(*   CONV_TAC WORD_BLAST                                                     *)
-(*                                                                           *)
-(* brings the goal to a pure word-arithmetic identity in 8 byteswap128'd     *)
-(* atoms (bc0..bc3, bH0..bH3) plus 4 kmid_i atoms plus the c64 constant      *)
-(* (LEN ~17 KB; 0 byteswap128 / kernel_modulo / karatsuba_mid / h_power).    *)
-(* `CONV_TAC WORD_BLAST` then runs but does not terminate within ~10 min     *)
-(* on this BDD.  The kernel side still has subword/zx/insert chains for the *)
-(* mid term (`mov d8, v.d[1]` / `eor v8.8b, v.8b, v.8b` / `ins v8.d[1],     *)
-(* v8.d[0]` interactions) that BLAST has to chase through 64-bit-to-128-bit *)
-(* extensions; ~14 unique pmul atoms are too many for the BDD as built.     *)
-(*                                                                           *)
-(* TODO: close via either                                                    *)
-(*   (a) further ABBREV_TAC on each pmul atom (so BLAST sees 14 fresh        *)
-(*       128-bit variables, no internal subword/zx/insert), then close       *)
-(*       with `CONV_TAC WORD_BLAST`.                                         *)
-(*   (b) factor through KERNEL_MODULO_CORRECT explicitly: stamp              *)
-(*       `SUBGOAL_THEN \`Q11_kernel_expr =                                   *)
-(*          kernel_modulo (kernel's h_xor) (kernel's l_xor)                  *)
-(*                        (kernel's m_xor)\` SUBST1_TAC` and then the        *)
-(*       `KERNEL_4BLOCK_NIST_BRIDGE` shape closes via REFL_TAC.              *)
-(* The bridge `KERNEL_4BLOCK_NIST_BRIDGE` is sound and proved already; only  *)
-(* this kernel↔bridge connection theorem is missing.                         *)
-(* ------------------------------------------------------------------------- *)
+(* Proof outline (closed in session 017):                                    *)
+(*   Drive ARM_STEPS to s43 and ENSURES_FINAL_STATE; rewrite RHS via         *)
+(*   GSYM KERNEL_4BLOCK_NIST_BRIDGE; unfold karatsuba_components,            *)
+(*   karatsuba_mid, kernel_modulo, byteswap128; push word_subword through    *)
+(*   word_join via JOIN_LOWER/UPPER; ABBREV_TAC the 16 subword atoms (8 H +  *)
+(*   6 c + 2 pp0); stamp 4 type-aware SUBGOAL_THENs to clean up the          *)
+(*   kernel's mov/eor/ins-driven mid-pmul args (the 3 pmull blocks plus the  *)
+(*   c2 word_insert pmull2 block); ABBREV_TAC the 12 high/low/mid pmul       *)
+(*   atoms; ABBREV_TAC sums Lsum/Hsum/Msum and SUBST1_TAC normalize the      *)
+(*   RHS's reversed-association XOR sums; ABBREV_TAC c64 pmul tA on Lsum,   *)
+(*   then the outer-c64 pmul tB on the running accumulator; SUBGOAL_THEN +   *)
+(*   AP_THM/AP_TERM/WORD_BLAST to fold the RHS's other-association outer    *)
+(*   pmul into tB; final CONV_TAC WORD_BLAST closes (~3 min on a goal with   *)
+(*   0 word_pmul atoms, 645 chars).                                          *)
+
+let GHASH_4BLOCK_CORRECT = prove
+ (`!pc (h:int128) (prev_tag:int128)
+       (c0:int128) (c1:int128) (c2:int128) (c3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) ghash_4block_mc /\
+          read PC s = word pc /\
+          read Q4 s = byteswap128 (word_xor prev_tag c0) /\
+          read Q5 s = byteswap128 c1 /\
+          read Q6 s = byteswap128 c2 /\
+          read Q7 s = byteswap128 c3 /\
+          read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+          read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+          read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+          read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+          read Q16 s =
+            (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                       (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+             :int128) /\
+          read Q17 s =
+            (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                       (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+             :int128))
+     (\s. read PC s = word (pc + 0xac) /\
+          read Q11 s = nist_ghash h prev_tag [c0; c1; c2; c3])
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC GHASH_4BLOCK_EXEC (1--43) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  GEN_REWRITE_TAC RAND_CONV [GSYM KERNEL_4BLOCK_NIST_BRIDGE] THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
+  REWRITE_TAC[karatsuba_mid; kernel_modulo; byteswap128;
+              LET_DEF; LET_END_DEF] THEN
+  SIMP_TAC[WORD_SUBWORD_JOIN_LOWER; WORD_SUBWORD_JOIN_UPPER;
+           DIMINDEX_64; DIMINDEX_128; LE_REFL; ARITH;
+           WORD_SUBWORD_TRIVIAL] THEN
+  (* Abbreviate the 16 subword atoms *)
+  ABBREV_TAC `H0_LO:64 word = word_subword (h_power (ghash_twist h) 0) (0,64)` THEN
+  ABBREV_TAC `H0_HI:64 word = word_subword (h_power (ghash_twist h) 0) (64,64)` THEN
+  ABBREV_TAC `H1_LO:64 word = word_subword (h_power (ghash_twist h) 1) (0,64)` THEN
+  ABBREV_TAC `H1_HI:64 word = word_subword (h_power (ghash_twist h) 1) (64,64)` THEN
+  ABBREV_TAC `H2_LO:64 word = word_subword (h_power (ghash_twist h) 2) (0,64)` THEN
+  ABBREV_TAC `H2_HI:64 word = word_subword (h_power (ghash_twist h) 2) (64,64)` THEN
+  ABBREV_TAC `H3_LO:64 word = word_subword (h_power (ghash_twist h) 3) (0,64)` THEN
+  ABBREV_TAC `H3_HI:64 word = word_subword (h_power (ghash_twist h) 3) (64,64)` THEN
+  ABBREV_TAC `pp0_lo:64 word = word_subword ((word_xor prev_tag c0):int128) (0,64)` THEN
+  ABBREV_TAC `pp0_hi:64 word = word_subword ((word_xor prev_tag c0):int128) (64,64)` THEN
+  ABBREV_TAC `c1_lo:64 word = word_subword (c1:int128) (0,64)` THEN
+  ABBREV_TAC `c1_hi:64 word = word_subword (c1:int128) (64,64)` THEN
+  ABBREV_TAC `c2_lo:64 word = word_subword (c2:int128) (0,64)` THEN
+  ABBREV_TAC `c2_hi:64 word = word_subword (c2:int128) (64,64)` THEN
+  ABBREV_TAC `c3_lo:64 word = word_subword (c3:int128) (0,64)` THEN
+  ABBREV_TAC `c3_hi:64 word = word_subword (c3:int128) (64,64)` THEN
+  (* Stamp the 4 type-aware m-pmul-arg cleanup lemmas: 3 pmull (c3, c1, pp0)
+     and 1 pmull2 (c2 with word_insert).  Type signatures matter — the
+     intermediate word_subword/word_zx chain is :64 word -> :int128 -> :64
+     word, with an extra :int128 word_insert layer for c2. *)
+  SUBGOAL_THEN
+   `(word_subword (word_zx (word_subword (word_xor (word_join (c3_lo:64 word)
+       (c3_hi:64 word):int128) (word_zx (c3_lo:64 word):int128)) (0,64) :64
+       word):int128) (0,64) :64 word) = word_xor c3_lo c3_hi /\
+    (word_subword (word_zx (word_subword (word_xor (word_join (c1_lo:64 word)
+       (c1_hi:64 word):int128) (word_zx (c1_lo:64 word):int128)) (0,64) :64
+       word):int128) (0,64) :64 word) = word_xor c1_lo c1_hi /\
+    (word_subword (word_zx (word_subword (word_xor (word_join (pp0_lo:64 word)
+       (pp0_hi:64 word):int128) (word_zx (pp0_lo:64 word):int128)) (0,64) :64
+       word):int128) (0,64) :64 word) = word_xor pp0_lo pp0_hi`
+   STRIP_ASSUME_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `(word_subword (word_insert (word_zx (word_subword (word_xor (word_join
+       (c2_lo:64 word) (c2_hi:64 word):int128) (word_zx (c2_lo:64 word):int128))
+       (0,64) :64 word):int128) (64,64) (word_subword (word_subword (word_zx
+       (word_subword (word_xor (word_join (c2_lo:64 word) (c2_hi:64 word):int128)
+       (word_zx (c2_lo:64 word):int128)) (0,64) :64 word):int128) (0,64) :int128)
+       (0,64) :int128):int128) (64,64) :64 word) = word_xor c2_lo c2_hi`
+    ASSUME_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  (* The H3 mid pmul carries an extra word_zx wrap that the SIMP didn't
+     unfold; clean it up so the H3 mid pmul matches the c0..c2 mid-pmul shape. *)
+  SUBGOAL_THEN
+   `word_subword (word_zx (word_xor (H3_LO:64 word) (H3_HI:64 word):64 word)
+                  :int128) (0,64) :64 word = word_xor H3_LO H3_HI`
+    ASSUME_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  (* Abbreviate the 12 per-block pmul atoms: 4 high, 4 low, 4 mid.  Mp_h3
+     needs explicit :64 word types on its operands (without them, the
+     abbrev's hypothesis types are inferred as fresh type variables that
+     fail to unify with the goal's concrete :64 word terms). *)
+  ABBREV_TAC `Hp_h0:int128 = word_pmul (c3_hi:64 word) (H0_HI:64 word)` THEN
+  ABBREV_TAC `Hp_h1:int128 = word_pmul (c2_hi:64 word) (H1_HI:64 word)` THEN
+  ABBREV_TAC `Hp_h2:int128 = word_pmul (c1_hi:64 word) (H2_HI:64 word)` THEN
+  ABBREV_TAC `Hp_h3:int128 = word_pmul (pp0_hi:64 word) (H3_HI:64 word)` THEN
+  ABBREV_TAC `Lp_h0:int128 = word_pmul (c3_lo:64 word) (H0_LO:64 word)` THEN
+  ABBREV_TAC `Lp_h1:int128 = word_pmul (c2_lo:64 word) (H1_LO:64 word)` THEN
+  ABBREV_TAC `Lp_h2:int128 = word_pmul (c1_lo:64 word) (H2_LO:64 word)` THEN
+  ABBREV_TAC `Lp_h3:int128 = word_pmul (pp0_lo:64 word) (H3_LO:64 word)` THEN
+  ABBREV_TAC `Mp_h0:int128 = word_pmul (word_xor (c3_lo:64 word) (c3_hi:64 word))
+                                       (word_xor (H0_LO:64 word) (H0_HI:64 word))` THEN
+  ABBREV_TAC `Mp_h1:int128 = word_pmul (word_xor (c2_lo:64 word) (c2_hi:64 word))
+                                       (word_xor (H1_LO:64 word) (H1_HI:64 word))` THEN
+  ABBREV_TAC `Mp_h2:int128 = word_pmul (word_xor (c1_lo:64 word) (c1_hi:64 word))
+                                       (word_xor (H2_LO:64 word) (H2_HI:64 word))` THEN
+  ABBREV_TAC `Mp_h3:int128 = word_pmul (word_xor (pp0_lo:64 word) (pp0_hi:64 word))
+                                       (word_xor (H3_LO:64 word) (H3_HI:64 word))` THEN
+  (* Abbreviate the inner XOR sums.  The RHS form (kernel-side) and LHS form
+     (bridge-side) differ in XOR association — substitute the reverse forms. *)
+  ABBREV_TAC `Lsum:int128 = word_xor (Lp_h0:int128)
+                                     (word_xor Lp_h1 (word_xor Lp_h2 Lp_h3))` THEN
+  SUBGOAL_THEN `word_xor (word_xor (Lp_h3:int128) Lp_h2)
+                         (word_xor Lp_h1 Lp_h0) = Lsum`
+    SUBST1_TAC THENL [EXPAND_TAC "Lsum" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ABBREV_TAC `Hsum:int128 = word_xor (Hp_h0:int128)
+                                     (word_xor Hp_h1 (word_xor Hp_h2 Hp_h3))` THEN
+  SUBGOAL_THEN `word_xor (word_xor (Hp_h3:int128) Hp_h2)
+                         (word_xor Hp_h1 Hp_h0) = Hsum`
+    SUBST1_TAC THENL [EXPAND_TAC "Hsum" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ABBREV_TAC `Msum:int128 = word_xor (Mp_h0:int128)
+                                     (word_xor Mp_h1 (word_xor Mp_h2 Mp_h3))` THEN
+  SUBGOAL_THEN `word_xor (word_xor (Mp_h3:int128) Mp_h2)
+                         (word_xor Mp_h1 Mp_h0) = Msum`
+    SUBST1_TAC THENL [EXPAND_TAC "Msum" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  (* Abbreviate the inner c64 pmul on Lsum, then the outer c64 pmul on the
+     full XOR-sum. *)
+  ABBREV_TAC `tA:int128 = word_pmul (word_subword (Lsum:int128) (0,64) :64 word)
+                                    (word 13979173243358019584:64 word)` THEN
+  ABBREV_TAC `tB:int128 = word_pmul (word_subword (word_xor (word_xor (tA:int128)
+                              (word_subword (word_join (Lsum:int128) Lsum :256 word)
+                                            (64,128) :int128))
+                              (word_xor (word_xor Lsum Hsum) Msum) :int128)
+                              (0,64) :64 word)
+                          (word 13979173243358019584:64 word)` THEN
+  (* The RHS's outer c64 pmul has a different XOR association of the same
+     operand — fold it into tB. *)
+  SUBGOAL_THEN
+   `word_pmul (word_subword (word_xor (word_xor (Msum:int128) (word_xor Hsum Lsum))
+                              (word_xor (word_join (word_subword Lsum (0,64) :64 word)
+                                                   (word_subword Lsum (64,64) :64 word)
+                                         :int128) tA) :int128)
+                  (0,64) :64 word)
+              (word 13979173243358019584:64 word) :int128 = tB`
+    SUBST1_TAC THENL
+   [EXPAND_TAC "tB" THEN AP_THM_TAC THEN AP_TERM_TAC THEN CONV_TAC WORD_BLAST;
+    ALL_TAC] THEN
+  CONV_TAC WORD_BLAST);;
