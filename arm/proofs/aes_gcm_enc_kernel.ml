@@ -2723,4 +2723,93 @@ let AES_GCM_MAIN_LOOP_BODY_R0R1_BLOCKS012_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--17) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 7 BIG composition cut: full AES rounds 0..8 for all 4 blocks.       *)
+(*                                                                           *)
+(* Slice offsets 0..0x224 = 137 instructions, ~80% of the body slice.        *)
+(* Composes the equivalent of 12 individual cuts (R0_BLOCKS012,               *)
+(* R1_BLOCKS012, R2_BLOCKS01, R0R3_BLOCK3_BLOCK0, R1_BLOCK3,                  *)
+(* R4R2_BLOCK0_BLOCK2, R5R3R2_3BLOCK, R6R4R3_4BLOCK, AES_PHASE2,              *)
+(* R7R6_BLOCK1_BLOCK3, R8R7_LDP, R8_B2_R7R8_B3, GHASH_MODULO).               *)
+(*                                                                           *)
+(* Block 3's pre-state value is irrelevant at the body slice entry — the    *)
+(* kernel BUILDS Q3 from scalar X9/X10 (CTR setup) inside the body.         *)
+(* `fmov d3, x10; fmov v3.d[1], x9` at slice offsets 0x14 and 0x30          *)
+(* construct Q3 = `word_insert (word_zx sx10) (64,64) sx9`.                 *)
+(* All four blocks then traverse rounds 0..8 (9 round applications),       *)
+(* ending at PC = pc + 0x224 (right before the round-9 `aese` ops).          *)
+(*                                                                           *)
+(* The interior GHASH-Karatsuba ops (Q4..Q11 effects) are absorbed in       *)
+(* MAYCHANGE without value-tracking — per session 022's MAYCHANGE-          *)
+(* absorption discovery.  Round keys Q18..Q26 are preserved, scalar         *)
+(* round-N-1 key bits in X13/X14 are preserved.                              *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_AES_8ROUNDS_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (b11:int128)
+        (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+        (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+        (sx9:int64) (sx10:int64) (sx13:int64) (sx14:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q11 s = b11 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10 /\
+          read X13 s = sx13 /\
+          read X14 s = sx14)
+     (\s. read PC s = word (pc + 0x224) /\
+          read Q0 s =
+            aes_arm_round (aes_arm_round (aes_arm_round
+              (aes_arm_round (aes_arm_round (aes_arm_round
+                (aes_arm_round (aes_arm_round (aes_arm_round
+                   b0 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8 /\
+          read Q1 s =
+            aes_arm_round (aes_arm_round (aes_arm_round
+              (aes_arm_round (aes_arm_round (aes_arm_round
+                (aes_arm_round (aes_arm_round (aes_arm_round
+                   b1 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8 /\
+          read Q2 s =
+            aes_arm_round (aes_arm_round (aes_arm_round
+              (aes_arm_round (aes_arm_round (aes_arm_round
+                (aes_arm_round (aes_arm_round (aes_arm_round
+                   b2 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8 /\
+          read Q3 s =
+            aes_arm_round (aes_arm_round (aes_arm_round
+              (aes_arm_round (aes_arm_round (aes_arm_round
+                (aes_arm_round (aes_arm_round (aes_arm_round
+                   (word_insert (word_zx sx10:int128) (64,64) sx9 :int128)
+                rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7;
+                 Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [X0; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--137) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 (* ------------------------------------------------------------------------- *)
