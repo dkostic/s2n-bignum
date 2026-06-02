@@ -2453,6 +2453,63 @@ let AES_GCM_MAIN_LOOP_BODY_FINAL_XOR_AND_CTR_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: AES round 9 final for blocks 2 and 3 — slice instr    *)
+(* 157..166 (offsets 0x270..0x298, 10 instructions).  First cut to include  *)
+(* memory STORES (two STR Q4/Q5 ops at 0x278 and 0x28c — ciphertext for    *)
+(* blocks 4k+4 and 4k+5).                                                   *)
+(*                                                                           *)
+(*   0x270  arm_AESE Q2 Q31              ; round 9 final block 2 (rk9=Q31) *)
+(*   0x274  arm_REV W9 W12                ; CTR byte-swap                   *)
+(*   0x278  arm_STR Q4 X2 #16             ; store ciphertext block 4k+4    *)
+(*   0x27c  arm_ORR X9 X11 (X9 LSL 32)    ; CTR scratch                    *)
+(*   0x280  arm_EOR_VEC Q11 Q11 Q9 128    ; MODULO low fold                *)
+(*   0x284  arm_FMOV_ItoF Q7 X24 1        ; CTR setup block 4k+11          *)
+(*   0x288  arm_EXT Q10 Q10 Q10 64        ; MODULO mid alignment           *)
+(*   0x28c  arm_STR Q5 X2 #16             ; store ciphertext block 4k+5    *)
+(*   0x290  arm_ADD W12 W12 #1            ; CTR counter advance            *)
+(*   0x294  arm_AESE Q3 Q31              ; round 9 final block 3            *)
+(*                                                                           *)
+(* Q2: post-aes_arm_round-rk8 → aes_arm_final_round-rk9.                   *)
+(* Q3: post-aes_arm_round-rk8 → aes_arm_final_round-rk9.                   *)
+(* X2 advances by 32 bytes (two STR Q with post-immediate +16).            *)
+(*                                                                           *)
+(* `nonoverlapping (word pc, LENGTH ...) (cptr, 32)` precondition required  *)
+(* for the simulator to discharge "updates will not modify the program     *)
+(* code".  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] folds         *)
+(* aes_gcm_main_loop_body_slice_mc into its byte-list form so MAYCHANGE    *)
+(* on the program-text region can be ruled out.                            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B2_B3_CORRECT = prove
+ (`!pc (cptr:int64) (b2:int128) (b3:int128) (rk9:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 32)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x270) /\
+              read X2 s = cptr /\
+              read Q2 s = b2 /\
+              read Q3 s = b3 /\
+              read Q31 s = rk9)
+         (\s. read PC s = word (pc + 0x298) /\
+              read X2 s = word_add cptr (word 32) /\
+              read Q2 s = aes_arm_final_round b2 rk9 /\
+              read Q3 s = aes_arm_final_round b3 rk9 /\
+              read Q31 s = rk9)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q2; Q3; Q7; Q10; Q11] ,,
+          MAYCHANGE [X2; X9; X12] ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16))] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--10) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
