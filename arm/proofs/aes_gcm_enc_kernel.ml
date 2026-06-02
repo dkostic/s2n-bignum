@@ -2195,6 +2195,57 @@ let AES_GCM_MAIN_LOOP_BODY_R7R6_BLOCK1_BLOCK3_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: round 8 b1 + 2-round advance b2 (rk6+rk7) including    *)
+(* an LDP plaintext load — slice instr 94..105.                              *)
+(*                                                                           *)
+(* 12-instruction window (offsets 0x174..0x1a0).  First cut to include a    *)
+(* memory-load instruction (LDP X19 X20 X0 #16 — AES block 4k+5 plaintext) *)
+(* in addition to the AES + GHASH body.  X19/X20 + `events` join MAYCHANGE.*)
+(*                                                                           *)
+(*   0x174  arm_LDP X19 X20 X0 #16   ; AES block 4k+5 plaintext load        *)
+(*   0x178  arm_AESE Q1 Q26          ; round 8 block 1 (rk8=Q26)            *)
+(*   0x17c  arm_AESMC Q1 Q1                                                  *)
+(*   0x180  arm_DUP_GEN_FROM_ELEM Q4 Q7 64 64 1   ; GHASH 4k+3 mid          *)
+(*   0x184  arm_AESE Q2 Q24          ; round 6 block 2                      *)
+(*   0x188  arm_AESMC Q2 Q2                                                  *)
+(*   0x18c  arm_EOR_VEC Q11 Q11 Q5 128  ; GHASH 4k+2 low accumulate         *)
+(*   0x190  arm_PMULL2_VEC Q8 Q8 Q16 64 ; GHASH 4k+2 mid                    *)
+(*   0x194  arm_PMULL2_VEC Q5 Q7 Q12 64 ; GHASH 4k+3 high                   *)
+(*   0x198  arm_EOR_VEC Q4 Q4 Q7 64  ; GHASH 4k+3 mid                       *)
+(*   0x19c  arm_AESE Q2 Q25          ; round 7 block 2 (rk7=Q25)            *)
+(*   0x1a0  arm_AESMC Q2 Q2                                                  *)
+(*                                                                           *)
+(* Q1: rk7→rk8.  Q2: rk5→rk6→rk7 (2-round advance again).                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R8R7_LDP_CORRECT = prove
+ (`!pc (b1:int128) (b2:int128)
+        (rk6:int128) (rk7:int128) (rk8:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x174) /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (\s. read PC s = word (pc + 0x1a4) /\
+          read Q1 s = aes_arm_round b1 rk8 /\
+          read Q2 s = aes_arm_round (aes_arm_round b2 rk6) rk7 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q1; Q2; Q4; Q5; Q8; Q11] ,,
+      MAYCHANGE [X19; X20] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--12) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
