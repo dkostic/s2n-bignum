@@ -3388,6 +3388,68 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH TAIL with Q11 value-tracking — instr 167..175.             *)
+(*                                                                           *)
+(* Window: slice instr 167..175 (offsets 0x298..0x2bc, 9 instructions) —    *)
+(* same as the existing AES_GCM_MAIN_LOOP_BODY_TAIL_CORRECT cut but with    *)
+(* full GHASH value tracking on Q11.                                        *)
+(*                                                                           *)
+(* Notable instruction in this window:                                      *)
+(*   instr 172 (offset 0x2ac): arm_EOR_VEC Q11 Q11 Q10 128                  *)
+(*                             ^ Q11 := q11_in XOR q10_in                   *)
+(*                                    = v11_a XOR v10_swap                  *)
+(*                                    = kernel_modulo h l m                 *)
+(*                              (THE FINAL kernel_modulo result.)            *)
+(*                                                                           *)
+(* Postcondition tracks 1 GHASH write:                                       *)
+(*   Q11 = q11_in XOR q10_in — final kernel_modulo result                   *)
+(*                                                                           *)
+(* Together with the prior MODULO chain cuts (BLOCK3_MID_AND_ACCUMS,        *)
+(* MODULO_KARATSUBA, R9_FINAL_B0_B1_GHASH, FINAL_XOR_AND_CTR_GHASH,         *)
+(* R9_FINAL_B2_B3_GHASH), composition of these 6 cuts produces              *)
+(* `Q11 = kernel_modulo (q9_pre XOR blk3_high) (q11_pre XOR blk3_low)       *)
+(*                       (q10_pre XOR blk3_mid)`.                           *)
+(*                                                                           *)
+(* Plus the two final ciphertext stores (Q6, Q7 after EOR with Q2, Q3)     *)
+(* and Q2/Q3 CTR setup writes and X2 advancement.                           *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain.  Q11 closes via plain WORD_BLAST   *)
+(* (XOR commutativity); other conjuncts close via plain ASM_REWRITE_TAC.    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_TAIL_GHASH_CORRECT = prove
+ (`!pc (cptr:int64) (q2:int128) (q3:int128) (q10_in:int128) (q11_in:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 32)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x298) /\
+              read X2 s = cptr /\
+              read Q2 s = q2 /\
+              read Q3 s = q3 /\
+              read Q10 s = q10_in /\
+              read Q11 s = q11_in)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X2 s = word_add cptr (word 32) /\
+              read Q10 s = q10_in /\
+              read Q11 s = word_xor q11_in q10_in)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q2; Q6; Q7; Q11] ,,
+          MAYCHANGE [X2; X9; X12] ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16))] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--9) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH R9_FINAL_B2_B3 with Q10 and Q11 value-tracking — instr     *)
 (* 157..166.                                                                 *)
 (*                                                                           *)
