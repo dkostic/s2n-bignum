@@ -3011,6 +3011,83 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_PRELUDE_CORRECT = prove
   CONV_TAC WORD_BLAST);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-0-HIGH-PMULL2 cut: tracks Q9 = pmull2(Q4, Q15)        *)
+(* across slice instr 22..30 (offsets 0x054..0x078).                          *)
+(*                                                                           *)
+(* The window covers AES rounds 2 (block 1) / 3 (block 0) / 0 (block 3) and  *)
+(* the first two GHASH ops for block 0:                                      *)
+(*                                                                           *)
+(*   instr 22 (offset 0x054): arm_AESE Q1 Q20      ; AES rd 2 blk 1          *)
+(*   instr 23 (offset 0x058): arm_AESMC Q1 Q1                                *)
+(*   instr 24 (offset 0x05c): arm_AESE Q3 Q18      ; AES rd 0 blk 3          *)
+(*   instr 25 (offset 0x060): arm_AESMC Q3 Q3                                *)
+(*   instr 26 (offset 0x064): arm_EOR X23 X23 X13  ; scalar plt+rk N         *)
+(*   instr 27 (offset 0x068): arm_AESE Q0 Q21      ; AES rd 3 blk 0          *)
+(*   instr 28 (offset 0x06c): arm_AESMC Q0 Q0                                *)
+(*   instr 29 (offset 0x070): arm_DUP_GEN_FROM_ELEM Q10 Q17 64 64 1          *)
+(*   instr 30 (offset 0x074): arm_PMULL2_VEC Q9 Q4 Q15 64                    *)
+(*                                                                           *)
+(* Postcondition asserts the high-half polynomial product:                  *)
+(*                                                                           *)
+(*   read Q9 s = word_pmul (word_subword q4 (64,64) :64 word)               *)
+(*                         (word_subword q15 (64,64) :64 word)               *)
+(*                                                                           *)
+(* This is the first per-component value-tracking cut on the GHASH region.  *)
+(* It is independent of the GHASH-PRELUDE cut (uses fresh `q4` / `q15`     *)
+(* variables) but composes with it via brute-force re-execution per         *)
+(* session 024's pattern: a future PRELUDE_AND_BLOCK0_PMULL2 composition    *)
+(* cut over instr 1..30 just runs ARM_STEPS_TAC on the union range.         *)
+(*                                                                           *)
+(* The closing tactic is the standard 5-line spine:                          *)
+(*   REPEAT GEN_TAC; ENSURES_INIT_TAC "s0";                                  *)
+(*   ARM_STEPS_TAC ... (1--9); ENSURES_FINAL_STATE_TAC;                      *)
+(*   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND].                               *)
+(*                                                                           *)
+(* PMULL2 doesn't need a special bridge because the simulator emits its     *)
+(* output `word_pmul (subword Rn (64,64)) (subword Rm (64,64))` directly    *)
+(* — exactly matching the postcondition's algebraic form.  Q1 sits in     *)
+(* MAYCHANGE without value-tracking (round-2 advance for block 1).  Q10    *)
+(* is also clobbered (the DUP_GEN); its value `word_zx (subword q17        *)
+(* (64,64))` is left for a future cut to track.                              *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_HIGH_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b3:int128)
+        (q4:int128) (q15:int128) (q17:int128)
+        (rk0:int128) (rk3:int128) (sx13:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x54) /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q3 s = b3 /\
+          read Q4 s = q4 /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q21 s = rk3 /\
+          read X13 s = sx13)
+     (\s. read PC s = word (pc + 0x78) /\
+          read Q0 s = aes_arm_round b0 rk3 /\
+          read Q3 s = aes_arm_round b3 rk0 /\
+          read Q4 s = q4 /\
+          read Q9 s = (word_pmul (word_subword q4 (64,64) :64 word)
+                                 (word_subword q15 (64,64) :64 word)
+                       :int128) /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q21 s = rk3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q3; Q9; Q10] ,,
+      MAYCHANGE [X23])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--9) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 FULL BODY composition cut: all 175 instructions.                  *)
 (*                                                                           *)
 (* Composes the full 17-cut chain (R0_BLOCKS012 through TAIL) into a single *)
