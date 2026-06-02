@@ -2400,6 +2400,59 @@ let AES_GCM_MAIN_LOOP_BODY_R9_FINAL_B0_B1_CORRECT = prove
   ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: post-final-round CTR/GHASH passthrough; AES-final-XOR *)
+(* preparation — slice instr 143..156 (offsets 0x238..0x270, 14 instr).      *)
+(*                                                                           *)
+(* Q0/Q1 (which held the round-9 final-round AES results from the prior     *)
+(* cut) are *consumed* by EOR_VEC ops at 0x24c/0x260: Q4 ← Q4 ⊕ Q0          *)
+(* (ciphertext block 4k+4 = plaintext_xor_with_rk10 ⊕ AES_b0) and Q5 ← Q5  *)
+(* ⊕ Q1 (ciphertext block 4k+5).  After that consumption, Q0 and Q1 are    *)
+(* freely overwritten with new CTR setup (FMOV_ItoF) for the *next*        *)
+(* iteration's blocks 4k+8 and 4k+9 — so this cut does NOT track Q0/Q1    *)
+(* values, only Q2 and Q3 (which haven't yet had their final round).      *)
+(*                                                                           *)
+(*   0x238  arm_FMOV_ItoF Q5 X20 1                ; CTR-XOR-PT staging       *)
+(*   0x23c  arm_FMOV_ItoF Q6 X21 0                ; CTR-XOR-PT staging       *)
+(*   0x240  arm_SUBS ZR X0 X5                     ; loop-bound check       *)
+(*   0x244  arm_FMOV_ItoF Q6 X22 1                ; CTR-XOR-PT staging       *)
+(*   0x248  arm_PMULL_VEC Q9 Q10 Q8 64            ; MODULO mid pmul         *)
+(*   0x24c  arm_EOR_VEC Q4 Q4 Q0 128              ; ciphertext block 4k+4  *)
+(*   0x250  arm_FMOV_ItoF Q0 X10 0                ; CTR setup next iter b0 *)
+(*   0x254  arm_FMOV_ItoF Q0 X9 1                 ; CTR setup next iter b0 *)
+(*   0x258  arm_REV W9 W12                        ; CTR byte-swap          *)
+(*   0x25c  arm_ADD W12 W12 #1                    ; CTR counter advance    *)
+(*   0x260  arm_EOR_VEC Q5 Q5 Q1 128              ; ciphertext block 4k+5  *)
+(*   0x264  arm_FMOV_ItoF Q1 X10 0                ; CTR setup next iter b1 *)
+(*   0x268  arm_ORR X9 X11 (X9 LSL 32)            ; CTR scratch            *)
+(*   0x26c  arm_FMOV_ItoF Q1 X9 1                 ; CTR setup next iter b1 *)
+(*                                                                           *)
+(* SUBS ZR X0 X5 writes flags (NF/ZF/CF/VF) — handled by REWRITE_TAC        *)
+(* [SOME_FLAGS] before ENSURES_INIT_TAC, per feedback memory               *)
+(* `some_flags_no_canon.md`.                                                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_FINAL_XOR_AND_CTR_CORRECT = prove
+ (`!pc (q2:int128) (q3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x238) /\
+          read Q2 s = q2 /\
+          read Q3 s = q3)
+     (\s. read PC s = word (pc + 0x270) /\
+          read Q2 s = q2 /\
+          read Q3 s = q3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q4; Q5; Q6; Q9] ,,
+      MAYCHANGE [X9; X12] ,,
+      MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--14) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
