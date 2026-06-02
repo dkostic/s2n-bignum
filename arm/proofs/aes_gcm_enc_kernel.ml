@@ -4504,3 +4504,80 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_SPEC_FORM_CORRECT = prove
 (* ------------------------------------------------------------------------- *)
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7/8 H-power preservation cut: instructions 1..114 (offsets         *)
+(* 0..0x1c8) preserve Q12..Q17 (the H-power table values held in vector    *)
+(* registers across the loop body).                                          *)
+(*                                                                            *)
+(* This is the "minimal" composition cut for the per-block-0/1/2/3-mid       *)
+(* portion: brute-force ARM_STEPS_TAC over instructions 1..114 with a        *)
+(* postcondition that asserts only the H-power-table register preservation. *)
+(* No GHASH value tracking — that's the substantial Phase 8 work.            *)
+(*                                                                            *)
+(* The cut establishes that the H-power table registers Q12..Q17 are NOT   *)
+(* clobbered during the per-block 0/1/2/3-mid Karatsuba portion of the      *)
+(* body slice.  This preservation is needed by the Phase 8 loop wrapper to *)
+(* assert that the H-power table is iteration-invariant.                    *)
+(*                                                                            *)
+(* Closes via brute-force ARM_STEPS_TAC + ENSURES_FINAL_STATE_TAC +          *)
+(* ASM_REWRITE_TAC.  ~3 seconds wall-clock per                               *)
+(* `brute_force_composition` memory.                                         *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_HPOWER_PRESERVED_CORRECT = prove
+ (`!pc (cptr:int64) (b0_pre:int128) (b1_pre:int128) (b2_pre:int128)
+        (b3_pre:int128) (q4_pre:int128) (q11_pre:int128)
+        (q12:int128) (q13:int128) (q14:int128) (q15:int128)
+        (q16:int128) (q17:int128)
+        (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+        (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+        (sx9:int64) (sx10:int64) (sx13:int64) (sx14:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word pc /\
+              read X2 s = cptr /\
+              read Q0 s = b0_pre /\
+              read Q1 s = b1_pre /\
+              read Q2 s = b2_pre /\
+              read Q4 s = q4_pre /\
+              read Q11 s = q11_pre /\
+              read Q12 s = q12 /\
+              read Q13 s = q13 /\
+              read Q14 s = q14 /\
+              read Q15 s = q15 /\
+              read Q16 s = q16 /\
+              read Q17 s = q17 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
+              read X9 s = sx9 /\
+              read X10 s = sx10 /\
+              read X13 s = sx13 /\
+              read X14 s = sx14)
+         (\s. read PC s = word (pc + 0x1c8) /\
+              read Q12 s = q12 /\
+              read Q13 s = q13 /\
+              read Q14 s = q14 /\
+              read Q15 s = q15 /\
+              read Q16 s = q16 /\
+              read Q17 s = q17)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN
+  STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--114) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
