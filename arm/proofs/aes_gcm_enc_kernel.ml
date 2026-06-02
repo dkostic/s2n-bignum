@@ -3388,6 +3388,113 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-1-MID pmull cut + block-2-MID DUP_GEN/prep + Q11      *)
+(* block-1-LOW XOR accumulator.                                              *)
+(*                                                                           *)
+(* Window: slice instr 55..71 (offsets 0x0d8..0x11c, 17 instructions).      *)
+(* Picks up where BLOCK1_LOW ended (Q4 had been overwritten with             *)
+(* `word_zx (subword q5 (64,64))` by the DUP_GEN at slice instr 50, but     *)
+(* this cut takes Q4 as uninterpreted `q4_in` — caller threading binds      *)
+(* it to the BLOCK1_LOW exit value).                                         *)
+(*                                                                           *)
+(*   instr 55 (offset 0x0d8): arm_EOR_VEC      Q11 Q11 Q8 128 ; blk-1 LOW   *)
+(*                            ^ Q11 ^= Q8 (using OLD Q8 = blk-1 LOW pmull)  *)
+(*   instr 56 (offset 0x0dc): arm_AESE         Q2 Q21        ; AES rd 3 b2  *)
+(*   instr 57 (offset 0x0e0): arm_AESMC        Q2 Q2                         *)
+(*   instr 58 (offset 0x0e4): arm_AESE         Q1 Q22        ; AES rd 4 b1  *)
+(*   instr 59 (offset 0x0e8): arm_AESMC        Q1 Q1                         *)
+(*   instr 60 (offset 0x0ec): arm_DUP_GEN_FROM_ELEM Q8 Q6 64 64 1            *)
+(*                            ^ Q8 := word_zx (subword q6 (64,64))           *)
+(*   instr 61 (offset 0x0f0): arm_AESE         Q3 Q21        ; AES rd 3 b3  *)
+(*   instr 62 (offset 0x0f4): arm_AESMC        Q3 Q3                         *)
+(*   instr 63 (offset 0x0f8): arm_EOR_VEC      Q4 Q4 Q5 64                   *)
+(*                            ^ Q4 := word_zx (subword (xor Q4 Q5) (0,64))  *)
+(*                              (Q4 = OLD q4_in here)                        *)
+(*   instr 64 (offset 0x0fc): arm_AESE         Q2 Q22        ; AES rd 4 b2  *)
+(*   instr 65 (offset 0x100): arm_AESMC        Q2 Q2                         *)
+(*   instr 66 (offset 0x104): arm_AESE         Q0 Q24        ; AES rd 6 b0  *)
+(*   instr 67 (offset 0x108): arm_AESMC        Q0 Q0                         *)
+(*   instr 68 (offset 0x10c): arm_EOR_VEC      Q8 Q8 Q6 64                   *)
+(*                            ^ Q8 := word_zx (subword (xor Q8 Q6) (0,64))  *)
+(*                                  = word_zx (xor q6_lo q6_hi)              *)
+(*   instr 69 (offset 0x110): arm_AESE         Q3 Q22        ; AES rd 4 b3  *)
+(*   instr 70 (offset 0x114): arm_AESMC        Q3 Q3                         *)
+(*   instr 71 (offset 0x118): arm_PMULL_VEC    Q4 Q4 Q17 64  ; blk-1 MID    *)
+(*                            ^ Q4 := pmull(Q4_lo, Q17_lo)                  *)
+(*                              with Q4 = (OLD q4_in XOR q5) low half       *)
+(*                                                                           *)
+(* Postcondition tracks 3 GHASH writes:                                      *)
+(*   Q4  = pmull(subword (xor q4_in q5) (0,64))                              *)
+(*               (subword q17 (0,64)) — blk-1 MID Karatsuba product         *)
+(*   Q8  = word_zx (xor (subword q6 (0,64)) (subword q6 (64,64)))            *)
+(*               — blk-2 MID prep (low XOR high of q6)                       *)
+(*   Q11 = q11_in XOR q8_in — blk-1 LOW XOR accumulator (using OLD Q8)      *)
+(*                                                                           *)
+(* AES round advances: Q0 → rk6 (one round), Q1 → rk4 (one round),          *)
+(* Q2 → rk3 → rk4 (two rounds), Q3 → rk3 → rk4 (two rounds).                 *)
+(*                                                                           *)
+(* Closing: REPEAT CONJ_TAC + TRY chain.  Q4 needs                          *)
+(* `AP_THM_TAC THEN AP_TERM_TAC THEN CONV_TAC WORD_BLAST` to peel the        *)
+(* opaque `word_pmul` operator and let WORD_BLAST attack the subword/        *)
+(* word_zx folding.  Q8 closes via plain CONV_TAC WORD_BLAST.  Q11           *)
+(* (XOR commutativity simulator-side q8_in q11_in vs. postcondition          *)
+(* q11_in q8_in) closes via plain CONV_TAC WORD_BLAST.                       *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_MID_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (b3:int128)
+        (q4_in:int128) (q5:int128) (q6:int128) (q8_in:int128)
+        (q11_in:int128) (q17:int128)
+        (rk3:int128) (rk4:int128) (rk6:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0xd8) /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q3 s = b3 /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5 /\
+          read Q6 s = q6 /\
+          read Q8 s = q8_in /\
+          read Q11 s = q11_in /\
+          read Q17 s = q17 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q24 s = rk6)
+     (\s. read PC s = word (pc + 0x11c) /\
+          read Q0 s = aes_arm_round b0 rk6 /\
+          read Q1 s = aes_arm_round b1 rk4 /\
+          read Q2 s = aes_arm_round (aes_arm_round b2 rk3) rk4 /\
+          read Q3 s = aes_arm_round (aes_arm_round b3 rk3) rk4 /\
+          read Q4 s = (word_pmul (word_subword (word_xor q4_in q5:int128)
+                                               (0,64) :64 word)
+                                 (word_subword q17 (0,64) :64 word)
+                       :int128) /\
+          read Q5 s = q5 /\
+          read Q6 s = q6 /\
+          read Q8 s = (word_zx (word_xor (word_subword q6 (0,64) :64 word)
+                                         (word_subword q6 (64,64) :64 word)
+                                :64 word)
+                       :int128) /\
+          read Q11 s = word_xor q11_in q8_in /\
+          read Q17 s = q17 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q24 s = rk6)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q8; Q11])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--17) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (AP_THM_TAC THEN AP_TERM_TAC THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-block-2-HIGH+LOW + block-3-LOW + EOR-accumulators cut.     *)
 (*                                                                           *)
 (* Window: slice instr 85..93 (offsets 0x150..0x174, 9 instructions) — same *)
