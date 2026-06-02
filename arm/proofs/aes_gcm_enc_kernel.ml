@@ -3152,6 +3152,7 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_LOW_CORRECT = prove
           read Q3 s = aes_arm_round b3 rk1 /\
           read Q4 s = q4 /\
           read Q5 s = aes_gcm_rev64_int128 q5_pre /\
+          read Q8 s = (word_zx (word_subword q4 (64,64) :64 word) :int128) /\
           read Q11 s = (word_pmul (word_subword q4 (0,64) :64 word)
                                   (word_subword q15 (0,64) :64 word)
                         :int128) /\
