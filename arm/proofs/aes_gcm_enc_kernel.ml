@@ -3971,6 +3971,58 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_MID_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-AES-only gap cut covering offsets 0x11c..0x150              *)
+(* (slice instr 72..84, 13 instructions).                                    *)
+(*                                                                           *)
+(* Bridges between BLOCK1_MID (which exits at 0x11c) and                     *)
+(* BLOCK2_HL_BLOCK3_L (which enters at 0x150).  This window is mostly       *)
+(* AES rounds for blocks 0..3 plus a single `ins v8.d[1], v8.d[0]` at        *)
+(* offset 0x434 (instr 76, slice offset 0x134) — pure AES + Q8 internal     *)
+(* rearrangement.                                                            *)
+(*                                                                           *)
+(* No GHASH value tracking is needed in this gap — Q4/Q11 are preserved     *)
+(* (their values from BLOCK1_MID's exit propagate unchanged), Q8 is in       *)
+(* MAYCHANGE (the INS instruction overwrites it with a derived form).        *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_GAP_AES_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128) (b3:int128)
+        (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+        (q4_in:int128) (q8_in:int128) (q11_in:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x11c) /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q3 s = b3 /\
+          read Q4 s = q4_in /\
+          read Q8 s = q8_in /\
+          read Q11 s = q11_in /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (\s. read PC s = word (pc + 0x150) /\
+          read Q0 s = aes_arm_round (aes_arm_round b0 rk7) rk8 /\
+          read Q1 s = aes_arm_round (aes_arm_round b1 rk5) rk6 /\
+          read Q2 s = aes_arm_round b2 rk5 /\
+          read Q3 s = aes_arm_round b3 rk5 /\
+          read Q4 s = q4_in /\
+          read Q11 s = q11_in /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q8])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--13) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH-block-2-HIGH+LOW + block-3-LOW + EOR-accumulators cut.     *)
 (*                                                                           *)
 (* Window: slice instr 85..93 (offsets 0x150..0x174, 9 instructions) — same *)
