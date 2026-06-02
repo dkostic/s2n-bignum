@@ -3315,6 +3315,79 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_MID_BLOCK1_HIGH_CORRECT = prove
        CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-1-LOW cut: tracks block-1 LOW Karatsuba product       *)
+(* Q8 = pmull(Q5, Q14), block-1 HIGH accumulation Q9 := Q9 ^ Q4, block-2    *)
+(* PRE rev64 of Q6, and block-1 MID DUP_GEN Q4 = high(Q5).  Window: slice   *)
+(* instr 47..54 (offsets 0x0b8..0x0d8).                                      *)
+(*                                                                           *)
+(* Window:                                                                   *)
+(*   instr 47 (offset 0x0b8): arm_REV64_VEC Q6 Q6 8        ; blk-2 PRE      *)
+(*   instr 48 (offset 0x0bc): arm_PMULL_VEC  Q8 Q5 Q14 64  ; blk-1 LOW     *)
+(*   instr 49 (offset 0x0c0): arm_EOR_VEC    Q9 Q9 Q4 128  ; blk-1 HIGH acc*)
+(*   instr 50 (offset 0x0c4): arm_DUP_GEN_FROM_ELEM Q4 Q5 64 64 1 ; blk-1 mid*)
+(*   instr 51 (offset 0x0c8): arm_AESE       Q1 Q21       ; AES rd 3 blk 1 *)
+(*   instr 52 (offset 0x0cc): arm_AESMC      Q1 Q1                          *)
+(*   instr 53 (offset 0x0d0): arm_AESE       Q3 Q20       ; AES rd 2 blk 3 *)
+(*   instr 54 (offset 0x0d4): arm_AESMC      Q3 Q3                          *)
+(*                                                                           *)
+(* Postcondition tracks:                                                     *)
+(*   Q4 = word_zx (subword q5 (64,64)) — block-1 MID DUP_GEN (Q4 OVERWRITTEN) *)
+(*   Q6 = aes_gcm_rev64_int128 q6_pre — block-2 PRE rev64                  *)
+(*   Q8 = word_pmul (subword q5 (0,64)) (subword q14 (0,64)) — blk-1 LOW   *)
+(*   Q9 = word_xor q9_pre q4_in — block-1 HIGH XOR accumulator              *)
+(*                                                                           *)
+(* AES round advances: Q1 → rk3 (was at rk2 after R5R3R2_3BLOCK), Q3 → rk2  *)
+(* (was at rk1 from prior cuts).                                             *)
+(*                                                                           *)
+(* The closing tactic uses the same TRY chain as BLOCK0_MID_BLOCK1_HIGH:    *)
+(* most conjuncts close via plain ASM_REWRITE_TAC; Q6 needs unfold +        *)
+(* WORD_BLAST; Q9 (XOR commutativity simulator-side q4_in q9_pre vs.        *)
+(* postcondition q9_pre q4_in) closes via WORD_BLAST after plain            *)
+(* ASM_REWRITE_TAC peels everything else.                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK1_LOW_CORRECT = prove
+ (`!pc (b1:int128) (b3:int128) (q5:int128) (q14:int128) (q6_pre:int128)
+        (q9_pre:int128) (q4_in:int128) (rk2:int128) (rk3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0xb8) /\
+          read Q1 s = b1 /\
+          read Q3 s = b3 /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5 /\
+          read Q6 s = q6_pre /\
+          read Q9 s = q9_pre /\
+          read Q14 s = q14 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3)
+     (\s. read PC s = word (pc + 0xd8) /\
+          read Q1 s = aes_arm_round b1 rk3 /\
+          read Q3 s = aes_arm_round b3 rk2 /\
+          read Q4 s = (word_zx (word_subword q5 (64,64) :64 word) :int128) /\
+          read Q5 s = q5 /\
+          read Q6 s = aes_gcm_rev64_int128 q6_pre /\
+          read Q8 s = (word_pmul (word_subword q5 (0,64) :64 word)
+                                 (word_subword q14 (0,64) :64 word)
+                       :int128) /\
+          read Q9 s = word_xor q9_pre q4_in /\
+          read Q14 s = q14 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q1; Q3; Q4; Q6; Q8; Q9])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--8) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 FULL BODY composition cut: all 175 instructions.                  *)
 (*                                                                           *)
 (* Composes the full 17-cut chain (R0_BLOCKS012 through TAIL) into a single *)
