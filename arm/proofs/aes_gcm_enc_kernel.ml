@@ -1911,6 +1911,51 @@ let AES_GCM_MAIN_LOOP_BODY_R0R3_BLOCK3_BLOCK0_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 small-cut: AES round 1 for block 3 (slice instr 29..34).          *)
+(*                                                                           *)
+(* This is the FIRST cut whose window contains GHASH Karatsuba opcodes —    *)
+(* `arm_DUP_GEN_FROM_ELEM` and `arm_PMULL2_VEC` — but the cut still uses     *)
+(* the AES-only closing tactic.  The trick: we don't constrain the          *)
+(* values written to the GHASH-touched registers (Q8/Q9/Q10) in the          *)
+(* postcondition; we only list them in the MAYCHANGE frame.  As long as     *)
+(* the postcondition reads only AES-relevant state (here: Q3 and Q19),       *)
+(* MAYCHANGE absorbs the GHASH side-effects opaquely.                        *)
+(*                                                                           *)
+(*   0x070  arm_DUP_GEN_FROM_ELEM Q10 Q17 64 64 1   ; GHASH 4k - mid (Q10)  *)
+(*   0x074  arm_PMULL2_VEC        Q9 Q4 Q15 64       ; GHASH 4k - high (Q9) *)
+(*   0x078  arm_EOR               X22 X22 X14        ; AES 4k+6 round N hi  *)
+(*   0x07c  arm_DUP_GEN_FROM_ELEM Q8 Q4 64 64 1      ; GHASH 4k - mid (Q8)  *)
+(*   0x080  arm_AESE              Q3 Q19             ; round 1 block 3      *)
+(*   0x084  arm_AESMC             Q3 Q3                                      *)
+(*                                                                           *)
+(* By PC = pc + 0x88, Q3 has advanced one round (from rk0-output `b3` to     *)
+(* rk1-applied `aes_arm_round b3 rk1`).  Q8/Q9/Q10/X22 are clobbered.        *)
+(* The exact values of Q8/Q9/Q10 (mid/high components of the GHASH 4k       *)
+(* Karatsuba) will need to be tracked when we eventually compose this cut    *)
+(* with the GHASH bridge — but that's a separate concern; this cut just     *)
+(* keeps the AES chain progressing through GHASH-interleaved territory.    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_R1_BLOCK3_CORRECT = prove
+ (`!pc (b3:int128) (rk1:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x70) /\
+          read Q3 s = b3 /\
+          read Q19 s = rk1)
+     (\s. read PC s = word (pc + 0x88) /\
+          read Q3 s = aes_arm_round b3 rk1 /\
+          read Q19 s = rk1)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q3; Q8; Q9; Q10] ,,
+      MAYCHANGE [X22])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--6) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Parked ensures statement for the loop-body big-cut.  This documents the   *)
 (* pre/postcondition shape that a future session's `prove(...)` will target. *)
 (* It is intentionally NOT a `prove(...)` call — the proof is multi-session  *)
