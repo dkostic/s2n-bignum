@@ -4722,6 +4722,93 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_DISCHARGE_CORRECT = prove
           read X13 s = sx13 /\
           read X14 s = sx14)
      (\s. read PC s = word (pc + 0x1c8) /\
+          read Q4 s =
+            (word_zx (word_subword
+              (word_xor (aes_gcm_rev64_int128 q7_pre)
+                        (word_zx (word_subword (aes_gcm_rev64_int128 q7_pre)
+                                               (64,64) :64 word) :int128))
+              (0,64) :64 word) :int128) /\
+          read Q5 s =
+            (word_pmul (word_subword (aes_gcm_rev64_int128 q7_pre) (64,64)
+                                     :64 word)
+                       (word_subword q12 (64,64) :64 word) :int128) /\
+          read Q6 s =
+            (word_pmul (word_subword (aes_gcm_rev64_int128 q7_pre) (0,64)
+                                     :64 word)
+                       (word_subword q12 (0,64) :64 word) :int128) /\
+          read Q9 s =
+            word_xor
+             (word_xor
+              (word_pmul
+                (word_subword
+                  (word_xor (aes_gcm_rev64_int128 q4_pre)
+                            (byteswap128 q11_pre)) (64,64) :64 word)
+                (word_subword q15 (64,64) :64 word) :int128)
+              (word_pmul
+                (word_subword (aes_gcm_rev64_int128 q5_pre) (64,64) :64 word)
+                (word_subword q14 (64,64) :64 word) :int128))
+             (word_pmul
+               (word_subword (aes_gcm_rev64_int128 q6_pre) (64,64) :64 word)
+               (word_subword q13 (64,64) :64 word) :int128) /\
+          read Q10 s =
+            word_xor
+             (word_xor
+              (word_pmul
+                (word_subword
+                  (word_xor
+                    (word_xor (aes_gcm_rev64_int128 q4_pre)
+                              (byteswap128 q11_pre))
+                    (word_zx
+                      (word_subword
+                        (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                  (byteswap128 q11_pre))
+                        (64,64) :64 word) :int128))
+                  (0,64) :64 word)
+                (word_subword
+                  (word_zx (word_subword q17 (64,64) :64 word) :int128)
+                  (0,64) :64 word) :int128)
+              (word_pmul
+                (word_subword
+                  (word_xor
+                    (word_zx (word_subword (aes_gcm_rev64_int128 q5_pre)
+                                           (64,64) :64 word) :int128)
+                    (aes_gcm_rev64_int128 q5_pre)) (0,64) :64 word)
+                (word_subword q17 (0,64) :64 word) :int128))
+             (word_pmul
+               (word_subword
+                 (word_insert
+                   (word_zx
+                     (word_xor
+                       (word_subword (aes_gcm_rev64_int128 q6_pre) (0,64)
+                                     :64 word)
+                       (word_subword (aes_gcm_rev64_int128 q6_pre) (64,64)
+                                     :64 word) :64 word) :int128)
+                   (64,64)
+                   (word_subword
+                     (word_subword
+                       (word_zx
+                         (word_xor
+                           (word_subword (aes_gcm_rev64_int128 q6_pre) (0,64)
+                                         :64 word)
+                           (word_subword (aes_gcm_rev64_int128 q6_pre) (64,64)
+                                         :64 word) :64 word) :int128)
+                       (0,64) :64 word) (0,64) :64 word) :int128) (64,64)
+                 :64 word)
+               (word_subword q16 (64,64) :64 word) :int128) /\
+          read Q11 s =
+            word_xor
+             (word_xor
+              (word_pmul
+                (word_subword
+                  (word_xor (aes_gcm_rev64_int128 q4_pre)
+                            (byteswap128 q11_pre)) (0,64) :64 word)
+                (word_subword q15 (0,64) :64 word) :int128)
+              (word_pmul
+                (word_subword (aes_gcm_rev64_int128 q5_pre) (0,64) :64 word)
+                (word_subword q14 (0,64) :64 word) :int128))
+             (word_pmul
+               (word_subword (aes_gcm_rev64_int128 q6_pre) (0,64) :64 word)
+               (word_subword q13 (0,64) :64 word) :int128) /\
           read Q12 s = q12 /\
           read Q13 s = q13 /\
           read Q14 s = q14 /\
