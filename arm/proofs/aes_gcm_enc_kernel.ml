@@ -3088,6 +3088,77 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_HIGH_CORRECT = prove
   ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 7 GHASH-block-0-LOW cut: tracks Q11 = pmull(Q4, Q15) AND the        *)
+(* block-1 PRE rev64 (Q5 = aes_gcm_rev64_int128 q5_pre) across slice          *)
+(* instr 31..38 (offsets 0x078..0x098).                                       *)
+(*                                                                           *)
+(* Window:                                                                   *)
+(*   instr 31 (offset 0x078): arm_EOR X22 X22 X14   ; AES blk 6 rd N hi      *)
+(*   instr 32 (offset 0x07c): arm_DUP_GEN_FROM_ELEM Q8 Q4 64 64 1            *)
+(*   instr 33 (offset 0x080): arm_AESE Q3 Q19       ; AES rd 1 blk 3         *)
+(*   instr 34 (offset 0x084): arm_AESMC Q3 Q3                                *)
+(*   instr 35 (offset 0x088): arm_REV64_VEC Q5 Q5 8 ; GHASH PRE block 1     *)
+(*   instr 36 (offset 0x08c): arm_AESE Q0 Q22       ; AES rd 4 blk 0         *)
+(*   instr 37 (offset 0x090): arm_AESMC Q0 Q0                                *)
+(*   instr 38 (offset 0x094): arm_PMULL_VEC Q11 Q4 Q15 64                    *)
+(*                                                                           *)
+(* Postcondition asserts:                                                    *)
+(*                                                                           *)
+(*   read Q11 s = word_pmul (word_subword q4 (0,64) :64 word)                *)
+(*                          (word_subword q15 (0,64) :64 word)               *)
+(*   read Q5  s = aes_gcm_rev64_int128 q5_pre                                *)
+(*                                                                           *)
+(* Plus AES round advances: Q0 advances rk3→rk4, Q3 advances rk0→rk1.       *)
+(*                                                                           *)
+(* The Q11 product is the BLOCK 0 LOW Karatsuba component (overwriting the  *)
+(* prelude's `byteswap128 q11_pre` carry).  The Q5 byteswap kicks off       *)
+(* block-1's GHASH PRE chain.  Q8 (DUP_GEN of Q4 high half) sits in         *)
+(* MAYCHANGE without value-tracking — its specific value will be used in   *)
+(* the block-0 mid-pmull-prep cut at instr 39 (EOR Q8 Q8 Q4) and the       *)
+(* block-0 mid-pmull at instr 47.                                            *)
+(*                                                                           *)
+(* The closing tactic adds `aes_gcm_rev64_int128` to the rewrite set and   *)
+(* uses CONV_TAC WORD_BLAST to discharge the Q5 byteswap form (the         *)
+(* rev64+rev64+rev64 word_join/word_subword tree from arm_REV64_VEC esize  *)
+(* =8 collapses to aes_gcm_rev64_int128's two-bytereverse-and-swap form).  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_BLOCK0_LOW_CORRECT = prove
+ (`!pc (b0:int128) (b3:int128) (q4:int128) (q15:int128) (q5_pre:int128)
+        (rk1:int128) (rk4:int128) (sx14:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word (pc + 0x78) /\
+          read Q0 s = b0 /\
+          read Q3 s = b3 /\
+          read Q4 s = q4 /\
+          read Q5 s = q5_pre /\
+          read Q15 s = q15 /\
+          read Q19 s = rk1 /\
+          read Q22 s = rk4 /\
+          read X14 s = sx14)
+     (\s. read PC s = word (pc + 0x98) /\
+          read Q0 s = aes_arm_round b0 rk4 /\
+          read Q3 s = aes_arm_round b3 rk1 /\
+          read Q4 s = q4 /\
+          read Q5 s = aes_gcm_rev64_int128 q5_pre /\
+          read Q11 s = (word_pmul (word_subword q4 (0,64) :64 word)
+                                  (word_subword q15 (0,64) :64 word)
+                        :int128) /\
+          read Q15 s = q15 /\
+          read Q19 s = rk1 /\
+          read Q22 s = rk4)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q3; Q5; Q8; Q11] ,,
+      MAYCHANGE [X22])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--8) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND; aes_gcm_rev64_int128] THEN
+  CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 FULL BODY composition cut: all 175 instructions.                  *)
 (*                                                                           *)
 (* Composes the full 17-cut chain (R0_BLOCKS012 through TAIL) into a single *)
