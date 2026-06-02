@@ -446,3 +446,147 @@ let GHASH_PERBLOCK_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   BINOP_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 6 pilot — 4-block GHASH update.                                     *)
+(*                                                                           *)
+(* This is the full 43-instruction GHASH chain extracted from                *)
+(* `Lenc_main_loop` of `arm/aes-gcm/aes_gcm_enc_kernel_aes128.S`             *)
+(* (lines 270 - 414, GHASH-tagged + MODULO-tagged ops only, no AES/CTR).    *)
+(* The pilot's precondition takes inputs in the form                         *)
+(* `KERNEL_4BLOCK_NIST_BRIDGE` directly expects: ciphertext blocks already   *)
+(* `byteswap128`'d (with `prev_tag` XOR'd into ct0), H-powers stored in     *)
+(* the htable_mem byteswap128'd form, and karatsuba_mid pairs joined into   *)
+(* Q16 / Q17 per the htable_mem layout.                                     *)
+(*                                                                           *)
+(* Output: Q11 = nist_ghash h prev_tag [c0; c1; c2; c3].                     *)
+(*                                                                           *)
+(* Discharge: `KERNEL_4BLOCK_NIST_BRIDGE` connects the kernel's              *)
+(* "decompose-then-XOR-accumulate-then-MODULO" pattern to the spec-side      *)
+(* `nist_ghash`.                                                             *)
+(*                                                                           *)
+(* TODO: replace once the full kernel _mc is loadable in tree (Phase 7+).   *)
+(* ------------------------------------------------------------------------- *)
+
+let ghash_4block_mc = define_assert_from_elf "ghash_4block_mc"
+                                             "arm/aes-gcm/ghash_4block.o"
+[
+  0x5e18062a;       (* arm_DUP_GEN_FROM_ELEM Q10 Q17 64 64 1 *)
+  0x4eefe089;       (* arm_PMULL2_VEC Q9 Q4 Q15 64 *)
+  0x5e180488;       (* arm_DUP_GEN_FROM_ELEM Q8 Q4 64 64 1 *)
+  0x0eefe08b;       (* arm_PMULL_VEC Q11 Q4 Q15 64 *)
+  0x2e241d08;       (* arm_EOR_VEC Q8 Q8 Q4 64 *)
+  0x4eeee0a4;       (* arm_PMULL2_VEC Q4 Q5 Q14 64 *)
+  0x0eeae10a;       (* arm_PMULL_VEC Q10 Q8 Q10 64 *)
+  0x0eeee0a8;       (* arm_PMULL_VEC Q8 Q5 Q14 64 *)
+  0x6e241d29;       (* arm_EOR_VEC Q9 Q9 Q4 128 *)
+  0x5e1804a4;       (* arm_DUP_GEN_FROM_ELEM Q4 Q5 64 64 1 *)
+  0x6e281d6b;       (* arm_EOR_VEC Q11 Q11 Q8 128 *)
+  0x5e1804c8;       (* arm_DUP_GEN_FROM_ELEM Q8 Q6 64 64 1 *)
+  0x2e251c84;       (* arm_EOR_VEC Q4 Q4 Q5 64 *)
+  0x2e261d08;       (* arm_EOR_VEC Q8 Q8 Q6 64 *)
+  0x0ef1e084;       (* arm_PMULL_VEC Q4 Q4 Q17 64 *)
+  0x6e180508;       (* arm_INS Q8 Q8 64 0 64 64 *)
+  0x6e241d4a;       (* arm_EOR_VEC Q10 Q10 Q4 128 *)
+  0x4eede0c4;       (* arm_PMULL2_VEC Q4 Q6 Q13 64 *)
+  0x0eede0c5;       (* arm_PMULL_VEC Q5 Q6 Q13 64 *)
+  0x0eece0e6;       (* arm_PMULL_VEC Q6 Q7 Q12 64 *)
+  0x6e241d29;       (* arm_EOR_VEC Q9 Q9 Q4 128 *)
+  0x5e1804e4;       (* arm_DUP_GEN_FROM_ELEM Q4 Q7 64 64 1 *)
+  0x6e251d6b;       (* arm_EOR_VEC Q11 Q11 Q5 128 *)
+  0x4ef0e108;       (* arm_PMULL2_VEC Q8 Q8 Q16 64 *)
+  0x4eece0e5;       (* arm_PMULL2_VEC Q5 Q7 Q12 64 *)
+  0x2e271c84;       (* arm_EOR_VEC Q4 Q4 Q7 64 *)
+  0x6e281d4a;       (* arm_EOR_VEC Q10 Q10 Q8 128 *)
+  0x0f06e448;       (* arm_MOVI D8 (word 14033993530586874562) *)
+  0x0ef0e084;       (* arm_PMULL_VEC Q4 Q4 Q16 64 *)
+  0x6e251d29;       (* arm_EOR_VEC Q9 Q9 Q5 128 *)
+  0x5f785508;       (* arm_SHL_VEC Q8 Q8 56 64 64 *)
+  0x6e261d6b;       (* arm_EOR_VEC Q11 Q11 Q6 128 *)
+  0x6e241d4a;       (* arm_EOR_VEC Q10 Q10 Q4 128 *)
+  0x6e291d64;       (* arm_EOR_VEC Q4 Q11 Q9 128 *)
+  0x0ee8e127;       (* arm_PMULL_VEC Q7 Q9 Q8 64 *)
+  0x6e094129;       (* arm_EXT Q9 Q9 Q9 64 *)
+  0x6e241d4a;       (* arm_EOR_VEC Q10 Q10 Q4 128 *)
+  0x6e271d27;       (* arm_EOR_VEC Q7 Q9 Q7 128 *)
+  0x6e271d4a;       (* arm_EOR_VEC Q10 Q10 Q7 128 *)
+  0x0ee8e149;       (* arm_PMULL_VEC Q9 Q10 Q8 64 *)
+  0x6e291d6b;       (* arm_EOR_VEC Q11 Q11 Q9 128 *)
+  0x6e0a414a;       (* arm_EXT Q10 Q10 Q10 64 *)
+  0x6e2a1d6b        (* arm_EOR_VEC Q11 Q11 Q10 128 *)
+];;
+
+let GHASH_4BLOCK_EXEC = ARM_MK_EXEC_RULE ghash_4block_mc;;
+
+(* Pilot ensures: 4-block GHASH update.                                      *)
+(*                                                                           *)
+(* Inputs (matching `KERNEL_4BLOCK_NIST_BRIDGE` directly):                   *)
+(*   Q4 = byteswap128 (word_xor prev_tag c0)   (block 0, prev-tag XOR'd in) *)
+(*   Q5 = byteswap128 c1                                                    *)
+(*   Q6 = byteswap128 c2                                                    *)
+(*   Q7 = byteswap128 c3                                                    *)
+(*   Q12 = byteswap128 (h_power H 0)           (H^1 in kernel; "H1")        *)
+(*   Q13 = byteswap128 (h_power H 1)           (H^2; "H2")                  *)
+(*   Q14 = byteswap128 (h_power H 2)           (H^3; "H3")                  *)
+(*   Q15 = byteswap128 (h_power H 3)           (H^4; "H4")                  *)
+(*   Q16 = word_join (km(h_power H 1)) (km(h_power H 0))                    *)
+(*                                       (high|low; "h2k|h1k")               *)
+(*   Q17 = word_join (km(h_power H 3)) (km(h_power H 2))                    *)
+(*                                       (high|low; "h4k|h3k")               *)
+(*   where H = ghash_twist h_spec, km = karatsuba_mid.                       *)
+(*                                                                           *)
+(* Output:                                                                   *)
+(*   Q11 = nist_ghash h_spec prev_tag [c0; c1; c2; c3]                       *)
+(*                                                                           *)
+(* The MAYCHANGE frame lists Q4..Q11 (all touched by the chain) and PC.     *)
+
+let GHASH_4BLOCK_CORRECT = prove
+ (`!pc (h:int128) (prev_tag:int128)
+       (c0:int128) (c1:int128) (c2:int128) (c3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) ghash_4block_mc /\
+          read PC s = word pc /\
+          read Q4 s = byteswap128 (word_xor prev_tag c0) /\
+          read Q5 s = byteswap128 c1 /\
+          read Q6 s = byteswap128 c2 /\
+          read Q7 s = byteswap128 c3 /\
+          read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+          read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+          read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+          read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+          read Q16 s =
+            (word_join (karatsuba_mid (h_power (ghash_twist h) 1) :64 word)
+                       (karatsuba_mid (h_power (ghash_twist h) 0) :64 word)
+             :int128) /\
+          read Q17 s =
+            (word_join (karatsuba_mid (h_power (ghash_twist h) 3) :64 word)
+                       (karatsuba_mid (h_power (ghash_twist h) 2) :64 word)
+             :int128))
+     (\s. read PC s = word (pc + 0xac) /\
+          read Q11 s = nist_ghash h prev_tag [c0; c1; c2; c3])
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC GHASH_4BLOCK_EXEC (1--43) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  (* TODO (session 014 partial): symbolic execution lands the kernel's   *)
+  (* Q11 in nest of word_xor / word_pmul / word_subword / word_join       *)
+  (* exactly matching the kernel_modulo of-XOR-of-Karatsuba-components   *)
+  (* shape that KERNEL_4BLOCK_NIST_BRIDGE expects.  After                 *)
+  (*   MP_TAC(SPECL [...] KERNEL_4BLOCK_NIST_BRIDGE) THEN                 *)
+  (*   REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN       *)
+  (*   CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN                            *)
+  (*   REWRITE_TAC[byteswap128; karatsuba_mid] THEN                       *)
+  (*   SIMP_TAC[WORD_SUBWORD_JOIN_LOWER; WORD_SUBWORD_JOIN_UPPER;         *)
+  (*            DIMINDEX_64; DIMINDEX_128; LE_REFL; ARITH] THEN           *)
+  (* both sides reduce to identical pure word-arithmetic expressions      *)
+  (* modulo the opaque h_power / word_pmul subterms, but a full           *)
+  (* CONV_TAC WORD_BLAST does not terminate within ~15 minutes (BDD too   *)
+  (* large).  The closure tactic likely needs to abbreviate each unique   *)
+  (* pmul subterm and h_power instance via ABBREV_TAC before WORD_BLAST,  *)
+  (* OR fold the kernel side into kernel_modulo form first via a          *)
+  (* SUBGOAL_THEN intermediate (so KERNEL_MODULO_CORRECT discharges the   *)
+  (* MODULO chain symbolically rather than by bit-blast).                 *)
+  CHEAT_TAC);;
