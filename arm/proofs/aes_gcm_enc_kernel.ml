@@ -4504,23 +4504,34 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_SPEC_FORM_CORRECT = prove
 (* ------------------------------------------------------------------------- *)
 
 (* ------------------------------------------------------------------------- *)
-(* Phase 7/8 H-power preservation cut: instructions 1..114 (offsets         *)
-(* 0..0x1c8) preserve Q12..Q17 (the H-power table values held in vector    *)
-(* registers across the loop body).                                          *)
+(* Phase 7/8 H-power + round-key preservation cut: instructions 1..114      *)
+(* (offsets 0..0x1c8) preserve Q12..Q17 (H-power table) AND Q18..Q26 (AES  *)
+(* round keys 0..8) across the loop body's per-block-0/1/2/3-mid Karatsuba *)
+(* portion.                                                                   *)
 (*                                                                            *)
-(* This is the "minimal" composition cut for the per-block-0/1/2/3-mid       *)
-(* portion: brute-force ARM_STEPS_TAC over instructions 1..114 with a        *)
-(* postcondition that asserts only the H-power-table register preservation. *)
-(* No GHASH value tracking — that's the substantial Phase 8 work.            *)
+(* This is the "minimal" composition cut for offsets 0..0x1c8: brute-force  *)
+(* ARM_STEPS_TAC with a postcondition that asserts only register             *)
+(* preservation (no GHASH value tracking — that's the substantial Phase 8   *)
+(* discharge work; see Phase 8 plan comment block above).                    *)
 (*                                                                            *)
-(* The cut establishes that the H-power table registers Q12..Q17 are NOT   *)
-(* clobbered during the per-block 0/1/2/3-mid Karatsuba portion of the      *)
-(* body slice.  This preservation is needed by the Phase 8 loop wrapper to *)
-(* assert that the H-power table is iteration-invariant.                    *)
+(* The cut establishes that:                                                  *)
+(*   - H-power table registers Q12..Q17 are NOT clobbered during the per-   *)
+(*     block 0/1/2/3-mid Karatsuba portion (needed for iteration invariance *)
+(*     in Phase 8 loop wrapper);                                              *)
+(*   - AES round-key registers Q18..Q26 (rk0..rk8) are also preserved       *)
+(*     (the body slice has no LDR Q18..Q26 in this prefix; round keys are   *)
+(*     loaded once in the kernel prologue and read-only thereafter).         *)
+(*                                                                            *)
+(* Q31 (rk9) is NOT included in the precondition or postcondition — it is   *)
+(* first used at slice offset 0x224 (instr 138, AES round-9 final), AFTER   *)
+(* this cut's window.  The compose-with-rest cut at Phase 8 will add Q31    *)
+(* preservation across the full body.                                        *)
 (*                                                                            *)
 (* Closes via brute-force ARM_STEPS_TAC + ENSURES_FINAL_STATE_TAC +          *)
 (* ASM_REWRITE_TAC.  ~3 seconds wall-clock per                               *)
-(* `brute_force_composition` memory.                                         *)
+(* `brute_force_composition` memory.  Round-key preservation is automatic   *)
+(* since Q18..Q26 are not in MAYCHANGE — adding them to the postcondition  *)
+(* requires no extra closing tactic work.                                    *)
 (* ------------------------------------------------------------------------- *)
 
 let AES_GCM_MAIN_LOOP_BODY_GHASH_HPOWER_PRESERVED_CORRECT = prove
@@ -4567,7 +4578,16 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_HPOWER_PRESERVED_CORRECT = prove
               read Q14 s = q14 /\
               read Q15 s = q15 /\
               read Q16 s = q16 /\
-              read Q17 s = q17)
+              read Q17 s = q17 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q26 s = rk8)
          (MAYCHANGE [PC] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
           MAYCHANGE [X19; X20; X21; X22; X23; X24] ,,
