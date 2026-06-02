@@ -540,53 +540,78 @@ let GHASH_4BLOCK_EXEC = ARM_MK_EXEC_RULE ghash_4block_mc;;
 (*                                                                           *)
 (* The MAYCHANGE frame lists Q4..Q11 (all touched by the chain) and PC.     *)
 
-let GHASH_4BLOCK_CORRECT = prove
- (`!pc (h:int128) (prev_tag:int128)
-       (c0:int128) (c1:int128) (c2:int128) (c3:int128).
-    ensures arm
-     (\s. aligned_bytes_loaded s (word pc) ghash_4block_mc /\
-          read PC s = word pc /\
-          read Q4 s = byteswap128 (word_xor prev_tag c0) /\
-          read Q5 s = byteswap128 c1 /\
-          read Q6 s = byteswap128 c2 /\
-          read Q7 s = byteswap128 c3 /\
-          read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
-          read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
-          read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
-          read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
-          read Q16 s =
-            (word_join (karatsuba_mid (h_power (ghash_twist h) 1) :64 word)
-                       (karatsuba_mid (h_power (ghash_twist h) 0) :64 word)
-             :int128) /\
-          read Q17 s =
-            (word_join (karatsuba_mid (h_power (ghash_twist h) 3) :64 word)
-                       (karatsuba_mid (h_power (ghash_twist h) 2) :64 word)
-             :int128))
-     (\s. read PC s = word (pc + 0xac) /\
-          read Q11 s = nist_ghash h prev_tag [c0; c1; c2; c3])
-     (MAYCHANGE [PC] ,,
-      MAYCHANGE [Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11])`,
-  REPEAT GEN_TAC THEN
-  ENSURES_INIT_TAC "s0" THEN
-  ARM_STEPS_TAC GHASH_4BLOCK_EXEC (1--43) THEN
-  ENSURES_FINAL_STATE_TAC THEN
-  ASM_REWRITE_TAC[] THEN
-  (* TODO (session 014 partial): symbolic execution lands the kernel's   *)
-  (* Q11 in nest of word_xor / word_pmul / word_subword / word_join       *)
-  (* exactly matching the kernel_modulo of-XOR-of-Karatsuba-components   *)
-  (* shape that KERNEL_4BLOCK_NIST_BRIDGE expects.  After                 *)
-  (*   MP_TAC(SPECL [...] KERNEL_4BLOCK_NIST_BRIDGE) THEN                 *)
-  (*   REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN       *)
-  (*   CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN                            *)
-  (*   REWRITE_TAC[byteswap128; karatsuba_mid] THEN                       *)
-  (*   SIMP_TAC[WORD_SUBWORD_JOIN_LOWER; WORD_SUBWORD_JOIN_UPPER;         *)
-  (*            DIMINDEX_64; DIMINDEX_128; LE_REFL; ARITH] THEN           *)
-  (* both sides reduce to identical pure word-arithmetic expressions      *)
-  (* modulo the opaque h_power / word_pmul subterms, but a full           *)
-  (* CONV_TAC WORD_BLAST does not terminate within ~15 minutes (BDD too   *)
-  (* large).  The closure tactic likely needs to abbreviate each unique   *)
-  (* pmul subterm and h_power instance via ABBREV_TAC before WORD_BLAST,  *)
-  (* OR fold the kernel side into kernel_modulo form first via a          *)
-  (* SUBGOAL_THEN intermediate (so KERNEL_MODULO_CORRECT discharges the   *)
-  (* MODULO chain symbolically rather than by bit-blast).                 *)
-  CHEAT_TAC);;
+(* ------------------------------------------------------------------------- *)
+(* GHASH_4BLOCK_CORRECT — statement parked, proof not yet closed.            *)
+(*                                                                           *)
+(* The intended `ensures arm` is:                                            *)
+(*                                                                           *)
+(*   !pc (h:int128) (prev_tag:int128)                                        *)
+(*       (c0:int128) (c1:int128) (c2:int128) (c3:int128).                    *)
+(*    ensures arm                                                            *)
+(*     (\s. aligned_bytes_loaded s (word pc) ghash_4block_mc /\              *)
+(*          read PC s = word pc /\                                           *)
+(*          read Q4 s = byteswap128 (word_xor prev_tag c0) /\                *)
+(*          read Q5 s = byteswap128 c1 /\                                    *)
+(*          read Q6 s = byteswap128 c2 /\                                    *)
+(*          read Q7 s = byteswap128 c3 /\                                    *)
+(*          read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\          *)
+(*          read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\          *)
+(*          read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\          *)
+(*          read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\          *)
+(*          read Q16 s =                                                     *)
+(*            (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word) *)
+(*                       (karatsuba_mid (h_power (ghash_twist h) 0):64 word) *)
+(*             :int128) /\                                                   *)
+(*          read Q17 s =                                                     *)
+(*            (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word) *)
+(*                       (karatsuba_mid (h_power (ghash_twist h) 2):64 word) *)
+(*             :int128))                                                     *)
+(*     (\s. read PC s = word (pc + 0xac) /\                                  *)
+(*          read Q11 s = nist_ghash h prev_tag [c0; c1; c2; c3])             *)
+(*     (MAYCHANGE [PC] ,,                                                    *)
+(*      MAYCHANGE [Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11])                        *)
+(*                                                                           *)
+(* Session 014 reduced the residual after `ARM_STEPS_TAC + FINAL_STATE +     *)
+(* ASM_REWRITE_TAC[]` to a pure `<kernel-Q11-expr> = nist_ghash ...`         *)
+(* identity.  Session 015 made progress on Option B (factoring through       *)
+(* `KERNEL_4BLOCK_NIST_BRIDGE`):                                             *)
+(*                                                                           *)
+(*   ONCE_REWRITE_TAC[GSYM KERNEL_4BLOCK_NIST_BRIDGE] THEN                   *)
+(*   ENSURES_FINAL_STATE_TAC THEN                                            *)
+(*   ASM_REWRITE_TAC[] THEN                                                  *)
+(*   REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN            *)
+(*   CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN                                 *)
+(*   ABBREV_TAC `bc0:int128 = byteswap128 (word_xor prev_tag c0)` THEN       *)
+(*   ABBREV_TAC `bc1:int128 = byteswap128 c1` THEN                           *)
+(*   ABBREV_TAC `bc2:int128 = byteswap128 c2` THEN                           *)
+(*   ABBREV_TAC `bc3:int128 = byteswap128 c3` THEN                           *)
+(*   ABBREV_TAC `bH0:int128 = byteswap128 (h_power (ghash_twist h) 0)` THEN  *)
+(*   ABBREV_TAC `bH1:int128 = byteswap128 (h_power (ghash_twist h) 1)` THEN  *)
+(*   ABBREV_TAC `bH2:int128 = byteswap128 (h_power (ghash_twist h) 2)` THEN  *)
+(*   ABBREV_TAC `bH3:int128 = byteswap128 (h_power (ghash_twist h) 3)` THEN  *)
+(*   REWRITE_TAC[karatsuba_mid] THEN                                         *)
+(*   REWRITE_TAC[kernel_modulo; byteswap128; LET_DEF; LET_END_DEF] THEN      *)
+(*   ABBREV_TAC for kmid0..kmid3 over the raw h_power expressions THEN       *)
+(*   CONV_TAC WORD_BLAST                                                     *)
+(*                                                                           *)
+(* brings the goal to a pure word-arithmetic identity in 8 byteswap128'd     *)
+(* atoms (bc0..bc3, bH0..bH3) plus 4 kmid_i atoms plus the c64 constant      *)
+(* (LEN ~17 KB; 0 byteswap128 / kernel_modulo / karatsuba_mid / h_power).    *)
+(* `CONV_TAC WORD_BLAST` then runs but does not terminate within ~10 min     *)
+(* on this BDD.  The kernel side still has subword/zx/insert chains for the *)
+(* mid term (`mov d8, v.d[1]` / `eor v8.8b, v.8b, v.8b` / `ins v8.d[1],     *)
+(* v8.d[0]` interactions) that BLAST has to chase through 64-bit-to-128-bit *)
+(* extensions; ~14 unique pmul atoms are too many for the BDD as built.     *)
+(*                                                                           *)
+(* TODO: close via either                                                    *)
+(*   (a) further ABBREV_TAC on each pmul atom (so BLAST sees 14 fresh        *)
+(*       128-bit variables, no internal subword/zx/insert), then close       *)
+(*       with `CONV_TAC WORD_BLAST`.                                         *)
+(*   (b) factor through KERNEL_MODULO_CORRECT explicitly: stamp              *)
+(*       `SUBGOAL_THEN \`Q11_kernel_expr =                                   *)
+(*          kernel_modulo (kernel's h_xor) (kernel's l_xor)                  *)
+(*                        (kernel's m_xor)\` SUBST1_TAC` and then the        *)
+(*       `KERNEL_4BLOCK_NIST_BRIDGE` shape closes via REFL_TAC.              *)
+(* The bridge `KERNEL_4BLOCK_NIST_BRIDGE` is sound and proved already; only  *)
+(* this kernel↔bridge connection theorem is missing.                         *)
+(* ------------------------------------------------------------------------- *)
