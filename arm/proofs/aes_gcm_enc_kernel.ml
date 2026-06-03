@@ -8709,3 +8709,63 @@ let AES_GCM_TAIL_SMOKE_CUT_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [130] THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s057) — post-prologue baseline cut.                              *)
+(*                                                                           *)
+(* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
+(* 1..11) save callee-saved registers and frame pointer to the stack and     *)
+(* set up the basic scalar pointers `x16 = x4 = ivec_ptr` and `x8 = x5 =     *)
+(* key_ptr` for use by the rest of the prelude:                              *)
+(*                                                                           *)
+(*   0x00  stp x29, x30, [sp, #-128]!  ; pre-decrement SP, save FP/LR       *)
+(*   0x04  mov x29, sp                  ; new frame pointer                  *)
+(*   0x08  stp x19, x20, [sp, #16]                                          *)
+(*   0x0c  mov x16, x4                  ; ivec_ptr (X16)                     *)
+(*   0x10  mov x8, x5                   ; key_ptr  (X8)                      *)
+(*   0x14  stp x21, x22, [sp, #32]                                          *)
+(*   0x18  stp x23, x24, [sp, #48]                                          *)
+(*   0x1c  stp d8, d9,   [sp, #64]                                          *)
+(*   0x20  stp d10, d11, [sp, #80]                                          *)
+(*   0x24  stp d12, d13, [sp, #96]                                          *)
+(*   0x28  stp d14, d15, [sp, #112]                                         *)
+(*                                                                           *)
+(* The cut establishes the post-prologue baseline state (PC = pc + 0x2c,    *)
+(* SP = stackpointer - 128, X16 = a, X8 = b) under a stack-nonoverlapping   *)
+(* precondition mirroring the SUBROUTINE wrapper shape.  The MAYCHANGE      *)
+(* includes the 128-byte stack frame as `bytes(stackpointer-128, 128)` —    *)
+(* the simulator emits 16 individual `bytes64` writes which                  *)
+(* `ENSURES_FINAL_STATE_TAC` subsumes into the larger `bytes(...,128)` slot. *)
+(*                                                                           *)
+(* This is the entry point for all subsequent prelude cuts: scalar setup    *)
+(* (ldr w17 / ldp x13,x14 / ldr q31 / add x4 / lsr x5 / mov x15 / and x5),  *)
+(* then the H-table + key loads, then the AES rounds, then the first 4-     *)
+(* block CTR/store, terminating at the wrapper-PRE shape at pc + 0x308.     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_POST_PROLOGUE_CORRECT = prove
+ (`!pc (a:int64) (b:int64) (stackpointer:int64).
+    aligned 16 stackpointer /\
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (word_sub stackpointer (word 128), 128)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word pc /\
+              read SP s = stackpointer /\
+              read X4 s = a /\
+              read X5 s = b)
+         (\s. read PC s = word (pc + 0x2c) /\
+              read SP s = word_sub stackpointer (word 128) /\
+              read X4 s = a /\
+              read X5 s = b /\
+              read X16 s = a /\
+              read X8 s = b)
+         (MAYCHANGE [PC; SP; X16; X8; X29] ,,
+          MAYCHANGE [memory :> bytes(word_sub stackpointer (word 128), 128)] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC] THEN
+  REPEAT STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (1--11) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
