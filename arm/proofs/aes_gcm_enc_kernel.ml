@@ -6323,3 +6323,39 @@ let AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_KERNEL_CORRECT = prove
   REWRITE_TAC[SOME_FLAGS] THEN
   MONOTONE_MAYCHANGE_TAC);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8 — back-edge cut for ENSURES_WHILE_PUP_TAC.                        *)
+(*                                                                           *)
+(* The b.lt at offset 0x5c4 is a 1-instruction back-edge that jumps to       *)
+(* offset 0x308 when condition_semantics Condition_LT holds (i.e.            *)
+(* `~(read NF s <=> read VF s)`).  In the PUP wrapper, the back-edge         *)
+(* subgoal goes from `pc + 0x5c4` (with the loop invariant `p i s` and the  *)
+(* flag fact `q i s`) to `pc + 0x308` (with `p i s` preserved).              *)
+(*                                                                           *)
+(* Because the b.lt only modifies PC and events, all other components of    *)
+(* the loop invariant are preserved trivially via the MAYCHANGE frame        *)
+(* `MAYCHANGE [PC] ,, MAYCHANGE [events]`.  So the wrapper's back-edge       *)
+(* subgoal can be discharged by stepping the b.lt and applying the          *)
+(* invariant preservation.  This minimal form, parameterised only on X0     *)
+(* (an example of what the invariant carries), exhibits the proof spine.    *)
+(*                                                                           *)
+(* Validated in s027 (~26 ms wall-clock).                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BACKEDGE_KERNEL_CORRECT = prove
+ (`!pc x0_init.
+    ensures arm
+      (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+           read PC s = word (pc + 0x5c4) /\
+           read X0 s = x0_init /\
+           condition_semantics Condition_LT s)
+      (\s. read PC s = word (pc + 0x308) /\
+           read X0 s = x0_init)
+      (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC [1] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
