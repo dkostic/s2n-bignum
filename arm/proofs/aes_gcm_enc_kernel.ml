@@ -9232,3 +9232,65 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_RK10_XOR0_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (153--158) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s060) — first 4-block region: Q4 build + cmp + scalar XOR       *)
+(* (slice instr indices 159..162, kernel offsets 0x278..0x288).             *)
+(*                                                                           *)
+(*   0x278  fmov d4, x6                    ; Q4 low half = pt0_lo XOR rk10_lo*)
+(*   0x27c  cmp x0, x5                     ; reset flags (sets NF/ZF/CF/VF) *)
+(*   0x280  fmov v4.d[1], x7                ; Q4 high half = pt0_hi XOR rk10_hi
+                                            ; (combined: word_insert form)  *)
+(*   0x284  eor x23, x23, x13              ; pt3_lo XOR rk10_lo             *)
+(*                                                                           *)
+(* After the first fmov d4, Q4 = `word_zx X6` (64-bit value zero-extended). *)
+(* After fmov v4.d[1], the high 64 bits of Q4 are written to X7.  The       *)
+(* simulator's combined emit form is                                         *)
+(* `word_insert (word_zx X6_in_state) (64,64) X7_in_state`.  This is the    *)
+(* canonical AES-GCM body emit form (see body cuts at line 1753+).          *)
+(*                                                                           *)
+(* The cmp at 0x27c sets all four flags from `X0 - X5`; the simulator       *)
+(* propagates the symbolic-form flag facts.  These are SOME_FLAGS in the   *)
+(* MAYCHANGE frame.                                                          *)
+(*                                                                           *)
+(* Note: the X6/X7 inputs in the precondition correspond to the rk10-XOR'd  *)
+(* plaintext halves (output of the previous cut), but at this cut's level   *)
+(* they're just opaque 64-bit values.  Calling code should bind X6/X7 to    *)
+(* word_xor b0_lo rk10_lo and word_xor b0_hi rk10_hi.                       *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X23 (XOR'd), Q4 (Q4 fully built), SOME_FLAGS (cmp).       *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_Q4_CMP_CORRECT = prove
+ (`!pc (a:int64) (sx5:int64)
+       (b0_lo:int64) (b0_hi:int64)
+       (rk10_lo:int64) (rk10_hi:int64) (b3_lo:int64).
+    val a + 64 < 2 EXP 63
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x278) /\
+              read X0 s = a /\
+              read X5 s = sx5 /\
+              read X13 s = rk10_lo /\
+              read X14 s = rk10_hi /\
+              read X6 s = b0_lo /\
+              read X7 s = b0_hi /\
+              read X23 s = b3_lo)
+         (\s. read PC s = word (pc + 0x288) /\
+              read X0 s = a /\
+              read X5 s = sx5 /\
+              read X13 s = rk10_lo /\
+              read X14 s = rk10_hi /\
+              read X6 s = b0_lo /\
+              read X7 s = b0_hi /\
+              read X23 s = word_xor b3_lo rk10_lo /\
+              read Q4 s = word_insert (word_zx b0_lo :int128) (64,64) b0_hi)
+         (MAYCHANGE [PC; X23] ,,
+          MAYCHANGE [Q4] ,,
+          MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (159--162) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC);;
