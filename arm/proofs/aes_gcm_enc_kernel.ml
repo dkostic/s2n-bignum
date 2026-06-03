@@ -8927,11 +8927,16 @@ let AES_GCM_PRELUDE_IVEC_CTR_CORRECT = prove
 (*   - Q8, Q9 (intermediate trn1 results)                                    *)
 (*   - Q11 (loaded from [x3] at offset 0x160 + ext + rev64)                  *)
 (*   - Q12..Q17 (H-table state — the post specifies these)                   *)
-(*   - Q18..Q26 (round keys rk0..rk8 from key schedule)                      *)
+(*   - Q22 (rk4 from [x8,#64]); Q26 (rk8 from [x8,#128])                     *)
 (*   - Q27..Q30 (round keys rk9..rk12; rk10..rk12 unused for AES-128)        *)
 (*   - X9, X12 (counter scratch via add/orr/rev)                             *)
 (*   - SOME_FLAGS (cmp at 0x224 sets NF/ZF/CF/VF)                            *)
 (*   - events (memory loads)                                                  *)
+(* Note Q18..Q21, Q23..Q25 are NOT written in 0xf0..0x244 — those round-     *)
+(* keys are loaded earlier in the prelude (0x54..0xf0) and pass through      *)
+(* this slice unchanged.  Tightening MAYCHANGE to exclude them keeps         *)
+(* downstream cuts via ARM_BIGSTEP_TAC composition able to thread their      *)
+(* values from before this range to after.                                    *)
 (*                                                                           *)
 (* The slice instr indices for offsets 0xf0..0x240 (last instruction before  *)
 (* b.ge at 0x244) are 61..145 (1-based, since 0xf0/4+1 = 61, 0x240/4+1 =     *)
@@ -8971,8 +8976,7 @@ let AES_GCM_PRELUDE_HTABLE_KMID_CORRECT = prove
          (MAYCHANGE [PC; X9; X12] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
                      Q12; Q13; Q14; Q15; Q16; Q17;
-                     Q18; Q19; Q20; Q21; Q22; Q23; Q24; Q25; Q26;
-                     Q27; Q28; Q29; Q30] ,,
+                     Q22; Q26; Q27; Q28; Q29; Q30] ,,
           MAYCHANGE SOME_FLAGS ,,
           MAYCHANGE [events])`,
   REPEAT GEN_TAC THEN STRIP_TAC THEN
