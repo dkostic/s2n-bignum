@@ -5208,3 +5208,118 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8 prep — promote NIST_FULL_CORRECT (over the body slice mc) to the  *)
+(* full kernel mc context.  The slice is `SUB_LIST(0x308, 0x2bc)             *)
+(* aes_gcm_enc_kernel_mc`, so any                                            *)
+(*   `aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc`                *)
+(* implies                                                                   *)
+(*   `aligned_bytes_loaded s (word(pc + 0x308)) slice_mc`                    *)
+(* and the slice ensures from PC=pc+0x308 to PC=pc+0x308+0x2bc=pc+0x5c4      *)
+(* lifts unchanged into the kernel context.                                  *)
+(*                                                                           *)
+(* The promoted theorem is the body cut for Phase 8's                        *)
+(* `ENSURES_WHILE_UP_TAC`: the loop body subgoal arrives with PC=pc+0x308    *)
+(* (loop top) and must reach PC=pc+0x5c4 (back-edge instruction) under the   *)
+(* same 11-conjunct precondition (H-power table + Q16/Q17 km layout +        *)
+(* q4..q7 byteswap identifications).                                         *)
+(* ------------------------------------------------------------------------- *)
+
+let SLICE_TO_KERNEL_BODY_LOAD =
+  ALIGNED_BYTES_LOADED_SUBPROGRAM_RULE
+    aes_gcm_enc_kernel_mc aes_gcm_main_loop_body_slice_mc 0x308;;
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_KERNEL_CORRECT = prove
+ (`!pc (cptr:int64) (b0:int128) (b1:int128) (b2:int128)
+        (q4_pre:int128) (q11_pre:int128) (q5_pre:int128) (q7_pre:int128)
+        (q6_pre:int128)
+        (q12:int128) (q13:int128) (q14:int128) (q15:int128) (q16:int128)
+        (q17:int128)
+        (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+        (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+        (sx9:int64) (sx10:int64) (sx13:int64) (sx14:int64)
+        (h:int128) (prev_tag:int128) (ct0:int128) (ct1:int128) (ct2:int128)
+        (ct3:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64) /\
+    word_xor (aes_gcm_rev64_int128 q4_pre) (byteswap128 q11_pre) =
+      byteswap128 (word_xor prev_tag ct0) /\
+    aes_gcm_rev64_int128 q5_pre = byteswap128 ct1 /\
+    aes_gcm_rev64_int128 q6_pre = byteswap128 ct2 /\
+    aes_gcm_rev64_int128 q7_pre = byteswap128 ct3 /\
+    q15 = byteswap128 (h_power (ghash_twist h) 3) /\
+    q14 = byteswap128 (h_power (ghash_twist h) 2) /\
+    q13 = byteswap128 (h_power (ghash_twist h) 1) /\
+    q12 = byteswap128 (h_power (ghash_twist h) 0) /\
+    q17 = (word_join (karatsuba_mid (h_power (ghash_twist h) 3) :64 word)
+                     (karatsuba_mid (h_power (ghash_twist h) 2) :64 word)
+           :int128) /\
+    q16 = (word_join (karatsuba_mid (h_power (ghash_twist h) 1) :64 word)
+                     (karatsuba_mid (h_power (ghash_twist h) 0) :64 word)
+           :int128)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x308) /\
+              read X2 s = cptr /\
+              read Q0 s = b0 /\
+              read Q1 s = b1 /\
+              read Q2 s = b2 /\
+              read Q4 s = q4_pre /\
+              read Q5 s = q5_pre /\
+              read Q6 s = q6_pre /\
+              read Q7 s = q7_pre /\
+              read Q11 s = q11_pre /\
+              read Q12 s = q12 /\
+              read Q13 s = q13 /\
+              read Q14 s = q14 /\
+              read Q15 s = q15 /\
+              read Q16 s = q16 /\
+              read Q17 s = q17 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
+              read Q31 s = rk9 /\
+              read X9 s = sx9 /\
+              read X10 s = sx10 /\
+              read X13 s = sx13 /\
+              read X14 s = sx14)
+         (\s. read PC s = word (pc + 0x5c4) /\
+              read X2 s = word_add cptr (word 64) /\
+              read Q11 s = nist_ghash h prev_tag [ct0; ct1; ct2; ct3])
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC (SPECL [`pc + 0x308:num`; `cptr:int64`; `b0:int128`; `b1:int128`;
+                 `b2:int128`; `q4_pre:int128`; `q11_pre:int128`; `q5_pre:int128`;
+                 `q7_pre:int128`; `q6_pre:int128`; `q12:int128`; `q13:int128`;
+                 `q14:int128`; `q15:int128`; `q16:int128`; `q17:int128`;
+                 `rk0:int128`; `rk1:int128`; `rk2:int128`; `rk3:int128`;
+                 `rk4:int128`; `rk5:int128`; `rk6:int128`; `rk7:int128`;
+                 `rk8:int128`; `rk9:int128`;
+                 `sx9:int64`; `sx10:int64`; `sx13:int64`; `sx14:int64`;
+                 `h:int128`; `prev_tag:int128`;
+                 `ct0:int128`; `ct1:int128`; `ct2:int128`; `ct3:int128`]
+                AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_CORRECT) THEN
+  ANTS_TAC THENL
+   [ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+    REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC;
+                fst AES_GCM_ENC_KERNEL_EXEC] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[fst AES_GCM_ENC_KERNEL_EXEC;
+                                NONOVERLAPPING_CLAUSES]) THEN
+    NONOVERLAPPING_TAC;
+    REWRITE_TAC[ARITH_RULE `(pc + 0x308) + 0x2bc = pc + 0x5c4`] THEN
+    MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+    GEN_TAC THEN STRIP_TAC THEN
+    POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+    ASM_REWRITE_TAC[] THEN
+    ASM_MESON_TAC[SLICE_TO_KERNEL_BODY_LOAD]]);;
+
