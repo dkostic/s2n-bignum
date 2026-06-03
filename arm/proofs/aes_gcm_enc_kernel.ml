@@ -10223,3 +10223,132 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_Q4FLAG_THROUGH_BGE_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s062) — chain composition cuts 3 + 4_FLAG + 5 + 6 + 7 + 8 + 9   *)
+(* covering slice instr indices 153..194 (kernel offsets 0x260..0x308).     *)
+(*                                                                           *)
+(* Length-7 chain.  Adds cut 3 (RK10_XOR0: scalar XOR + Q5 low half build)  *)
+(* on top of Q4FLAG_THROUGH_BGE.                                             *)
+(*                                                                           *)
+(* Cut 3 has no nonoverlapping antecedent, no flag effects; threads through *)
+(* the chain mechanically.  Threading at cut 3 → cut 4_FLAG boundary       *)
+(* (PC = 0x278):                                                            *)
+(*  - X6 := word_xor b0_lo rk10_lo, X7 := word_xor b0_hi rk10_hi           *)
+(*  - X19 := word_xor b1_lo rk10_lo, X20 := word_xor b1_hi rk10_hi         *)
+(*  - X23 unchanged (cut 4 will XOR with rk10_lo internally)               *)
+(*  - X24 := word_xor b3_hi rk10_hi (cut 3 XOR'd it pre-emptively for      *)
+(*    cut 5 to consume into Q7 high half)                                  *)
+(*  - Q5 := word_zx (word_xor b1_lo rk10_lo) (cut 3 fmov'd into Q5 lo)    *)
+(*                                                                           *)
+(* Cut 4_FLAG_THROUGH_BGE's b0_lo/b0_hi parameters bind to the post-cut-3   *)
+(* X6/X7 values (XOR'd).  Q4 is preserved through cut 3 (cut 3's MAYCHANGE *)
+(* doesn't include Q4); bind to `read Q4 (s6:armstate):int128`.            *)
+(* ------------------------------------------------------------------------- *)
+(* Length-7 chain: cuts 3 + 4_FLAG + 5 + 6 + 7 + 8 + 9.
+   Slice idx 153..194, kernel offsets 0x260..0x308. *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_RK10_THROUGH_BGE_CORRECT = prove
+ (`!pc (a:int64) (sx5:int64) (cptr:int64)
+       (q0_pre:int128) (q1_pre:int128)
+       (sx10:int64) (sx9:int64) (sx11:int64) (sx12:int32)
+       (q2_pre:int128) (q3_pre:int128) (q6_pre:int128) (q7_pre:int128)
+       (rk10_lo:int64) (rk10_hi:int64)
+       (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+       (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64).
+    val a + 64 < 2 EXP 63 /\
+    ival (word_add a (word 64)) < ival sx5 /\
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x260) /\
+              read X0 s = word_add a (word 64) /\
+              read X5 s = sx5 /\
+              read X2 s = cptr /\
+              read X9 s = sx9 /\
+              read X10 s = sx10 /\
+              read X11 s = sx11 /\
+              read X12 s = word_zx sx12 /\
+              read X13 s = rk10_lo /\
+              read X14 s = rk10_hi /\
+              read X6 s = b0_lo /\
+              read X7 s = b0_hi /\
+              read X19 s = b1_lo /\
+              read X20 s = b1_hi /\
+              read X21 s = b2_lo /\
+              read X22 s = b2_hi /\
+              read X23 s = b3_lo /\
+              read X24 s = b3_hi /\
+              read Q0 s = q0_pre /\
+              read Q1 s = q1_pre /\
+              read Q2 s = q2_pre /\
+              read Q3 s = q3_pre /\
+              read Q6 s = q6_pre /\
+              read Q7 s = q7_pre)
+         (\s. read PC s = word (pc + 0x308) /\
+              read X2 s = word_add cptr (word 64) /\
+              read (memory :> bytes128 cptr) s = word_xor q0_pre
+                   (word_insert (word_zx (word_xor b0_lo rk10_lo) :int128)
+                                (64,64) (word_xor b0_hi rk10_hi)) /\
+              read (memory :> bytes128 (word_add cptr (word 16))) s =
+                   word_xor q1_pre
+                            (word_insert
+                              (word_zx (word_xor b1_lo rk10_lo) :int128)
+                              (64,64) (word_xor b1_hi rk10_hi)) /\
+              read (memory :> bytes128 (word_add cptr (word 32))) s =
+                   word_xor q2_pre
+                            (word_insert
+                              (word_zx (word_xor b2_lo rk10_lo) :int128)
+                              (64,64) (word_xor b2_hi rk10_hi)) /\
+              read (memory :> bytes128 (word_add cptr (word 48))) s =
+                   word_xor q3_pre (word_insert
+                                     (word_zx (word_xor b3_lo rk10_lo) :int128)
+                                     (64,64) (word_xor b3_hi rk10_hi)))
+         (MAYCHANGE [PC; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q4; Q5; Q6; Q7] ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16));
+                     memory :> bytes128 (word_add cptr (word 32));
+                     memory :> bytes128 (word_add cptr (word 48))] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  (* Cut 3 RK10_XOR0: 0x260..0x278.  No nonoverlapping antecedent, no flags. *)
+  MP_TAC(SPECL[`pc:num`; `(word_add a (word 64)):int64`; `sx5:int64`;
+               `rk10_lo:int64`; `rk10_hi:int64`;
+               `b0_lo:int64`; `b0_hi:int64`; `b1_lo:int64`; `b1_hi:int64`;
+               `b2_lo:int64`; `b2_hi:int64`; `b3_lo:int64`; `b3_hi:int64`]
+              AES_GCM_PRELUDE_FIRSTBLOCKS_RK10_XOR0_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC "s6" THEN
+  (* Cuts 4_FLAG+5+6+7+8+9: 0x278..0x308 *)
+  MP_TAC(REWRITE_RULE[SOME_FLAGS]
+          (SPECL[`pc:num`; `a:int64`; `sx5:int64`; `cptr:int64`;
+               `read Q4 (s6:armstate):int128`;
+               `q0_pre:int128`;
+               `(word_zx (word_xor (b1_lo:int64) (rk10_lo:int64)) :int128):int128`;
+               `q1_pre:int128`;
+               `sx10:int64`; `sx9:int64`; `sx11:int64`; `sx12:int32`;
+               `(word_xor (b3_hi:int64) (rk10_hi:int64)):int64`;
+               `q2_pre:int128`; `q3_pre:int128`; `q6_pre:int128`; `q7_pre:int128`;
+               `b2_lo:int64`; `rk10_lo:int64`; `rk10_hi:int64`;
+               `(word_xor (b1_lo:int64) (rk10_lo:int64)):int64`;
+               `(word_xor (b1_hi:int64) (rk10_hi:int64)):int64`;
+               `b2_hi:int64`;
+               `b3_lo:int64`;
+               `(word_xor (b0_lo:int64) (rk10_lo:int64)):int64`;
+               `(word_xor (b0_hi:int64) (rk10_hi:int64)):int64`;
+               `b3_lo:int64`]
+              AES_GCM_PRELUDE_FIRSTBLOCKS_Q4FLAG_THROUGH_BGE_CORRECT)) THEN
+  ANTS_TAC THENL
+   [ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                    fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC];
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC "s42" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC WORD_RULE);;
