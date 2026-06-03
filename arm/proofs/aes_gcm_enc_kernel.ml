@@ -6359,3 +6359,54 @@ let AES_GCM_MAIN_LOOP_BACKEDGE_KERNEL_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8 — NF/VF emit-form to signed-LT translation lemma.                 *)
+(*                                                                           *)
+(* The X0/X5/flag body cut emits NF/VF as raw simulator forms:               *)
+(*   read NF s <=> ival (word_sub a b) < &0                                  *)
+(*   read VF s <=> ~(ival a - ival b = ival (word_sub a b))                  *)
+(* Condition_LT semantics is `~(NF <=> VF)`, so combining yields:            *)
+(*   condition_semantics Condition_LT s                                      *)
+(*     <=> ~(ival(word_sub a b) < &0 <=>                                     *)
+(*           ~(ival a - ival b = ival (word_sub a b)))                       *)
+(*                                                                           *)
+(* This lemma rewrites that combined form into the much simpler signed-LT    *)
+(* `ival a < ival b`, which is what the loop invariant's `q i s` flag fact   *)
+(* needs — i.e. `ival (word_add x0_init (word(0x40 * (i+1)))) < ival x5_init` *)
+(* relating the iteration counter to the loop bound.                         *)
+(*                                                                           *)
+(* Proof spine: ICONG_WORD_SUB gives `ival(word_sub a b) ≡ ival a - ival b   *)
+(* (mod 2^64)`, expanding the congruence to `… = 2^64 * d`. IVAL_BOUND       *)
+(* bounds `ival` in `[-2^63, 2^63)`. Case-split on `d ∈ {-1, 0, 1}`; in each *)
+(* case ASM_INT_ARITH_TAC closes; the residual contradicts via               *)
+(* INT_ARITH_TAC.                                                             *)
+(* ------------------------------------------------------------------------- *)
+
+let IVAL_WORD_SUB_NFVF_TO_LT = prove
+ (`!a b:int64.
+    ~(ival(word_sub a b) < &0 <=>
+      ~(ival a - ival b = ival(word_sub a b))) <=>
+    ival a < ival b`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(ISPECL [`a:int64`; `b:int64`] ICONG_WORD_SUB) THEN
+  REWRITE_TAC[DIMINDEX_64; int_congruent; int_divides] THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  STRIP_TAC THEN
+  MP_TAC(ISPEC `a:int64` IVAL_BOUND) THEN
+  MP_TAC(ISPEC `b:int64` IVAL_BOUND) THEN
+  MP_TAC(ISPEC `word_sub (a:int64) b` IVAL_BOUND) THEN
+  REWRITE_TAC[DIMINDEX_64] THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  CONV_TAC(DEPTH_CONV INT_POW_CONV) THEN
+  POP_ASSUM_LIST(MP_TAC o end_itlist CONJ) THEN
+  CONV_TAC(DEPTH_CONV INT_POW_CONV) THEN
+  REPEAT STRIP_TAC THEN
+  ASM_CASES_TAC `d:int = &0` THENL
+  [POP_ASSUM SUBST_ALL_TAC THEN ASM_INT_ARITH_TAC;
+   ASM_CASES_TAC `d:int = &1` THENL
+   [POP_ASSUM SUBST_ALL_TAC THEN ASM_INT_ARITH_TAC;
+    ASM_CASES_TAC `d:int = -- &1` THENL
+    [POP_ASSUM SUBST_ALL_TAC THEN ASM_INT_ARITH_TAC;
+     SUBGOAL_THEN `F` MP_TAC THENL
+     [ASM_INT_ARITH_TAC; MESON_TAC[]]]]]);;
+
