@@ -9294,3 +9294,77 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_Q4_CMP_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s060) — first 4-block region: Q5 finalize + Q6 build + Q7 low + *)
+(* counter advance (slice instr indices 163..170, kernel offsets             *)
+(* 0x288..0x2a8).                                                            *)
+(*                                                                           *)
+(*   0x288  eor x21, x21, x13              ; pt2_lo XOR rk10_lo             *)
+(*   0x28c  fmov v5.d[1], x20               ; Q5 high half = X20 (Q5 done)  *)
+(*   0x290  fmov d6, x21                    ; Q6 low half = X21              *)
+(*   0x294  add w12, w12, #0x1               ; counter increment             *)
+(*   0x298  orr x9, x11, x9, lsl #32         ; counter scratch               *)
+(*   0x29c  fmov d7, x23                    ; Q7 low half = X23              *)
+(*   0x2a0  eor x22, x22, x14              ; pt2_hi XOR rk10_hi             *)
+(*   0x2a4  fmov v6.d[1], x22                ; Q6 high half = X22 (Q6 done)  *)
+(*                                                                           *)
+(* After this cut Q5 and Q6 are fully built (in canonical word_insert       *)
+(* emit form), Q7 has its low half but high half is still pending until    *)
+(* 0x2d4 (`fmov v7.d[1], x24`).                                             *)
+(*                                                                           *)
+(* The counter `add w12, w12, #1` advances X12 by 1 (mod 2^32 since W12);   *)
+(* simulator emits `word_zx (word_add (word_zx (word_zx sx12)) (word 1))`  *)
+(* which collapses to `word_zx (word_add sx12 (word 1))` via WORD_ZX_ZX +   *)
+(* DIMINDEX_32/64 + LE_REFL.                                                 *)
+(*                                                                           *)
+(* The Q5 form emerges as `word_insert (word_zx (b1_lo XOR rk10_lo)) (64,64)*)
+(* (b1_hi XOR rk10_hi)` if q5_pre was `word_zx (b1_lo XOR rk10_lo)` from   *)
+(* the prior cut.  Stated here parametrically as `word_insert q5_pre (64,64)*)
+(* X20_value` — caller composes by binding q5_pre.                          *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X9 (orr scratch), X12 (counter), X21/X22 (XOR'd), Q5/Q6/Q7*)
+(* (built).                                                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_Q5Q6Q7LO_CTR_CORRECT = prove
+ (`!pc (b2_lo:int64) (rk10_lo:int64) (rk10_hi:int64)
+       (b1_lo_pre:int64) (b1_hi_pre:int64) (b2_hi:int64) (b3_lo_pre:int64)
+       (sx9:int64) (sx11:int64) (sx12:int32)
+       (q5_pre:int128) (q6_pre:int128) (q7_pre:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0x288) /\
+          read X9 s = sx9 /\
+          read X11 s = sx11 /\
+          read X12 s = word_zx sx12 /\
+          read X13 s = rk10_lo /\
+          read X14 s = rk10_hi /\
+          read X19 s = b1_lo_pre /\
+          read X20 s = b1_hi_pre /\
+          read X21 s = b2_lo /\
+          read X22 s = b2_hi /\
+          read X23 s = b3_lo_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q7 s = q7_pre)
+     (\s. read PC s = word (pc + 0x2a8) /\
+          read X12 s = word_zx (word_add sx12 (word 1):int32) /\
+          read X19 s = b1_lo_pre /\
+          read X20 s = b1_hi_pre /\
+          read X21 s = word_xor b2_lo rk10_lo /\
+          read X22 s = word_xor b2_hi rk10_hi /\
+          read X23 s = b3_lo_pre /\
+          read Q5 s = word_insert q5_pre (64,64) b1_hi_pre /\
+          read Q6 s = word_insert (word_zx (word_xor b2_lo rk10_lo) :int128)
+                                   (64,64) (word_xor b2_hi rk10_hi) /\
+          read Q7 s = word_zx b3_lo_pre :int128)
+     (MAYCHANGE [PC; X9; X12; X21; X22] ,,
+      MAYCHANGE [Q5; Q6; Q7] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (163--170) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
