@@ -9368,3 +9368,57 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_Q5Q6Q7LO_CTR_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s060) — first 4-block region: ciphertext blocks 0/1 + Q0 reload *)
+(* (slice instr indices 171..176, kernel offsets 0x2a8..0x2c0).             *)
+(*                                                                           *)
+(*   0x2a8  eor v4.16b, v4.16b, v0.16b      ; ciphertext block 0 in Q4      *)
+(*   0x2ac  fmov d0, x10                     ; Q0 = next-counter low (X10)  *)
+(*   0x2b0  fmov v0.d[1], x9                  ; Q0 = full next counter      *)
+(*   0x2b4  rev w9, w12                       ; counter byte-swap scratch   *)
+(*   0x2b8  add w12, w12, #0x1                ; counter advance             *)
+(*   0x2bc  eor v5.16b, v5.16b, v1.16b      ; ciphertext block 1 in Q5      *)
+(*                                                                           *)
+(* Q4 absorbs the first AES-encrypted-counter into the rk10-XOR'd plaintext *)
+(* word (i.e. completing the AES final round + plaintext XOR).  Q5 likewise *)
+(* for block 1.  Q0 is overwritten with the NEXT counter to start its       *)
+(* 10-round AES pipeline for the next iteration.                             *)
+(*                                                                           *)
+(* Q0's new value is `word_insert (word_zx X10) (64,64) X9` — the canonical *)
+(* counter-byteswap-into-128 emit form.                                      *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X9 (rev scratch), X12 (counter), Q0 (next counter),       *)
+(* Q4/Q5 (ciphertexts).  Note Q4/Q5 take the simulator's emit order        *)
+(* `word_xor q_aes q_pt` (NOT pt-first); callers must pass q_aes_pre as Q0  *)
+(* and q_pt_pre as Q4 since the simulator's `eor v4, v4, v0` reads v4 first.*)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_CT01_CTRADV_CORRECT = prove
+ (`!pc (q4_pre:int128) (q0_pre:int128) (q5_pre:int128) (q1_pre:int128)
+       (sx10:int64) (sx9:int64) (sx12:int32).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0x2a8) /\
+          read X9 s = sx9 /\
+          read X10 s = sx10 /\
+          read X12 s = word_zx sx12 /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre)
+     (\s. read PC s = word (pc + 0x2c0) /\
+          read X10 s = sx10 /\
+          read X12 s = word_zx (word_add sx12 (word 1):int32) /\
+          read Q0 s = word_insert (word_zx sx10 :int128) (64,64) sx9 /\
+          read Q4 s = word_xor q0_pre q4_pre /\
+          read Q5 s = word_xor q1_pre q5_pre)
+     (MAYCHANGE [PC; X9; X12] ,,
+      MAYCHANGE [Q0; Q4; Q5] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (171--176) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
