@@ -9161,3 +9161,74 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_PT23_LOAD_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (150--152) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s060) — first 4-block region: scalar XORs of plaintext halves   *)
+(* with rk10 (last round key) halves + first fmov d5 (slice instr indices  *)
+(* 153..158, kernel offsets 0x260..0x278).                                  *)
+(*                                                                           *)
+(*   0x260  eor x19, x19, x13              ; pt1_lo XOR rk10_lo             *)
+(*   0x264  eor x20, x20, x14              ; pt1_hi XOR rk10_hi             *)
+(*   0x268  fmov d5, x19                    ; Q5 low half = pt1_lo XOR rk10_lo
+                                             ; (Q5 high cleared via fmov d) *)
+(*   0x26c  eor x6, x6, x13                ; pt0_lo XOR rk10_lo             *)
+(*   0x270  eor x7, x7, x14                ; pt0_hi XOR rk10_hi             *)
+(*   0x274  eor x24, x24, x14              ; pt3_hi XOR rk10_hi             *)
+(*                                                                           *)
+(* These 6 instructions XOR plaintext halves with the AES last-round-key    *)
+(* (rk10) halves so that subsequent vector EOR with the AES-encrypted       *)
+(* counter (which has 10 aese rounds applied — i.e. is at the rk9 stage)   *)
+(* completes the final round.  This implements the standard AES-CTR        *)
+(* optimization where the last key-schedule XOR is folded into the          *)
+(* plaintext-XOR.                                                            *)
+(*                                                                           *)
+(* `fmov d5, x19` writes a 64-bit value to D5; the architectural semantic   *)
+(* zero-extends to the full Q5 register (top half cleared).  The simulator  *)
+(* emits this as `read Q5 s = word_zx (word_xor b1_lo rk10_lo) :int128`.    *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X6/X7 (pt0 XOR'd), X19/X20 (pt1 XOR'd), X24 (pt3_hi       *)
+(* XOR'd), Q5 (low half set).                                               *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_RK10_XOR0_CORRECT = prove
+ (`!pc (a:int64) (sx5:int64)
+       (rk10_lo:int64) (rk10_hi:int64)
+       (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+       (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0x260) /\
+          read X0 s = a /\
+          read X5 s = sx5 /\
+          read X13 s = rk10_lo /\
+          read X14 s = rk10_hi /\
+          read X6 s = b0_lo /\
+          read X7 s = b0_hi /\
+          read X19 s = b1_lo /\
+          read X20 s = b1_hi /\
+          read X21 s = b2_lo /\
+          read X22 s = b2_hi /\
+          read X23 s = b3_lo /\
+          read X24 s = b3_hi)
+     (\s. read PC s = word (pc + 0x278) /\
+          read X0 s = a /\
+          read X5 s = sx5 /\
+          read X13 s = rk10_lo /\
+          read X14 s = rk10_hi /\
+          read X6 s = word_xor b0_lo rk10_lo /\
+          read X7 s = word_xor b0_hi rk10_hi /\
+          read X19 s = word_xor b1_lo rk10_lo /\
+          read X20 s = word_xor b1_hi rk10_hi /\
+          read X21 s = b2_lo /\
+          read X22 s = b2_hi /\
+          read X23 s = b3_lo /\
+          read X24 s = word_xor b3_hi rk10_hi /\
+          read Q5 s = word_zx (word_xor b1_lo rk10_lo) :int128)
+     (MAYCHANGE [PC; X6; X7; X19; X20; X24] ,,
+      MAYCHANGE [Q5] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (153--158) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
