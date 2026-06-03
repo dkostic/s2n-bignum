@@ -8883,6 +8883,64 @@ let AES_GCM_PRELUDE_IVEC_CTR_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s059) — round-keys preload cut.                                  *)
+(*                                                                           *)
+(* The 39-instruction range at kernel byte offsets 0x54..0xf0 (slice instr  *)
+(* indices 22..60) loads round keys rk0..rk7 (excluding rk4 = Q22 which is  *)
+(* loaded later in the H-table range), interleaved with the start of the    *)
+(* counter setup (Q1/Q2/Q3 from Q0 via fmov + counter increments) and the   *)
+(* first four AES rounds on Q0..Q3:                                         *)
+(*                                                                           *)
+(*   0x54  ldr  q18, [x8]                       ; rk0  -> Q18                *)
+(*   0x5c  ldr  q25, [x8, #112]                 ; rk7  -> Q25                *)
+(*   0x94  ldr  q19, [x8, #16]                  ; rk1  -> Q19                *)
+(*   0xa8  ldr  q20, [x8, #32]                  ; rk2  -> Q20                *)
+(*   0xcc  ldr  q21, [x8, #48]                  ; rk3  -> Q21                *)
+(*   0xd8  ldr  q24, [x8, #96]                  ; rk6  -> Q24                *)
+(*   0xe4  ldr  q23, [x8, #80]                  ; rk5  -> Q23                *)
+(*                                                                           *)
+(* The post asserts the seven round-key loads.  Q22 (rk4 from [x8,#64]) is  *)
+(* loaded inside the H-table range (0xf0..0x244) and is NOT covered by      *)
+(* this cut.  Q0..Q3, X5/X9/X11/X12, and round-key Qs go in MAYCHANGE.      *)
+(* SOME_FLAGS is NOT in MAYCHANGE: this range has no flag-setting           *)
+(* instructions (no cmp / adds variant).                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_ROUND_KEYS_CORRECT = prove
+ (`!pc (b:int64)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0x54) /\
+          read X8 s = b /\
+          read (memory :> bytes128 b) s = rk0 /\
+          read (memory :> bytes128 (word_add b (word 16))) s = rk1 /\
+          read (memory :> bytes128 (word_add b (word 32))) s = rk2 /\
+          read (memory :> bytes128 (word_add b (word 48))) s = rk3 /\
+          read (memory :> bytes128 (word_add b (word 80))) s = rk5 /\
+          read (memory :> bytes128 (word_add b (word 96))) s = rk6 /\
+          read (memory :> bytes128 (word_add b (word 112))) s = rk7)
+     (\s. read PC s = word (pc + 0xf0) /\
+          read X8 s = b /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7)
+     (MAYCHANGE [PC; X5; X9; X11; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3;
+                 Q18; Q19; Q20; Q21; Q23; Q24; Q25] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (22--60) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s058) — H-table load + karatsuba_mid construction cut.           *)
 (*                                                                           *)
 (* The 85-instruction range at kernel byte offsets 0xf0..0x244 contains the  *)
