@@ -9047,3 +9047,69 @@ let AES_GCM_PRELUDE_HTABLE_KMID_CORRECT = prove
   CONJ_TAC THENL
    [REWRITE_TAC[byteswap128; karatsuba_mid] THEN CONV_TAC WORD_BLAST;
     REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s060) — first 4-block region opening: b.ge fall-through + first  *)
+(* two plaintext-block loads (slice instr indices 146..149, kernel offsets  *)
+(* 0x244..0x254).                                                            *)
+(*                                                                           *)
+(* This is the first cut in the 0x244..0x308 first-4-block region (the      *)
+(* "Lenc_finish_first_blocks" pre-loop preamble that handles the iter-0     *)
+(* AES-CTR encrypt of 4 plaintext blocks before the main loop).  The cut    *)
+(* covers:                                                                   *)
+(*                                                                           *)
+(*   0x244  b.ge .Lenc_tail               ; falls through under condition_LT*)
+(*   0x248  ldp x19, x20, [x0, #16]        ; pt block 1 halves              *)
+(*   0x24c  rev w9, w12                    ; counter byte-swap scratch      *)
+(*   0x250  ldp x6, x7, [x0]               ; pt block 0 halves              *)
+(*                                                                           *)
+(* The b.ge falls through when `~(NF <=> VF)` (signed-LT) holds; under the  *)
+(* main-loop entry, this corresponds to `condition_semantics Condition_LT`  *)
+(* which is what the wrapper sees as `i < N` for iteration 0.  The b.ge's   *)
+(* `~(NF <=> VF)` precondition is supplied by the cmp at 0x224 (inside the  *)
+(* H-table cut's range) when the input pointer is strictly less than the    *)
+(* end pointer.                                                              *)
+(*                                                                           *)
+(* The two LDPs introduce 8 bytes each of plaintext: block 1's two 64-bit   *)
+(* halves at [X0+16, X0+24] and block 0's at [X0, X0+8].  Memory at these   *)
+(* offsets is named in the precondition as `b0_lo, b0_hi, b1_lo, b1_hi`.   *)
+(*                                                                           *)
+(* Pre `val a + 16 < val sx5` ensures the simulator can rule out (1) the    *)
+(* code region overlapping with [X0..X0+24] (program-text non-overlap is    *)
+(* implicit via `aligned_bytes_loaded`) and (2) any X5-related pointer       *)
+(* arithmetic from underflowing.  Pre `val a + 64 < 2 EXP 63` is for the    *)
+(* later `add x0, x0, #0x40` (in the next cut); kept here for forward       *)
+(* compatibility with the chained cut composition.                          *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X6/X7 (pt block 0), X9 (rev w9 scratch), X19/X20 (pt      *)
+(* block 1).                                                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_PT01_LOAD_CORRECT = prove
+ (`!pc (a:int64) (sx5:int64)
+       (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64).
+    val a + 64 < 2 EXP 63 /\ val a + 16 < val sx5
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x244) /\
+              read X0 s = a /\
+              read X5 s = sx5 /\
+              ~(read NF s <=> read VF s) /\
+              read (memory :> bytes64 a) s = b0_lo /\
+              read (memory :> bytes64 (word_add a (word 8))) s = b0_hi /\
+              read (memory :> bytes64 (word_add a (word 16))) s = b1_lo /\
+              read (memory :> bytes64 (word_add a (word 24))) s = b1_hi)
+         (\s. read PC s = word (pc + 0x254) /\
+              read X0 s = a /\
+              read X5 s = sx5 /\
+              read X6 s = b0_lo /\
+              read X7 s = b0_hi /\
+              read X19 s = b1_lo /\
+              read X20 s = b1_hi)
+         (MAYCHANGE [PC; X6; X7; X9; X19; X20] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (146--149) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
