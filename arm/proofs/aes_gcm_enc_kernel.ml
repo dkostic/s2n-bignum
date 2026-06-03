@@ -9053,34 +9053,35 @@ let AES_GCM_PRELUDE_HTABLE_KMID_CORRECT = prove
 (* by the cmp at offset 0x224.                                               *)
 (*                                                                           *)
 (* Same as HTABLE_KMID_CORRECT but:                                          *)
-(*  - PRE adds `read X0 s = word_add a (word 64)` and `read X5 s = sx5`     *)
-(*    plus the algebraic precondition `val a + 64 < 2 EXP 63` (for the     *)
-(*    `add x0, x0, #0x40` non-overflow earlier in the prelude — implicit   *)
-(*    in this slice's caller; restated here as the cmp's signed-comparison *)
-(*    arithmetic depends on it via IVAL_WORD_SUB_NFVF_TO_LT downstream).   *)
+(*  - PRE adds `read X0 s = sx0` and `read X5 s = sx5` to capture the       *)
+(*    cmp's operands (the cmp is `cmp x0, x5` at offset 0x224, slice instr  *)
+(*    index ~138).                                                           *)
 (*  - POST adds raw NF/VF facts in simulator-emit form, enabling downstream *)
-(*    derivation of `~(NF <=> VF)` from the algebraic condition             *)
-(*    `ival (word_add a (word 64)) < ival sx5` via                           *)
-(*    `IVAL_WORD_SUB_NFVF_TO_LT`.                                            *)
+(*    derivation of `~(NF <=> VF)` from any algebraic condition that bridges*)
+(*    `ival sx0 < ival sx5` to the flag fact via IVAL_WORD_SUB_NFVF_TO_LT.  *)
 (*                                                                           *)
-(* The cmp at 0x224 (slice instr index 138) is the LAST flag-setting        *)
-(* instruction in this 85-instr range; the post-0x224 instructions are     *)
-(* eor/aese/trn1/eor which don't touch flags.  So the simulator's flag    *)
-(* state at PC=0x244 is exactly what the 0x224 cmp produced.                *)
+(* The cmp at 0x224 is the LAST flag-setting instruction in this 85-instr   *)
+(* range; the post-0x224 instructions are eor/aese/trn1/eor which don't    *)
+(* touch flags.  So the simulator's flag state at PC=0x244 is exactly what *)
+(* the 0x224 cmp produced.                                                   *)
+(*                                                                           *)
+(* sx0/sx5 are taken abstractly so the caller can bind them to the actual  *)
+(* values at this slice's entry — typically sx0 = ptr0 (X0 unmodified by   *)
+(* the prelude up to 0xf0) and sx5 = the X5 value computed by the round-   *)
+(* keys cut's `add x5, x5, x0` at offset 0x68.                              *)
 (*                                                                           *)
 (* Mirrors AES_GCM_PRELUDE_FIRSTBLOCKS_Q4_CMP_FLAG_CORRECT's flag-exposure  *)
 (* pattern (line ~9313).                                                     *)
 (* ------------------------------------------------------------------------- *)
 
 let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_CORRECT = prove
- (`!pc (a:int64) (sx5:int64) (htable_ptr:int64) (h:int128).
-    val a + 64 < 2 EXP 63 /\
+ (`!pc (sx0:int64) (sx5:int64) (htable_ptr:int64) (h:int128).
     nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
                    (htable_ptr, 96)
     ==> ensures arm
          (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
               read PC s = word (pc + 0xf0) /\
-              read X0 s = word_add a (word 64) /\
+              read X0 s = sx0 /\
               read X5 s = sx5 /\
               read X6 s = htable_ptr /\
               read (memory :> bytes128 htable_ptr) s =
@@ -9092,7 +9093,7 @@ let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_CORRECT = prove
               read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
                 byteswap128 (h_power (ghash_twist h) 3))
          (\s. read PC s = word (pc + 0x244) /\
-              read X0 s = word_add a (word 64) /\
+              read X0 s = sx0 /\
               read X5 s = sx5 /\
               read X6 s = htable_ptr /\
               read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
@@ -9107,11 +9108,9 @@ let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_CORRECT = prove
                 (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
                            (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
                  :int128) /\
-              (read NF s <=>
-               ival (word_sub (word_add a (word 64)) sx5) < &0) /\
+              (read NF s <=> ival (word_sub sx0 sx5) < &0) /\
               (read VF s <=>
-               ~(ival (word_add a (word 64)) - ival sx5 =
-                 ival (word_sub (word_add a (word 64)) sx5))))
+               ~(ival sx0 - ival sx5 = ival (word_sub sx0 sx5))))
          (MAYCHANGE [PC; X9; X12] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
                      Q12; Q13; Q14; Q15; Q16; Q17;
