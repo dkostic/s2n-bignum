@@ -7693,6 +7693,38 @@ let ENSURES_ADD_ALIGNED_TO_POST = prove
   ASM_MESON_TAC[aligned_bytes_loaded; bytes_loaded]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 8 (s051) — generic FACT lifter, generalisation of                   *)
+(* ENSURES_ADD_ALIGNED_TO_POST: lift any preserved-by-frame fact             *)
+(* `read c s = v` (with v fixed by P) into the post.                         *)
+(*                                                                           *)
+(* Used by the FULL kernel cut to thread Q12..Q17 (H-power table),          *)
+(* Q18..Q26+Q31 (round keys), and X9/X10/X13/X14 (preserved scalars) from   *)
+(* the cut's pre into its post — these registers are outside the cut's     *)
+(* MAYCHANGE frame so they ARE preserved, but the FLAG_LOADED cut's post   *)
+(* doesn't assert that.  Iterating this helper over each preserved          *)
+(* component enriches the post enough that ENSURES_PREPOSTCONDITION_THM     *)
+(* matches the wrapper's loop invariant directly.                           *)
+(*                                                                           *)
+(* Antecedent (a) `R s s2 ==> read c s2 = read c s` is the standard         *)
+(* preservation predicate; for MAYCHANGE frames not mentioning c it         *)
+(* discharges via READ_OVER_WRITE_ORTHOGONAL_TAC.  Antecedent (b)            *)
+(* `P s ==> read c s = v` is trivial when P directly asserts                 *)
+(* `read c s = v` (SIMP_TAC[]).                                              *)
+(* ------------------------------------------------------------------------- *)
+
+let ENSURES_ADD_FACT_TO_POST = prove
+ (`!(c:(armstate,A)component) v step (P:armstate->bool) Q R.
+    (!s s2. R s s2 ==> read c s2 = read c s) /\
+    (!s. P s ==> read c s = v) /\
+    ensures step P Q R
+    ==> ensures step P (\s. read c s = v /\ Q s) R`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[ensures] THEN STRIP_TAC THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `s:armstate`) THEN ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC(REWRITE_RULE[RIGHT_IMP_FORALL_THM] EVENTUALLY_MONO) THEN
+  ASM_MESON_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 8 (s049) — kernel-level body cut (LOADED variant): same as the      *)
 (* FLAG cut but with `aligned_bytes_loaded ... aes_gcm_enc_kernel_mc` in     *)
 (* both pre AND post.  Lifted from the FLAG cut via                          *)
