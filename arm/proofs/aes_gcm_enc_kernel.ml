@@ -6519,3 +6519,164 @@ let IVAL_WORD_SUB_NFVF_TO_LT = prove
      SUBGOAL_THEN `F` MP_TAC THENL
      [ASM_INT_ARITH_TAC; MESON_TAC[]]]]]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8 — kernel-level main-loop wrapper SKELETON                          *)
+(*                                                                           *)
+(* AES_GCM_MAIN_LOOP_WRAPPER_SKELETON_CORRECT — first wrapper landed for the *)
+(* AES-GCM encryption kernel's main loop (offsets 0x308..0x5c4..0x5c8).      *)
+(*                                                                           *)
+(* SCOPE (s047): this is a SKELETON — the loop invariant carries only       *)
+(* X0/X2/X5 advance facts and the Condition_LT flag.  It does NOT carry     *)
+(* spec-level facts (Q11 = nist_ghash, byteswap identifications, H-power   *)
+(* table, round-key table, plaintext/ciphertext memory layout).             *)
+(* The skeleton's purpose is to validate the wrapper construction chain —   *)
+(* especially the body-subgoal proof using two existing cuts via the        *)
+(* ENSURES_FRAME_SUBSUMED + ENSURES_PREPOSTCONDITION_THM bridging pattern.   *)
+(*                                                                           *)
+(* PRECONDITIONS:                                                            *)
+(*   ~(N = 0)                                                                *)
+(*   nonoverlapping (word pc, kernel_mc) (cptr, 64*N)                       *)
+(*   word_add x0_init (word(64*N)) = x5_init     (loop bound at end)        *)
+(*   val x0_init + 64 * N < 2 EXP 63             (no signed overflow)       *)
+(*                                                                           *)
+(* The signed-overflow precondition is real: if val x0_init + 64*N ≥ 2^63,  *)
+(* the b.lt at offset 0x5c4 would compare signed-negative addresses, and    *)
+(* the iteration counter mapping breaks down.                               *)
+(*                                                                           *)
+(* SUBSEQUENT WORK: extend the loop invariant to carry spec-level facts.    *)
+(* Each extension is a separate stronger wrapper that builds on this one    *)
+(* via ENSURES_FRAME_SUBSUMED + a strengthened cut — same structural       *)
+(* pattern.  Q-state spec facts come from NIST_FULL_KERNEL_PLUS_Q567_CORRECT *)
+(* (already in tree); these can be threaded through by a parallel cut       *)
+(* application in the body subgoal.                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_WRAPPER_SKELETON_CORRECT = prove
+ (`!pc (cptr:int64) (x0_init:int64) (x5_init:int64) (N:num).
+   ~(N = 0) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64*N) /\
+   word_add x0_init (word(64*N)) = x5_init /\
+   val x0_init + 64 * N < 2 EXP 63
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+             read PC s = word (pc + 0x308) /\
+             read X0 s = x0_init /\
+             read X2 s = cptr /\
+             read X5 s = x5_init)
+        (\s. read PC s = word (pc + 0x5c8) /\
+             read X0 s = x5_init /\
+             read X2 s = word_add cptr (word(64*N)) /\
+             read X5 s = x5_init)
+        (MAYCHANGE [PC] ,,
+         MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+         MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+         MAYCHANGE SOME_FLAGS ,,
+         MAYCHANGE [memory :> bytes(cptr, 64*N)] ,,
+         MAYCHANGE [events])`,
+  REWRITE_TAC[SOME_FLAGS] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_WHILE_PUP_TAC `N:num` `pc + 0x308` `pc + 0x5c4`
+    `\i s. (read X0 s = word_add x0_init (word(64*i)) /\
+            read X2 s = word_add cptr (word(64*i)) /\
+            read X5 s = x5_init) /\
+           (condition_semantics Condition_LT s <=> i < N)` THEN
+  (* Goal 1: ~(N = 0) *)
+  ASM_REWRITE_TAC[] THEN
+  (* Split (Init) /\ (Body) /\ (Backedge) /\ (Exit) *)
+  CONJ_TAC THENL
+   [(* Init subgoal *)
+    ENSURES_INIT_TAC "s0" THEN ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[WORD_ADD_0; MULT_CLAUSES; WORD_VAL];
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [(* Body subgoal *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    MP_TAC (SPECL [`pc:num`; `word_add cptr (word(64*i)):int64`;
+                   `word_add x0_init (word(64*i)):int64`;
+                   `x5_init:int64`]
+            AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_LOADED_KERNEL_CORRECT) THEN
+    ANTS_TAC THENL
+     [REWRITE_TAC[NONOVERLAPPING_CLAUSES; fst AES_GCM_ENC_KERNEL_EXEC] THEN
+      RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                                  fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+      NONOVERLAPPING_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[SOME_FLAGS] THEN
+    STRIP_TAC THEN
+    MATCH_MP_TAC ENSURES_FRAME_SUBSUMED THEN EXISTS_TAC
+     `MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+      MAYCHANGE [NF; ZF; CF; VF] ,,
+      MAYCHANGE [memory :> bytes128 (word_add cptr (word (64 * i)));
+                 memory :> bytes128 (word_add (word_add cptr (word (64 * i))) (word 16));
+                 memory :> bytes128 (word_add (word_add cptr (word (64 * i))) (word 32));
+                 memory :> bytes128 (word_add (word_add cptr (word (64 * i))) (word 48))] ,,
+      MAYCHANGE [events]` THEN
+    CONJ_TAC THENL
+     [RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                                  fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+      SUBSUMED_MAYCHANGE_TAC;
+      ALL_TAC] THEN
+    MATCH_MP_TAC ENSURES_PREPOSTCONDITION_THM THEN
+    EXISTS_TAC
+     `\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+          read PC s = word (pc + 0x308) /\
+          read X0 s = word_add x0_init (word(64*i)) /\
+          read X2 s = word_add cptr (word(64*i)) /\
+          read X5 s = x5_init` THEN
+    EXISTS_TAC
+     `\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+          read PC s = word (pc + 0x5c4) /\
+          read X0 s = word_add (word_add x0_init (word (64 * i))) (word 64) /\
+          read X2 s = word_add (word_add cptr (word (64 * i))) (word 64) /\
+          read X5 s = x5_init /\
+          (read NF s <=>
+           ival (word_sub (word_add (word_add x0_init (word (64 * i))) (word 64))
+                          x5_init) < &0) /\
+          (read VF s <=>
+           ~(ival (word_add (word_add x0_init (word (64 * i))) (word 64)) -
+             ival x5_init =
+             ival (word_sub (word_add (word_add x0_init (word (64 * i))) (word 64))
+                            x5_init)))` THEN
+    REPEAT CONJ_TAC THEN BETA_TAC THENL
+     [(* Pre' ==> Pre *)
+      MESON_TAC[];
+      (* Post (cut) ==> Post' (goal) *)
+      GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+      REPEAT CONJ_TAC THENL
+       [CONV_TAC WORD_RULE;
+        CONV_TAC WORD_RULE;
+        REWRITE_TAC[condition_semantics] THEN
+        ASM_REWRITE_TAC[] THEN
+        REWRITE_TAC[IVAL_WORD_SUB_NFVF_TO_LT] THEN
+        SUBGOAL_THEN
+         `word_add (word_add x0_init (word (64 * i))) (word 64) =
+          word_add x0_init (word(64 * (i+1)):int64)` SUBST1_TAC THENL
+         [CONV_TAC WORD_RULE; ALL_TAC] THEN
+        MP_TAC (SPECL [`x0_init:int64`; `x5_init:int64`; `i:num`; `N:num`]
+                IVAL_WORD_ADD_BOUND) THEN
+        ASM_REWRITE_TAC[]];
+      (* Original ensures *)
+      FIRST_ASSUM ACCEPT_TAC];
+    ALL_TAC] THEN
+  CONJ_TAC THENL
+   [(* Backedge subgoal *)
+    X_GEN_TAC `i:num` THEN STRIP_TAC THEN
+    ENSURES_INIT_TAC "s0" THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                                fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+    ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC [1] THEN
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  (* Exit subgoal *)
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics; LT_REFL]) THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC [1] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
