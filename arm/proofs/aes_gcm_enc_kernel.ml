@@ -9559,3 +9559,65 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_CT12_Q2NEXT_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[] THEN
   IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s061) — first 4-block region: ciphertext store 3 + b.ge          *)
+(* fall-through to main-loop body (slice instr indices 191..194, kernel     *)
+(* offsets 0x2f8..0x308).  This closes the 0x244..0x308 first-4-block       *)
+(* prelude region.                                                            *)
+(*                                                                           *)
+(*   0x2f8  orr x9, x11, x9, lsl #32          ; X9 = NEW counter scratch    *)
+(*   0x2fc  eor v7.16b, v7.16b, v3.16b        ; ciphertext block 3 in Q7    *)
+(*   0x300  st1 {v7.16b}, [x2], #16           ; store ciphertext block 3    *)
+(*   0x304  b.ge .Lenc_prepretail (0x5c8)     ; falls through to main loop   *)
+(*                                                                           *)
+(* Falls through to the main loop body at 0x308 under signed-LT condition   *)
+(* (`~(NF <=> VF)`) — same b.ge fall-through pattern as the cut-1 b.ge      *)
+(* at 0x244.  The b.ge at 0x304 jumps to `Lenc_prepretail` (0x5c8) when     *)
+(* the input pointer has caught up to/passed the end (X0 ≥ X5), but the     *)
+(* main-loop entry case has X0 strictly less, so the branch falls through.  *)
+(*                                                                           *)
+(* Q7 absorbs the AES-encrypted counter (Q3 = AES output for block 3) into  *)
+(* the rk10-XOR'd plaintext block 3, completing the ciphertext for block 3. *)
+(* The `st1 {v7.16b}, [x2], #16` writes ciphertext block 3 and advances X2  *)
+(* by 16, completing the 4-block write (cptr9 = base + 48 from cuts 7+8).   *)
+(*                                                                           *)
+(* X9's exit value `word_or sx11 (word_shl sx9 32)` is the next-iteration's *)
+(* high-half counter material; it'll be consumed by the next-iter's         *)
+(* `fmov v.d[1], x9` chain.                                                  *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X2 (advance by 16), X9 (orr scratch), Q7 (ciphertext),    *)
+(* memory:bytes128 cptr9 (the ciphertext block), events.                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_CT3_BGE_CORRECT = prove
+ (`!pc (cptr9:int64)
+       (q3_pre:int128) (q7_pre:int128)
+       (sx9:int64) (sx11:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (cptr9, 16)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x2f8) /\
+              read X2 s = cptr9 /\
+              read X9 s = sx9 /\
+              read X11 s = sx11 /\
+              read Q3 s = q3_pre /\
+              read Q7 s = q7_pre /\
+              ~(read NF s <=> read VF s))
+         (\s. read PC s = word (pc + 0x308) /\
+              read X2 s = word_add cptr9 (word 16) /\
+              read X9 s = word_or sx11 (word_shl sx9 32) /\
+              read Q7 s = word_xor q3_pre q7_pre /\
+              read (memory :> bytes128 cptr9) s = word_xor q3_pre q7_pre)
+         (MAYCHANGE [PC; X2; X9] ,,
+          MAYCHANGE [Q7] ,,
+          MAYCHANGE [memory :> bytes128 cptr9] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (191--194) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
