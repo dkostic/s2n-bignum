@@ -9490,3 +9490,72 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_Q1NEXT_ST0_Q7HI_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (177--183) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s061) — first 4-block region: ciphertext stores 1, 2 + Q2       *)
+(* next-counter (slice instr indices 184..190, kernel offsets               *)
+(* 0x2dc..0x2f4).                                                            *)
+(*                                                                           *)
+(*   0x2dc  eor v6.16b, v6.16b, v2.16b      ; ciphertext block 2 in Q6      *)
+(*   0x2e0  st1 {v5.16b}, [x2], #16         ; store ciphertext block 1      *)
+(*   0x2e4  add w12, w12, #0x1              ; counter advance               *)
+(*   0x2e8  fmov d2, x10                    ; Q2 low half = next-counter    *)
+(*   0x2ec  fmov v2.d[1], x9                ; Q2 high half = X9             *)
+(*   0x2f0  st1 {v6.16b}, [x2], #16         ; store ciphertext block 2      *)
+(*   0x2f4  rev w9, w12                     ; counter byte-swap scratch     *)
+(*                                                                           *)
+(* This cut absorbs the v2-encrypted plaintext (Q2 = AES-encrypted counter  *)
+(* for block 2) into Q6 (which holds plaintext block 2 XOR'd with rk10).    *)
+(* The two `st1` writes lay down ciphertext blocks 1 and 2 at [cptr8,       *)
+(* cptr8+32) and post-increment X2 by 32 total.                              *)
+(*                                                                           *)
+(* Q2 is then overwritten with the next-iteration counter (low = X10, high  *)
+(* = X9 carrying the prior `orr x9, x11, x9 lsl 32`-assembled counter half).*)
+(*                                                                           *)
+(* Note Q6's exit form is `word_xor q2_pre q6_pre` (NOT q6_pre q2_pre):     *)
+(* the simulator's `eor v6, v6, v2` emit reads v6 first, so the second      *)
+(* operand q2_pre is the LHS of `word_xor`.  Same convention as cut 6.      *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X2 (advance by 32), X9 (rev scratch), X12 (counter        *)
+(* advance), Q2 (next counter), Q6 (ciphertext), memory :> bytes128 chunks  *)
+(* at cptr8 and cptr8+16 (the two ciphertext blocks), events.               *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_CT12_Q2NEXT_CORRECT = prove
+ (`!pc (cptr8:int64)
+       (q5_pre:int128) (q6_pre:int128) (q2_pre:int128)
+       (sx9:int64) (sx10:int64) (sx12:int32).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (cptr8, 32)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x2dc) /\
+              read X2 s = cptr8 /\
+              read X9 s = sx9 /\
+              read X10 s = sx10 /\
+              read X12 s = word_zx sx12 /\
+              read Q2 s = q2_pre /\
+              read Q5 s = q5_pre /\
+              read Q6 s = q6_pre)
+         (\s. read PC s = word (pc + 0x2f8) /\
+              read X2 s = word_add cptr8 (word 32) /\
+              read X10 s = sx10 /\
+              read X12 s = word_zx (word_add sx12 (word 1):int32) /\
+              read Q2 s = word_insert (word_zx sx10 :int128) (64,64) sx9 /\
+              read Q6 s = word_xor q2_pre q6_pre /\
+              read (memory :> bytes128 cptr8) s = q5_pre /\
+              read (memory :> bytes128 (word_add cptr8 (word 16))) s =
+                   word_xor q2_pre q6_pre)
+         (MAYCHANGE [PC; X2; X9; X12] ,,
+          MAYCHANGE [Q2; Q6] ,,
+          MAYCHANGE [memory :> bytes128 cptr8;
+                     memory :> bytes128 (word_add cptr8 (word 16))] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (184--190) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
