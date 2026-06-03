@@ -6258,7 +6258,7 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_KERNEL_PLUS_Q567_CORRECT = prove
 (* LOOP WRAPPER STRUCTURE (per ENSURES_WHILE_PUP_TAC, s044+):              *)
 (*                                                                           *)
 (*   ENSURES_WHILE_PUP_TAC                                                  *)
-(*     `N:num`           (* number of body iters; expressed via X5/X0_init *)
+(*     `N:num`           -- number of body iters; expressed via X5/X0_init  *)
 (*     `pc + 0x308`      (* loop top *)                                     *)
 (*     `pc + 0x5c4`      (* back-edge *)                                    *)
 (*     `\i s. <state invariant — see PHASE 8 wrapper sketch above> /\      *)
