@@ -4447,6 +4447,155 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT = prove
   CONV_TAC WORD_RULE);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 8 prep — extended kernel-modulo body cut with Q5/Q6/Q7 emit-form    *)
+(* post-conjuncts.                                                            *)
+(*                                                                           *)
+(* Same body slice as KERNEL_MODULO_COMPOSED_CORRECT (offsets 0x1c8..0x2bc, *)
+(* 61 instructions) but with:                                                *)
+(*   * augmented preconditions: Q0/Q1 added (Q2/Q3 already there); plus the *)
+(*     X-register inputs X19..X24, X14 that the simulator reads in this    *)
+(*     window;                                                              *)
+(*   * augmented postconditions: Q5/Q6/Q7 in raw simulator-emit form        *)
+(*     (function of Q1/Q2/Q3 AES outputs XOR'd with X19..X24/X14 plaintext-  *)
+(*     XOR'd values).                                                       *)
+(*                                                                           *)
+(* These Q5/Q6/Q7 emit forms are precisely the values that get stored to   *)
+(* memory via st1 [x2] at offsets 0x594/0x5a8/0x5c0 in the same slice — they*)
+(* are this iteration's ciphertext blocks 1, 2, 3 (block 0 = Q4 is loaded  *)
+(* from [X0] mid-slice and so doesn't have a clean emit form without a    *)
+(* memory precondition; deferred to a follow-on cut).                      *)
+(*                                                                           *)
+(* The Q11 = kernel_modulo conjunct closure carries unchanged from the    *)
+(* original KERNEL_MODULO_COMPOSED proof; the Q5/Q6/Q7 conjuncts are       *)
+(* discharged automatically by ASM_REWRITE_TAC[] since the simulator's    *)
+(* emit shape matches them syntactically.                                   *)
+(*                                                                           *)
+(* Phase 8 use: this cut feeds the loop wrapper.  At iteration i+1's loop *)
+(* entry, the body precondition's `aes_gcm_rev64_int128 q5_pre =          *)
+(* byteswap128 ct1` etc. is established by combining iteration i's       *)
+(* Q5/Q6/Q7 emit-form post (this cut) with a separate spec-level           *)
+(* identification `aes_gcm_rev64_int128 (word_xor (aese q1 rk9)           *)
+(* (word_insert ...)) = byteswap128 ct'` (deferred algebraic work).        *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_PLUS_Q567_CORRECT = prove
+ (`!pc (cptr:int64) (q0:int128) (q1:int128) (q2:int128) (q3:int128)
+        (q4_in:int128) (q5:int128) (q6:int128) (q9_in:int128) (q10_in:int128)
+        (q11_in:int128) (q16:int128) (rk9:int128)
+        (x19:int64) (x20:int64) (x21:int64) (x22:int64) (x23:int64)
+        (x24:int64) (sx14:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x1c8) /\
+              read X2 s = cptr /\
+              read Q0 s = q0 /\
+              read Q1 s = q1 /\
+              read Q2 s = q2 /\
+              read Q3 s = q3 /\
+              read Q4 s = q4_in /\
+              read Q5 s = q5 /\
+              read Q6 s = q6 /\
+              read Q9 s = q9_in /\
+              read Q10 s = q10_in /\
+              read Q11 s = q11_in /\
+              read Q16 s = q16 /\
+              read Q31 s = rk9 /\
+              read X19 s = x19 /\
+              read X20 s = x20 /\
+              read X21 s = x21 /\
+              read X22 s = x22 /\
+              read X23 s = x23 /\
+              read X24 s = x24 /\
+              read X14 s = sx14)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X2 s = word_add cptr (word 64) /\
+              read Q5 s = (word_xor (aese q1 rk9)
+                           (word_insert
+                             (word_zx x19 :int128)
+                             (64,64)
+                             (word_xor x20 sx14)) :int128) /\
+              read Q6 s = (word_xor (aese q2 rk9)
+                           (word_insert
+                             (word_zx x21 :int128)
+                             (64,64)
+                             x22) :int128) /\
+              read Q7 s = (word_xor (aese q3 rk9)
+                           (word_insert
+                             (word_zx x23 :int128)
+                             (64,64)
+                             (word_xor x24 sx14)) :int128) /\
+              read Q11 s = kernel_modulo
+                              (word_xor q9_in q5)
+                              (word_xor q11_in q6)
+                              (word_xor q10_in
+                                 (word_pmul (word_subword q4_in (0,64) :64 word)
+                                            (word_subword q16 (0,64) :64 word)
+                                  :int128)))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--61) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[kernel_modulo; byteswap128; LET_DEF; LET_END_DEF] THEN
+  SUBGOAL_THEN
+   `!h:int128.
+       word_subword (word_join h h:256 word) (64,128):int128 =
+       word_join (word_subword h (0,64) :64 word)
+                 (word_subword h (64,64) :64 word)`
+   ASSUME_TAC THENL [GEN_TAC THEN CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  ABBREV_TAC
+   `Pinner:int128 =
+      word_pmul (word_subword (word_xor (q5:int128) (q9_in:int128)) (0,64)
+                 :64 word)
+                (word 13979173243358019584:64 word)` THEN
+  SUBGOAL_THEN
+   `word_xor (q9_in:int128) (q5:int128) = word_xor q5 q9_in /\
+    word_xor (q11_in:int128) (q6:int128) = word_xor q6 q11_in /\
+    word_xor (q10_in:int128)
+             (word_pmul (word_subword (q4_in:int128) (0,64) :64 word)
+                        (word_subword (q16:int128) (0,64) :64 word)
+              :int128) =
+    word_xor (word_pmul (word_subword q4_in (0,64) :64 word)
+                        (word_subword q16 (0,64) :64 word) :int128)
+             q10_in`
+   STRIP_ASSUME_TAC THENL [REWRITE_TAC[] THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  ABBREV_TAC `Hxor:int128 = word_xor (q5:int128) (q9_in:int128)` THEN
+  ABBREV_TAC `Lxor:int128 = word_xor (q6:int128) (q11_in:int128)` THEN
+  ABBREV_TAC
+   `Pmid:int128 =
+      word_pmul (word_subword (q4_in:int128) (0,64) :64 word)
+                (word_subword (q16:int128) (0,64) :64 word)` THEN
+  ABBREV_TAC
+   `Bswapped:int128 =
+      word_join (word_subword (Hxor:int128) (0,64) :64 word)
+                (word_subword Hxor (64,64) :64 word)` THEN
+  ABBREV_TAC
+   `Inner:int128 =
+      word_xor (word_xor (Pinner:int128) (Bswapped:int128))
+               (word_xor (word_xor (Hxor:int128) (Lxor:int128))
+                         (word_xor (Pmid:int128) (q10_in:int128)))` THEN
+  SUBGOAL_THEN
+   `word_xor (word_xor (word_xor (Pmid:int128) (q10_in:int128))
+                       (word_xor (Lxor:int128) (Hxor:int128)))
+             (word_xor (Bswapped:int128) (Pinner:int128)) = Inner`
+    SUBST1_TAC THENL
+   [EXPAND_TAC "Inner" THEN CONV_TAC WORD_RULE; ALL_TAC] THEN
+  CONV_TAC WORD_RULE);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 7 GHASH SPEC-FORM cut over offsets 0x1c8..0x2bc.                    *)
 (*                                                                           *)
 (* Wraps AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT with    *)
