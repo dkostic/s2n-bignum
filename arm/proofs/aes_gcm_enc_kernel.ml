@@ -7664,3 +7664,31 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_KERNEL_PLUS_Q567_FLAG_CORRECT = prove
     ASM_REWRITE_TAC[] THEN
     ASM_MESON_TAC[SLICE_TO_KERNEL_BODY_LOAD]]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8 (s049) — generic helper for adding `aligned_bytes_loaded ... mc`  *)
+(* to the postcondition of an `ensures arm` cut, given:                      *)
+(*   (a) the frame preserves `read (memory :> bytelist(word pc, LENGTH mc))` *)
+(*       (provable via COMPONENT_READ_OVER_WRITE_ORTHOGONAL_CONV +           *)
+(*        nonoverlapping reasoning on the bytes(cptr, n) write);             *)
+(*   (b) the precondition implies `aligned_bytes_loaded s (word pc) mc`.     *)
+(*                                                                           *)
+(* Used in the Phase 8 main-loop wrapper to weave aligned_bytes_loaded       *)
+(* through the body subgoal (the kernel cut FLAG variant lacks aligned in    *)
+(* its post; this lifts it inline without a separate cut artifact).          *)
+(* ------------------------------------------------------------------------- *)
+
+let ENSURES_ADD_ALIGNED_TO_POST = prove
+ (`!pc (mc:byte list) step (P:armstate->bool) Q R.
+    (!s s2. R s s2 ==> read (memory :> bytelist(word pc:int64, LENGTH mc)) s2 =
+                       read (memory :> bytelist(word pc, LENGTH mc)) s) /\
+    (!s. P s ==> aligned_bytes_loaded s (word pc) mc) /\
+    ensures step P Q R
+    ==> ensures step P (\s. aligned_bytes_loaded s (word pc) mc /\ Q s) R`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[ensures] THEN STRIP_TAC THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `s:armstate`) THEN ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC(REWRITE_RULE[RIGHT_IMP_FORALL_THM] EVENTUALLY_MONO) THEN
+  GEN_TAC THEN REWRITE_TAC[aligned_bytes_loaded; bytes_loaded] THEN
+  STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+  ASM_MESON_TAC[aligned_bytes_loaded; bytes_loaded]);;
+
