@@ -8832,3 +8832,52 @@ let AES_GCM_PRELUDE_SCALAR_SETUP_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (12--17) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s057) — ivec-load + counter setup cut.                           *)
+(*                                                                           *)
+(* The 4 instructions at kernel offsets 0x44..0x50 (slice instr indices      *)
+(* 18..21) load the initial counter from the ivec buffer and pre-decrement  *)
+(* the byte count for the round-down-to-64 step that follows:                *)
+(*                                                                           *)
+(*   0x44  mov x15, x5                ; save byte_len before rounding        *)
+(*   0x48  ldp x10, x11, [x16]        ; ctr96_b64, ctr96_t32 (scalar copies)*)
+(*   0x4c  ld1 {v0.16b}, [x16]        ; ctr0 (whole 128-bit counter)        *)
+(*   0x50  sub x5, x5, #1             ; byte_len - 1                        *)
+(*                                                                           *)
+(* The cut takes ivec memory preconditions for the two 64-bit halves and    *)
+(* the 128-bit whole — both shapes are needed because the kernel uses both *)
+(* the scalar (X10/X11) and vector (Q0) views of the same counter bytes.    *)
+(* The stepper handles the redundancy via component aliasing; the           *)
+(* precondition explicitly lists both shapes since the spec doesn't reduce  *)
+(* one to the other automatically.                                          *)
+(*                                                                           *)
+(* MAYCHANGE again split by component type per s057's pattern:              *)
+(* [PC; X5; X10; X11; X15] (int64), [Q0] (int128), [events].                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_IVEC_CTR_CORRECT = prove
+ (`!pc (a:int64) (sx5_pre:int64) (ctr_lo:int64) (ctr_hi:int64) (ctr0:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0x44) /\
+          read X16 s = a /\
+          read X5 s = sx5_pre /\
+          read (memory :> bytes64 a) s = ctr_lo /\
+          read (memory :> bytes64 (word_add a (word 8))) s = ctr_hi /\
+          read (memory :> bytes128 a) s = ctr0)
+     (\s. read PC s = word (pc + 0x54) /\
+          read X16 s = a /\
+          read X10 s = ctr_lo /\
+          read X11 s = ctr_hi /\
+          read X15 s = sx5_pre /\
+          read X5 s = word_sub sx5_pre (word 1) /\
+          read Q0 s = ctr0)
+     (MAYCHANGE [PC; X5; X10; X11; X15] ,,
+      MAYCHANGE [Q0] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (18--21) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
