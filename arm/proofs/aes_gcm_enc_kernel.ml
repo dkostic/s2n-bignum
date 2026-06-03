@@ -6324,6 +6324,53 @@ let AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_KERNEL_CORRECT = prove
   MONOTONE_MAYCHANGE_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* X0_X5_FLAG_LOADED — same body cut but with aligned_bytes_loaded asserted *)
+(* in the post.  ENSURES_WHILE_PUP_TAC's body subgoal post asserts          *)
+(* aligned_bytes_loaded (it's part of the program_decodes conjunct);         *)
+(* without it in the cut's post we can't bridge to the wrapper.  The proof  *)
+(* spine is identical — ASM_REWRITE_TAC carries it from pre via the frame.  *)
+(* (s047 finding: the kernel-level cut needs aligned_bytes_loaded in post.) *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_LOADED_KERNEL_CORRECT = prove
+ (`!pc cptr x0_init x5_init.
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x308) /\
+              read X0 s = x0_init /\
+              read X2 s = cptr /\
+              read X5 s = x5_init)
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x5c4) /\
+              read X0 s = word_add x0_init (word 64) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = x5_init /\
+              (read NF s <=>
+               ival (word_sub (word_add x0_init (word 64)) x5_init) < &0) /\
+              (read VF s <=>
+               ~(ival (word_add x0_init (word 64)) - ival x5_init =
+                 ival (word_sub (word_add x0_init (word 64)) x5_init))))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16));
+                     memory :> bytes128 (word_add cptr (word 32));
+                     memory :> bytes128 (word_add cptr (word 48))] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (1--175) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  MONOTONE_MAYCHANGE_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 8 — back-edge cut for ENSURES_WHILE_PUP_TAC.                        *)
 (*                                                                           *)
 (* The b.lt at offset 0x5c4 is a 1-instruction back-edge that jumps to       *)
