@@ -9113,3 +9113,51 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_PT01_LOAD_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (146--149) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s060) — first 4-block region: plaintext blocks 2 & 3 loads +    *)
+(* input pointer advance (slice instr indices 150..152, kernel offsets      *)
+(* 0x254..0x260).                                                            *)
+(*                                                                           *)
+(*   0x254  ldp x23, x24, [x0, #48]        ; pt block 3 halves              *)
+(*   0x258  ldp x21, x22, [x0, #32]        ; pt block 2 halves              *)
+(*   0x25c  add x0, x0, #0x40              ; advance input ptr by 64 bytes  *)
+(*                                                                           *)
+(* Following PT01_LOAD's exit at 0x254, this cut completes the plaintext    *)
+(* load phase by reading blocks 2 and 3 (4 X-register halves) and bumping   *)
+(* the input pointer past the consumed 64 bytes.  After this cut, X0 points *)
+(* at the next 4-block group (or end-of-input + tail).                       *)
+(*                                                                           *)
+(* Pre `val a + 64 < 2 EXP 63` ensures the `add x0, x0, #0x40` doesn't      *)
+(* overflow.                                                                 *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X0 (advance), X21/X22 (pt block 2), X23/X24 (pt block 3). *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_PT23_LOAD_CORRECT = prove
+ (`!pc (a:int64) (sx5:int64)
+       (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64).
+    val a + 64 < 2 EXP 63
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x254) /\
+              read X0 s = a /\
+              read X5 s = sx5 /\
+              read (memory :> bytes64 (word_add a (word 32))) s = b2_lo /\
+              read (memory :> bytes64 (word_add a (word 40))) s = b2_hi /\
+              read (memory :> bytes64 (word_add a (word 48))) s = b3_lo /\
+              read (memory :> bytes64 (word_add a (word 56))) s = b3_hi)
+         (\s. read PC s = word (pc + 0x260) /\
+              read X0 s = word_add a (word 64) /\
+              read X5 s = sx5 /\
+              read X21 s = b2_lo /\
+              read X22 s = b2_hi /\
+              read X23 s = b3_lo /\
+              read X24 s = b3_hi)
+         (MAYCHANGE [PC; X0; X21; X22; X23; X24] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (150--152) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
