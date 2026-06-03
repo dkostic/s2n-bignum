@@ -9621,3 +9621,97 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_CT3_BGE_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (191--194) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s061) — chain composition of cuts 8 + 9 covering slice instr   *)
+(* indices 184..194 (kernel offsets 0x2dc..0x308).                          *)
+(*                                                                           *)
+(* Validates the ARM_BIGSTEP_TAC chain composition pattern for cuts that    *)
+(* introduce memory writes and have `nonoverlapping ==>` antecedents.       *)
+(* The pattern:                                                              *)
+(*                                                                           *)
+(*   1.  ENSURES_INIT_TAC "s0"                                              *)
+(*   2.  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES; fst EXEC])     *)
+(*       — required for ARM_BIGSTEP_TAC to verify the program isn't        *)
+(*       modified by the cut's memory writes.                               *)
+(*   3.  REWRITE_TAC[SOME_FLAGS] — required when MAYCHANGE includes         *)
+(*       SOME_FLAGS (per `bigstep_with_memory_writes` memory).              *)
+(*   4.  For each cut to chain:                                             *)
+(*       a.  MP_TAC(SPECL[...] CUT_THM)                                     *)
+(*       b.  ANTS_TAC THENL [REWRITE_TAC[NONOVERLAPPING_CLAUSES; ...] THEN  *)
+(*           NONOVERLAPPING_TAC; ALL_TAC]                                   *)
+(*       c.  ARM_BIGSTEP_TAC EXEC "sN" (where N is cumulative instr count) *)
+(*   5.  ENSURES_FINAL_STATE_TAC                                            *)
+(*   6.  ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE — final closure;        *)
+(*       WORD_RULE handles the residual `word_add (word_add ...) (word ...)*)
+(*       = word_add ... (word ...)` arithmetic.                              *)
+(*                                                                           *)
+(* For X-register threading across cuts where the prior cut's POST doesn't *)
+(* expose the register value (cut 8's MAYCHANGE includes X9 but no X9      *)
+(* exit value), bind the next cut's X9 parameter to the unevaluated         *)
+(* `read X9 (s7:armstate):int64` term.  ARM_BIGSTEP_TAC accepts this and    *)
+(* propagates correctly.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_CT123_BGE_CORRECT = prove
+ (`!pc (cptr:int64)
+       (q3_pre:int128) (q2_pre:int128) (q5_pre:int128) (q6_pre:int128)
+       (sx9:int64) (sx10:int64) (sx11:int64) (sx12:int32)
+       (q7_pre:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (cptr, 48)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x2dc) /\
+              read X2 s = cptr /\
+              read X9 s = sx9 /\
+              read X10 s = sx10 /\
+              read X11 s = sx11 /\
+              read X12 s = word_zx sx12 /\
+              read Q2 s = q2_pre /\
+              read Q3 s = q3_pre /\
+              read Q5 s = q5_pre /\
+              read Q6 s = q6_pre /\
+              read Q7 s = q7_pre /\
+              ~(read NF s <=> read VF s))
+         (\s. read PC s = word (pc + 0x308) /\
+              read X2 s = word_add cptr (word 48) /\
+              read (memory :> bytes128 cptr) s = q5_pre /\
+              read (memory :> bytes128 (word_add cptr (word 16))) s =
+                   word_xor q2_pre q6_pre /\
+              read (memory :> bytes128 (word_add cptr (word 32))) s =
+                   word_xor q3_pre q7_pre)
+         (MAYCHANGE [PC; X2; X9; X12] ,,
+          MAYCHANGE [Q2; Q6; Q7] ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16));
+                     memory :> bytes128 (word_add cptr (word 32))] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  MP_TAC(SPECL[`pc:num`; `cptr:int64`;
+               `q5_pre:int128`; `q6_pre:int128`; `q2_pre:int128`;
+               `sx9:int64`; `sx10:int64`; `sx12:int32`]
+              AES_GCM_PRELUDE_FIRSTBLOCKS_CT12_Q2NEXT_CORRECT) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC] THEN
+    NONOVERLAPPING_TAC;
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC "s7" THEN
+  MP_TAC(SPECL[`pc:num`; `word_add cptr (word 32):int64`;
+               `q3_pre:int128`; `q7_pre:int128`;
+               `read X9 (s7:armstate):int64`; `sx11:int64`]
+              AES_GCM_PRELUDE_FIRSTBLOCKS_CT3_BGE_CORRECT) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC] THEN
+    NONOVERLAPPING_TAC;
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC "s11" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC WORD_RULE);;
