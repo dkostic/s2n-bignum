@@ -9296,6 +9296,60 @@ let AES_GCM_PRELUDE_FIRSTBLOCKS_Q4_CMP_CORRECT = prove
   REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s062) — first 4-block region: Q4_CMP variant exposing raw NF/VF *)
+(* facts (slice instr indices 159..162, kernel offsets 0x278..0x288).       *)
+(*                                                                           *)
+(* Same as Q4_CMP_CORRECT but:                                              *)
+(*  - PRE: X0 = `word_add a (word 64)` (X0 already advanced past the 4-     *)
+(*    block input slice; matches the post of cut 2 PT23_LOAD).              *)
+(*  - POST: includes raw NF/VF facts in simulator-emit form, enabling       *)
+(*    downstream chain extension to derive `~(NF <=> VF)` via               *)
+(*    IVAL_WORD_SUB_NFVF_TO_LT.                                              *)
+(*                                                                           *)
+(* Mirrors AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_KERNEL_CORRECT's flag-exposure *)
+(* pattern (line ~6289).                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_FIRSTBLOCKS_Q4_CMP_FLAG_CORRECT = prove
+ (`!pc (a:int64) (sx5:int64)
+       (b0_lo:int64) (b0_hi:int64)
+       (rk10_lo:int64) (rk10_hi:int64) (b3_lo:int64).
+    val a + 64 < 2 EXP 63
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x278) /\
+              read X0 s = word_add a (word 64) /\
+              read X5 s = sx5 /\
+              read X13 s = rk10_lo /\
+              read X14 s = rk10_hi /\
+              read X6 s = b0_lo /\
+              read X7 s = b0_hi /\
+              read X23 s = b3_lo)
+         (\s. read PC s = word (pc + 0x288) /\
+              read X0 s = word_add a (word 64) /\
+              read X5 s = sx5 /\
+              read X13 s = rk10_lo /\
+              read X14 s = rk10_hi /\
+              read X6 s = b0_lo /\
+              read X7 s = b0_hi /\
+              read X23 s = word_xor b3_lo rk10_lo /\
+              read Q4 s = word_insert (word_zx b0_lo :int128) (64,64) b0_hi /\
+              (read NF s <=>
+               ival (word_sub (word_add a (word 64)) sx5) < &0) /\
+              (read VF s <=>
+               ~(ival (word_add a (word 64)) - ival sx5 =
+                 ival (word_sub (word_add a (word 64)) sx5))))
+         (MAYCHANGE [PC; X23] ,,
+          MAYCHANGE [Q4] ,,
+          MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (159--162) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s060) — first 4-block region: Q5 finalize + Q6 build + Q7 low + *)
 (* counter advance (slice instr indices 163..170, kernel offsets             *)
 (* 0x288..0x2a8).                                                            *)
