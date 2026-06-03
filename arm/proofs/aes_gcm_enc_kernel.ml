@@ -6429,6 +6429,68 @@ let AES_GCM_MAIN_LOOP_BACKEDGE_KERNEL_CORRECT = prove
 (* INT_ARITH_TAC.                                                             *)
 (* ------------------------------------------------------------------------- *)
 
+(* ------------------------------------------------------------------------- *)
+(* IVAL_WORD_ADD_BOUND — bridge from word-arithmetic precondition to         *)
+(* num-arithmetic invariant.  Given val(x0) + 64*N < 2^63 (i.e. the loop    *)
+(* range fits in signed-positive 64-bit) and word_add x0 (word(64*N)) = x5, *)
+(* the signed-LT comparison `ival(word_add x0 (word(64*(i+1)))) < ival x5`  *)
+(* is equivalent to the iteration counter inequality `i+1 < N`.             *)
+(*                                                                           *)
+(* Used by the PUP wrapper's body subgoal to convert the X0_X5_FLAG cut's   *)
+(* signed-LT post (after IVAL_WORD_SUB_NFVF_TO_LT translation) into the     *)
+(* `q (i+1) s = condition_semantics Condition_LT s <=> i+1 < N` flag fact   *)
+(* the loop invariant carries.                                              *)
+(* ------------------------------------------------------------------------- *)
+
+let IVAL_WORD_ADD_BOUND = prove
+ (`!(x0:int64) (x5:int64) (i:num) (N:num).
+    val x0 + 64 * N < 2 EXP 63 /\
+    i < N /\
+    word_add x0 (word(64*N)) = x5
+    ==> (ival (word_add x0 (word(64*(i+1)))) < ival x5 <=> i + 1 < N)`,
+  REPEAT GEN_TAC THEN
+  CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+  STRIP_TAC THEN
+  SUBGOAL_THEN `val (x5:int64) = val (x0:int64) + 64 * N` ASSUME_TAC THENL
+   [FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
+    REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+    SUBGOAL_THEN `64 * N < 18446744073709551616` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `val (x0:int64) + 64 * N < 18446744073709551616` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    ASM_SIMP_TAC[MOD_LT];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+   `val (word_add (x0:int64) (word(64*(i+1)):int64)) = val (x0:int64) + 64*(i+1)`
+  ASSUME_TAC THENL
+   [REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+    SUBGOAL_THEN `64 * (i+1) < 18446744073709551616` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `val (x0:int64) + 64 * (i+1) < 18446744073709551616` ASSUME_TAC THENL
+     [ASM_ARITH_TAC; ALL_TAC] THEN
+    ASM_SIMP_TAC[MOD_LT];
+    ALL_TAC] THEN
+  SUBGOAL_THEN
+   `ival (word_add (x0:int64) (word(64*(i+1)):int64)) = &(val (x0:int64) + 64 * (i+1))`
+  ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[ival; DIMINDEX_64] THEN
+    CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+    COND_CASES_TAC THENL
+     [REFL_TAC;
+      POP_ASSUM MP_TAC THEN ASM_ARITH_TAC];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `ival (x5:int64) = &(val (x5:int64))` ASSUME_TAC THENL
+   [REWRITE_TAC[ival; DIMINDEX_64] THEN
+    CONV_TAC(DEPTH_CONV NUM_RED_CONV) THEN
+    COND_CASES_TAC THENL
+     [REFL_TAC;
+      POP_ASSUM MP_TAC THEN ASM_ARITH_TAC];
+    ALL_TAC] THEN
+  ASM_REWRITE_TAC[INT_OF_NUM_LT] THEN
+  ASM_ARITH_TAC);;
+
 let IVAL_WORD_SUB_NFVF_TO_LT = prove
  (`!a b:int64.
     ~(ival(word_sub a b) < &0 <=>
