@@ -6269,10 +6269,57 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_KERNEL_PLUS_Q567_CORRECT = prove
 (* AND NIST_FULL_KERNEL_PLUS_Q567_CORRECT (for the spec post).  Two-cut    *)
 (* composition.                                                             *)
 (*                                                                           *)
-(* STATUS (s043 close):                                                     *)
+(* STATUS (s044 close): Path (a) LANDED.                                   *)
 (*   - ARM_STEPS_TAC over all 175 instr in kernel mc context: WORKS (~9s). *)
 (*   - X0/X5/X2/NF/VF post-conjuncts close via ASM_REWRITE_TAC: WORKS.    *)
-(*   - MAYCHANGE merge bytes128×4 → bytes(cptr,64): OPEN (will switch to  *)
-(*     bytes128-chunked MAYCHANGE in next session per RECOMMENDED PATH).  *)
+(*   - MAYCHANGE close: REWRITE_TAC[SOME_FLAGS] THEN                       *)
+(*     MONOTONE_MAYCHANGE_TAC closes when the goal MAYCHANGE lists Q0..Q11 *)
+(*     explicitly (matching simulator output) instead of                   *)
+(*     MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI (which tightens Q8..Q15  *)
+(*     to tophalf-only, rejecting the simulator's full-Q8 update).         *)
 (* ------------------------------------------------------------------------- *)
+
+(* AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_KERNEL_CORRECT — kernel-level body cut *)
+(* asserting X0/X5/X2 advance + raw NF/VF flag facts at body exit          *)
+(* (pc + 0x5c4).  Companion to NIST_FULL_KERNEL_PLUS_Q567_CORRECT for the  *)
+(* ENSURES_WHILE_PUP_TAC body subgoal: PUP needs `q (i+1) s` in flag form, *)
+(* which the spec-side body cut cannot supply (X0/X5 not in pre, SOME_FLAGS*)
+(* in MAYCHANGE).  This cut takes X0/X5 as free preconditions and exposes  *)
+(* the raw NF/VF post-cmp values at the back-edge.                         *)
+let AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_KERNEL_CORRECT = prove
+ (`!pc cptr x0_init x5_init.
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x308) /\
+              read X0 s = x0_init /\
+              read X2 s = cptr /\
+              read X5 s = x5_init)
+         (\s. read PC s = word (pc + 0x5c4) /\
+              read X0 s = word_add x0_init (word 64) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = x5_init /\
+              (read NF s <=>
+               ival (word_sub (word_add x0_init (word 64)) x5_init) < &0) /\
+              (read VF s <=>
+               ~(ival (word_add x0_init (word 64)) - ival x5_init =
+                 ival (word_sub (word_add x0_init (word 64)) x5_init))))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16));
+                     memory :> bytes128 (word_add cptr (word 32));
+                     memory :> bytes128 (word_add cptr (word 48))] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (1--175) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  MONOTONE_MAYCHANGE_TAC);;
 
