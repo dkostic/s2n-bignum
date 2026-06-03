@@ -8643,3 +8643,34 @@ let aes_gcm_main_loop_tail_slice_mc_def,
     aes_gcm_enc_kernel_mc
     (`0x5c8`,`0x3a8`)
     (fst AES_GCM_ENC_KERNEL_EXEC);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s056) — prelude-slice smoke cut.                                 *)
+(*                                                                           *)
+(* Tiny single-step cut over the prelude slice's `mov x16, x4` instruction  *)
+(* (kernel offset 0xc, slice instruction index 4).  Validates that the      *)
+(* prelude slice + EXEC tactic machinery actually works for symbolic        *)
+(* execution — i.e. that `ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_     *)
+(* EXEC` produces the expected register update.                             *)
+(*                                                                           *)
+(* This is the simplest possible non-trivial cut over the prelude slice,    *)
+(* analogous to how `AES_GCM_MAIN_LOOP_BODY_R0_BLOCKS012_CORRECT` was the   *)
+(* first body-slice cut (s019).  Subsequent sessions can extend it          *)
+(* incrementally to the full prelude-end-to-wrapper-PRE wrapper.            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_SMOKE_CUT_CORRECT = prove
+ (`!pc (a:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0xc) /\
+          read X4 s = a)
+     (\s. read PC s = word (pc + 0x10) /\
+          read X4 s = a /\
+          read X16 s = a)
+     (MAYCHANGE [PC; X16])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC [4] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
