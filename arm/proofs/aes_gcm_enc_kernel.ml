@@ -8881,3 +8881,107 @@ let AES_GCM_PRELUDE_IVEC_CTR_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (18--21) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s058) — H-table load + karatsuba_mid construction cut.           *)
+(*                                                                           *)
+(* The 85-instruction range at kernel byte offsets 0xf0..0x244 contains the  *)
+(* four `ldr q12/q13/q14/q15, [x6, ...]` H-power table loads interleaved    *)
+(* with AES rounds and round-key loads, plus the six `trn1`/`trn2`/`eor`    *)
+(* instructions that build Q16/Q17 = packed `karatsuba_mid` pairs.          *)
+(*                                                                           *)
+(* Spec mapping (using `byteswap128 x = word_join x_lo x_hi`):                *)
+(*                                                                           *)
+(*   ldr q14, [x6, #48] ; v14 = byteswap128(h_power(ghash_twist h) 2)       *)
+(*   ldr q13, [x6, #32] ; v13 = byteswap128(h_power(ghash_twist h) 1)       *)
+(*   ldr q15, [x6, #80] ; v15 = byteswap128(h_power(ghash_twist h) 3)       *)
+(*   ldr q12, [x6]      ; v12 = byteswap128(h_power(ghash_twist h) 0)       *)
+(*                                                                           *)
+(*   trn2  v17.2d,  v14.2d, v15.2d                                          *)
+(*     ; v17 = word_interleave_hi v14 v15                                   *)
+(*     ;     = word_join (h_power 3)_LO (h_power 2)_LO                      *)
+(*   trn1  v9.2d,   v14.2d, v15.2d                                          *)
+(*     ; v9  = word_join (h_power 3)_HI (h_power 2)_HI                      *)
+(*   trn2  v16.2d,  v12.2d, v13.2d                                          *)
+(*     ; v16 = word_join (h_power 1)_LO (h_power 0)_LO                      *)
+(*   eor   v17.16b, v17.16b, v9.16b                                         *)
+(*     ; v17 = word_join (km(h_power 3)) (km(h_power 2))                    *)
+(*   trn1  v8.2d,   v12.2d, v13.2d                                          *)
+(*     ; v8  = word_join (h_power 1)_HI (h_power 0)_HI                      *)
+(*   eor   v16.16b, v16.16b, v8.16b                                         *)
+(*     ; v16 = word_join (km(h_power 1)) (km(h_power 0))                    *)
+(*                                                                           *)
+(* The post Q12..Q17 layout exactly matches the Phase 8 wrapper PRE          *)
+(* (`AES_GCM_MAIN_LOOP_WRAPPER_FULL_CORRECT` parameters q12..q17), so this   *)
+(* cut bridges the prelude's H-table load to the wrapper-pre's H-table       *)
+(* state.  The Q16/Q17 raw post produced by the simulator after `eor` is    *)
+(*                                                                           *)
+(*   word_xor (word_join (bs.lo,bs.lo)) (word_join (bs.hi,bs.hi))           *)
+(*                                                                           *)
+(* (where bs = byteswap128 of the relevant h_power); after unfolding         *)
+(* `byteswap128` and `karatsuba_mid`, `WORD_BLAST` discharges the equality   *)
+(* in <1s.                                                                   *)
+(*                                                                           *)
+(* MAYCHANGE captures everything clobbered in this 85-instr range:           *)
+(*   - Q0..Q3 (AES rounds 1..8 on counters)                                  *)
+(*   - Q8, Q9 (intermediate trn1 results)                                    *)
+(*   - Q11 (loaded from [x3] at offset 0x160 + ext + rev64)                  *)
+(*   - Q12..Q17 (H-table state — the post specifies these)                   *)
+(*   - Q18..Q26 (round keys rk0..rk8 from key schedule)                      *)
+(*   - Q27..Q30 (round keys rk9..rk12; rk10..rk12 unused for AES-128)        *)
+(*   - X9, X12 (counter scratch via add/orr/rev)                             *)
+(*   - SOME_FLAGS (cmp at 0x224 sets NF/ZF/CF/VF)                            *)
+(*   - events (memory loads)                                                  *)
+(*                                                                           *)
+(* The slice instr indices for offsets 0xf0..0x240 (last instruction before  *)
+(* b.ge at 0x244) are 61..145 (1-based, since 0xf0/4+1 = 61, 0x240/4+1 =     *)
+(* 145).                                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_HTABLE_KMID_CORRECT = prove
+ (`!pc (htable_ptr:int64) (h:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (htable_ptr, 96)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0xf0) /\
+              read X6 s = htable_ptr /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3))
+         (\s. read PC s = word (pc + 0x244) /\
+              read X6 s = htable_ptr /\
+              read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+              read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+              read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+              read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+              read Q16 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+                 :int128) /\
+              read Q17 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+                 :int128))
+         (MAYCHANGE [PC; X9; X12] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q18; Q19; Q20; Q21; Q22; Q23; Q24; Q25; Q26;
+                     Q27; Q28; Q29; Q30] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (61--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[byteswap128; karatsuba_mid] THEN CONV_TAC WORD_BLAST;
+    REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
