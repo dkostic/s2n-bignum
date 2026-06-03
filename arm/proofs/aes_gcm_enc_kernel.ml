@@ -8674,3 +8674,38 @@ let AES_GCM_PRELUDE_SMOKE_CUT_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC [4] THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s057) — tail-slice smoke cut.                                    *)
+(*                                                                           *)
+(* Tiny single-step cut over the tail slice's `sub x5, x4, x0` instruction  *)
+(* (kernel offset 0x7cc, slice instruction index 129).  Validates that the  *)
+(* tail slice + EXEC tactic machinery actually works for symbolic execution *)
+(* — i.e. that `ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC` produces  *)
+(* the expected register update on a 64-bit scalar instruction.              *)
+(*                                                                           *)
+(* Mirrors `AES_GCM_PRELUDE_SMOKE_CUT_CORRECT` for the prelude slice; pinned *)
+(* to a non-Q-named instruction per s056's note that `fmov d3, x10` (also   *)
+(* in the tail) hits a Q3 typecheck issue when stated as `read Q3 s = ...`. *)
+(* The `sub x5, x4, x0` lives in the post-Lenc_tail "blocks-N-remaining"    *)
+(* cascade region (offset 0x7cc, after the prelude's `b.ge .Lenc_tail`     *)
+(* lands at 0x7c8).                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_TAIL_SMOKE_CUT_CORRECT = prove
+ (`!pc (a:int64) (b:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x204) /\
+          read X4 s = a /\
+          read X0 s = b)
+     (\s. read PC s = word (pc + 0x208) /\
+          read X4 s = a /\
+          read X0 s = b /\
+          read X5 s = word_sub a b)
+     (MAYCHANGE [PC; X5])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [130] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
