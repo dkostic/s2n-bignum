@@ -8769,3 +8769,66 @@ let AES_GCM_PRELUDE_POST_PROLOGUE_CORRECT = prove
   ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (1--11) THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s057) — scalar setup cut.                                        *)
+(*                                                                           *)
+(* The 6 instructions at kernel offsets 0x2c..0x40 (slice instr indices      *)
+(* 12..17) load the AES-128 key-schedule's last-round-key halves and round- *)
+(* N-1 key, and compute the input-pointer arithmetic                         *)
+(*                                                                           *)
+(*   0x2c  ldr w17, [x8, #240]            ; nr (= 10 for AES-128)           *)
+(*   0x30  add x19, x8, x17, lsl #4       ; last-key pointer = x8 + 16*nr   *)
+(*   0x34  ldp x13, x14, [x19]            ; round-N key halves              *)
+(*   0x38  ldur q31, [x19, #-16]          ; round-N-1 key (rk9)             *)
+(*   0x3c  add x4, x0, x1, lsr #3         ; end_input_ptr                   *)
+(*   0x40  lsr x5, x1, #3                 ; byte_len                        *)
+(*                                                                           *)
+(* The cut takes a key-schedule-in-memory precondition specifying the bytes *)
+(* at offsets 240 (nr), 160/168 (rk10 halves), and 144 (rk9 q-load).        *)
+(* For AES-128 the round count is hardcoded to 10, so `nr = 10` is a        *)
+(* concrete value in the precondition; the cut commits to this              *)
+(* specialization rather than parametrizing over an arbitrary nr (the       *)
+(* AES-128 fork removes the AES-192/256 branches, so only nr=10 reaches    *)
+(* this prelude — the unverified aws-lc kernel branches on nr at offset    *)
+(* 0x7c / 0x84 to dispatch round counts).                                   *)
+(*                                                                           *)
+(* MAYCHANGE is split across [PC; X4; X5; X13; X14; X17; X19] (int64),     *)
+(* [Q31] (int128), and [events] (lists of memory accesses).  Unifying      *)
+(* PC/Xn with Q31 in a single [...] would force a typecheck error since    *)
+(* PC and Xn are :64 word components while Q31 is :128 word.                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_SCALAR_SETUP_CORRECT = prove
+ (`!pc (x0_init:int64) (x1_init:int64) (x5_init:int64) (b:int64)
+       (lk_lo:int64) (lk_hi:int64) (rk9:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+          read PC s = word (pc + 0x2c) /\
+          read X0 s = x0_init /\
+          read X1 s = x1_init /\
+          read X8 s = b /\
+          read X5 s = x5_init /\
+          read (memory :> bytes32 (word_add b (word 240))) s = (word 10:32 word) /\
+          read (memory :> bytes64 (word_add b (word 160))) s = lk_lo /\
+          read (memory :> bytes64 (word_add b (word 168))) s = lk_hi /\
+          read (memory :> bytes128 (word_add b (word 144))) s = rk9)
+     (\s. read PC s = word (pc + 0x44) /\
+          read X0 s = x0_init /\
+          read X1 s = x1_init /\
+          read X8 s = b /\
+          read X17 s = (word 10:64 word) /\
+          read X19 s = word_add b (word 160) /\
+          read X13 s = lk_lo /\
+          read X14 s = lk_hi /\
+          read X4 s = word_add x0_init (word_ushr x1_init 3) /\
+          read X5 s = word_ushr x1_init 3 /\
+          read Q31 s = rk9)
+     (MAYCHANGE [PC; X4; X5; X13; X14; X17; X19] ,,
+      MAYCHANGE [Q31] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (12--17) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
