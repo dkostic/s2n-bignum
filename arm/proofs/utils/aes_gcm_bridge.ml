@@ -189,6 +189,31 @@ let WORD_BYTEREVERSE_AS_REV64_EXT = prove
     word_bytereverse x = byteswap128 (aes_gcm_rev64_int128 x)`,
   REWRITE_TAC[REV64_EXT_IS_BYTEREVERSE]);;
 
+(* Phase 8 helper.  The kernel emits Q5/Q6/Q7 at main-loop body exit in     *)
+(* the form `aese qi rk9 XOR word_insert (word_zx x_lo) (64,64) x_hi` —     *)
+(* AES final-round output XOR'd with a plaintext-derived 128-bit value     *)
+(* assembled by `fmov d, x_lo; fmov v.d[1], x_hi`.  The kernel's `rev64`   *)
+(* of these emit forms applied at the top of the next iteration must equal *)
+(* the byteswap128 of a spec-level ciphertext block.  This lemma           *)
+(* decomposes `aes_gcm_rev64_int128` of the emit form into                  *)
+(* word_join'd byte-reversed XORs of the AES round output halves with the *)
+(* low/high plaintext-derived 64-bit halves — the canonical building block *)
+(* the Phase 8 loop invariant uses to identify Q5/Q6/Q7 with byteswapped   *)
+(* ciphertexts of the previous iteration.                                   *)
+let AES_GCM_REV64_OF_EMIT_FORM = prove
+ (`!q rk x_lo x_hi.
+     aes_gcm_rev64_int128
+        (word_xor (aese q rk)
+                  (word_insert (word_zx x_lo :int128) (64,64) x_hi)) =
+     word_join
+       (word_bytereverse
+          (word_xor (word_subword (aese q rk) (64,64) :int64) x_hi))
+       (word_bytereverse
+          (word_xor (word_subword (aese q rk) (0,64) :int64) x_lo))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[aes_gcm_rev64_int128] THEN
+  BITBLAST_TAC);;
+
 (* ========================================================================= *)
 (* Phase 3b/c: GHASH 4-block Karatsuba bridge — framework + sub-lemmas.      *)
 (*                                                                           *)
