@@ -8027,3 +8027,24 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_KERNEL_FULL_LOADED_CORRECT = prove
                 AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_KERNEL_PLUS_Q567_FLAG_LOADED_CORRECT) THEN
   ASM_REWRITE_TAC[SOME_FLAGS]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8 (s054) — generic existential-precondition lifter for ensures.     *)
+(*                                                                           *)
+(* If for every value of `a` the cut works under pre `P s a`, then it works *)
+(* under the existentially-quantified pre `\s. ?a. P s a`.  Used by the      *)
+(* main-loop wrapper's body subgoal to peel the per-iteration emit-form     *)
+(* witnesses and the partial-ciphertext list `cts` from the loop invariant *)
+(* before applying the FULL_LOADED kernel body cut.                         *)
+(* ------------------------------------------------------------------------- *)
+
+let ENSURES_EXIST_PRECONDITION = prove
+ (`!step (P:armstate->A->bool) Q C.
+     (!a. ensures step (\s. P s a) Q C)
+     ==> ensures step (\s. ?a. P s a) Q C`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[ensures] THEN
+  STRIP_TAC THEN GEN_TAC THEN
+  DISCH_THEN(CHOOSE_THEN ASSUME_TAC) THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `a:A`) THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
