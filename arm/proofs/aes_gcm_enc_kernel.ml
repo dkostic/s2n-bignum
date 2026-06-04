@@ -10005,6 +10005,72 @@ let AES_GCM_LENC_TAIL_BLOCKS4_PMULL_MIDLOWHIGH_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — three more conditional/unconditional branch cuts in the  *)
+(* Lenc_tail dispatch cascade.                                               *)
+(*                                                                           *)
+(* The sequence between 0x7ec (b.gt blocks_4) and 0x828 (blocks_4 entry) is  *)
+(* the fall-through "if 4-blocks-not-taken, then check 3-blocks, then        *)
+(* 2-blocks, then default 1-block" cascade:                                  *)
+(*                                                                           *)
+(*   0x80c  arm_BGT  0x868   ; if 32 < x5  → blocks_3 entry                 *)
+(*   0x81c  arm_BGT  0x8b0   ; if 16 < x5  → blocks_2 entry                 *)
+(*   0x824  arm_B    0x8fc   ; unconditional → blocks_1 entry               *)
+(*                                                                           *)
+(* Each cut is a 1-instruction step with MAYCHANGE [PC] ,, [events].  The   *)
+(* two b.gt cuts use `condition_semantics Condition_GT` precondition; the   *)
+(* unconditional `b` doesn't need a flag precondition (it always jumps).    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BGT_BLOCKS3_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x244) /\
+          read X5 s = sx5 /\
+          condition_semantics Condition_GT s)
+     (\s. read PC s = word (pc + 0x2a0) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [146] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+let AES_GCM_LENC_TAIL_BGT_BLOCKS2_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x254) /\
+          read X5 s = sx5 /\
+          condition_semantics Condition_GT s)
+     (\s. read PC s = word (pc + 0x2e8) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [150] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+let AES_GCM_LENC_TAIL_B_BLOCKS1_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x25c) /\
+          read X5 s = sx5)
+     (\s. read PC s = word (pc + 0x334) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [152] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
