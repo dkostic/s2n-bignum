@@ -8888,6 +8888,70 @@ let AES_GCM_PREPRETAIL_R1R2_Q4Q5_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s069) — prepretail GHASH-block-0 PMULL/PMULL2 + R0 block 3 + R1 *)
+(* block 1.  Slice instr indices 20..27, kernel offsets 0x614..0x630.       *)
+(*                                                                           *)
+(*   0x614  arm_AESE      Q3 Q18         ; round 0 block 3 (rk0=Q18)        *)
+(*   0x618  arm_AESMC     Q3 Q3                                              *)
+(*   0x61c  arm_DUP_GEN   Q10 Q17 64 1   ; Q10 := word_zx (high 64 of Q17)  *)
+(*   0x620  arm_AESE      Q1 Q19         ; round 1 block 1 (rk1=Q19)        *)
+(*   0x624  arm_AESMC     Q1 Q1                                              *)
+(*   0x628  arm_PMULL_VEC  Q11 Q4 Q15 64 ; GHASH block-0 LOW                *)
+(*   0x62c  arm_DUP_GEN   Q8  Q4 64 1    ; Q8 := word_zx (high 64 of Q4)    *)
+(*   0x630  arm_PMULL2_VEC Q9  Q4 Q15 64 ; GHASH block-0 HIGH               *)
+(*                                                                           *)
+(* This window opens the GHASH 4-block Karatsuba: LOW (Q11 = pmull(low(Q4),*)
+(* low(Q15))) and HIGH (Q9 = pmull(high(Q4), high(Q15))) for block 0,       *)
+(* with Q8/Q10 staging the high-half operands for the upcoming MID pmull.   *)
+(* In parallel the AES rounds advance Q3 (round 0) and Q1 (round 1).        *)
+(*                                                                           *)
+(* MAYCHANGE: PC, Q1/Q3 (AES), Q8/Q9/Q10/Q11 (GHASH staging + LOW/HIGH).    *)
+(*                                                                           *)
+(* Closing pattern: same TRY-chain.  PMULL outputs match the simulator's   *)
+(* `word_pmul (subword ...) (subword ...)` form directly so ASM_REWRITE    *)
+(* alone closes those conjuncts; WORD_BLAST handles the DUP_GEN reductions.*)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R0R1_GHASH_BLOCK0_LOWHIGH_CORRECT = prove
+ (`!pc (q1_in:int128) (q3_in:int128) (q4_in:int128)
+       (q15:int128) (q17:int128) (rk0:int128) (rk1:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x4c) /\
+          read Q1 s = q1_in /\
+          read Q3 s = q3_in /\
+          read Q4 s = q4_in /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1)
+     (\s. read PC s = word (pc + 0x6c) /\
+          read Q1 s = aes_arm_round q1_in rk1 /\
+          read Q3 s = aes_arm_round q3_in rk0 /\
+          read Q4 s = q4_in /\
+          read Q8 s = (word_zx (word_subword q4_in (64,64):int64):int128) /\
+          read Q9 s = (word_pmul (word_subword q4_in (64,64):int64)
+                                 (word_subword q15 (64,64):int64) :int128) /\
+          read Q10 s = (word_zx (word_subword q17 (64,64):int64):int128) /\
+          read Q11 s = (word_pmul (word_subword q4_in (0,64):int64)
+                                  (word_subword q15 (0,64):int64) :int128) /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q1; Q3; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (20--27) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
