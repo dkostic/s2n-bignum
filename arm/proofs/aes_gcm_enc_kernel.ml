@@ -10988,6 +10988,92 @@ let AES_GCM_LENC_TAIL_BLOCKS2_FULL_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s073) — Lenc_blocks_1_remaining FULL chain composition.          *)
+(*                                                                           *)
+(* Composes BLOCKS1_REV_EOR (slice 206..207) +                               *)
+(* BLOCKS1_PMULL_ABSORB (slice 208..216) + BLOCKS1_MODULO (slice 217..226)  *)
+(* into a single ensures over the entire blocks_1 arm body                  *)
+(* (slice 206..226, kernel offsets 0x8fc..0x94c, 21 instructions).           *)
+(* Entry PC is pc + 0x334, exit PC is pc + 0x388 (= entry of                 *)
+(* common finalization region).                                              *)
+(*                                                                           *)
+(* Postcondition exposes Q5 (preserved), Q11 (the post-PMULL-LOW             *)
+(* accumulator that survives the MODULO fold), and X9 (the bytereversed     *)
+(* counter ready for the [x16+12] store).  Q9/Q10 are post-MODULO            *)
+(* register-only updates that MAYCHANGE captures and FINALIZATION reads      *)
+(* via state-relative names.                                                 *)
+(*                                                                           *)
+(* MODULO's MP_TAC requires explicit `:int128` annotation on q12_in's       *)
+(* word_subword arg to avoid type-variable confusion in the BIGSTEP         *)
+(* residual.                                                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS1_FULL_CORRECT = prove
+ (`!pc (sx12:int32)
+       (q5_pre:int128) (q8_pre:int128)
+       (q9_in:int128) (q10_in:int128) (q11_in:int128)
+       (q12_in:int128) (q16_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x334) /\
+         read X12 s = word_zx sx12 /\
+         read Q5 s = q5_pre /\
+         read Q8 s = q8_pre /\
+         read Q9 s = q9_in /\
+         read Q10 s = q10_in /\
+         read Q11 s = q11_in /\
+         read Q12 s = q12_in /\
+         read Q16 s = q16_in)
+    (\s. read PC s = word (pc + 0x388) /\
+         read X9 s = word_zx (word_bytereverse sx12) /\
+         read X12 s = word_zx sx12 /\
+         read Q5 s = q5_pre /\
+         read Q11 s = word_xor q11_in
+                       (word_pmul
+                         (word_subword
+                           (word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre)
+                           (0,64):int64)
+                         (word_subword q12_in (0,64):int64) :int128))
+    (MAYCHANGE [PC; X9] ,,
+     MAYCHANGE [Q4; Q7; Q8; Q9; Q10; Q11; Q20; Q21])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC]) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  MP_TAC(SPECL[`pc:num`; `q5_pre:int128`; `q8_pre:int128`]
+              AES_GCM_LENC_TAIL_BLOCKS1_REV_EOR_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s2" THEN
+  MP_TAC(SPECL[`pc:num`; `sx12:int32`;
+               `word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre :int128`;
+               `q9_in:int128`;
+               `q10_in:int128`;
+               `q11_in:int128`;
+               `q12_in:int128`;
+               `q16_in:int128`]
+              AES_GCM_LENC_TAIL_BLOCKS1_PMULL_ABSORB_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s11" THEN
+  MP_TAC(SPECL[`pc:num`;
+               `q5_pre:int128`;
+               `word_xor (q9_in:int128)
+                  (word_pmul
+                    (word_subword
+                      (word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre)
+                      (64,64):int64)
+                    (word_subword (q12_in:int128) (64,64):int64) :int128)`;
+               `read Q10 (s11:armstate):int128`;
+               `word_xor (q11_in:int128)
+                  (word_pmul
+                    (word_subword
+                      (word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre)
+                      (0,64):int64)
+                    (word_subword (q12_in:int128) (0,64):int64) :int128)`]
+              AES_GCM_LENC_TAIL_BLOCKS1_MODULO_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s21" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
