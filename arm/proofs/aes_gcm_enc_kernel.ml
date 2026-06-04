@@ -10174,6 +10174,79 @@ let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS1_SETUP_CORRECT = prove
   IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — Lenc_blocks_3_remaining first 5 instructions cut.        *)
+(*                                                                           *)
+(* Slice instr indices 169..173, kernel offsets 0x868..0x878 (5 instr).      *)
+(* Entry point of `.Lenc_blocks_3_remaining`; reachable from blocks_4's     *)
+(* exit OR from the b.gt at slice 146 (when 32 < val sx5 ≤ 48).             *)
+(*                                                                           *)
+(*   0x868  arm_ST1_VEC      Q5 X2 16          ; store CT block 5            *)
+(*   0x86c  arm_LDP          X6 X7 X0 16       ; load PT block 6             *)
+(*   0x870  arm_REV64_VEC    Q4 Q5 8           ; GHASH PRE block-3: byterev *)
+(*                                              ;   (note: when entered     *)
+(*                                              ;    from blocks_4, Q5 is  *)
+(*                                              ;    the freshly built CT   *)
+(*                                              ;    block 5 = Q4_pre XOR  *)
+(*                                              ;    Q1_in)                 *)
+(*   0x874  arm_EOR          X6 X6 X13         ; X6 ^= rk10_lo               *)
+(*   0x878  arm_EOR_VEC      Q4 Q4 Q8 128      ; v4 ^= partial tag Q8       *)
+(*                                                                           *)
+(* Structurally identical to BLOCKS4_ST_LD_REV_EOR; just at a different     *)
+(* PC entry point (pc + 0x2a0 vs pc + 0x260).  Same proof tactic.           *)
+(*                                                                           *)
+(* Note: when entered from blocks_4, Q8 = 0 (cleared by blocks_4's `movi   *)
+(* v8.8b, #0` at slice 163).  When entered directly from the b.gt blocks_3 *)
+(* branch, Q8 = byteswap128 q11_in (the OPENING value) since none of the   *)
+(* fall-through path setup touches Q8.  This cut takes Q8 as q8_pre        *)
+(* parameter without committing to which case applies.                      *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS3_ST_LD_REV_EOR_CORRECT = prove
+ (`!pc (cptr:int64) (sx0:int64) (sx13:int64) (sx14:int64)
+       (q5_pre:int128) (q8_pre:int128)
+       (b1_lo:int64) (b1_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (cptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (sx0, 16) /\
+   nonoverlapping (cptr, 16) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+             read PC s = word (pc + 0x2a0) /\
+             read X0 s = sx0 /\
+             read X2 s = cptr /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q5 s = q5_pre /\
+             read Q8 s = q8_pre /\
+             read (memory :> bytes64 sx0) s = b1_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b1_hi)
+        (\s. read PC s = word (pc + 0x2b4) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X2 s = word_add cptr (word 16) /\
+             read X6 s = word_xor b1_lo sx13 /\
+             read X7 s = b1_hi /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q4 s = word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre /\
+             read Q5 s = q5_pre /\
+             read Q8 s = q8_pre /\
+             read (memory :> bytes128 cptr) s = q5_pre)
+        (MAYCHANGE [PC; X0; X2; X6; X7] ,,
+         MAYCHANGE [Q4] ,,
+         MAYCHANGE [memory :> bytes128 cptr] ,,
+         MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (169--173) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
