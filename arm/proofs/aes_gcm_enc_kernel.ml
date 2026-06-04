@@ -9744,6 +9744,64 @@ let AES_GCM_LENC_TAIL_OPENING_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s070) — Lenc_tail cmp #0x30 + Q4 build + Q5 := Q4 ^ Q0.         *)
+(* Slice instr indices 134..137, kernel offsets 0x7dc..0x7e8 (4 instr).     *)
+(*                                                                           *)
+(*   0x7dc  arm_SUBS      ZR X5 X48        ; flags := X5 - 0x30 (no write)  *)
+(*   0x7e0  arm_FMOV_ItoF Q4 X6 0          ; Q4_lo := X6                    *)
+(*   0x7e4  arm_FMOV_ItoF Q4 X7 1          ; Q4_hi := X7                    *)
+(*   0x7e8  arm_EOR_VEC   Q5 Q4 Q0 128     ; Q5 := Q4 ^ Q0 (Q0 = AES        *)
+(*                                         ;   block-4 result from         *)
+(*                                         ;   prepretail's final round)   *)
+(*                                                                           *)
+(* The SUBS at 0x7dc writes flags but NOT to a destination register (ZR);   *)
+(* the flags will be consumed by the `b.gt 0x828` immediately following at  *)
+(* 0x7ec.  Subsequent cuts crossing the b.gt branch must handle the flag    *)
+(* condition.                                                                *)
+(*                                                                           *)
+(* Q4 carries the (post-AES-last-round-key-XOR) plaintext block; Q5         *)
+(* carries the ciphertext block (Q4 XORed with the AES output).             *)
+(*                                                                           *)
+(* Flag facts are exposed in the simulator's emit form; `IVAL_WORD_SUB_     *)
+(* NFVF_TO_LT` bridges these to "x5 < 0x30" semantics in downstream cuts.   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_CMP30_FMOV_Q4Q5_CORRECT = prove
+ (`!pc (q0_in:int128) (q4_in:int128) (sx5:int64) (sx6:int64) (sx7:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x214) /\
+          read Q0 s = q0_in /\
+          read Q4 s = q4_in /\
+          read X5 s = sx5 /\
+          read X6 s = sx6 /\
+          read X7 s = sx7)
+     (\s. read PC s = word (pc + 0x224) /\
+          read Q0 s = q0_in /\
+          read Q4 s = (word_insert (word_zx sx6:int128) (64,64) sx7:int128) /\
+          read Q5 s = word_xor q0_in
+                          (word_insert (word_zx sx6:int128) (64,64) sx7
+                           :int128) /\
+          read X5 s = sx5 /\
+          read X6 s = sx6 /\
+          read X7 s = sx7 /\
+          (read NF s <=> ival (word_sub sx5 (word 48)) < &0) /\
+          (read ZF s <=> val (word_sub sx5 (word 48)) = 0) /\
+          (read CF s <=> 48 <= val sx5) /\
+          (read VF s <=>
+            ~(ival sx5 - &48 = ival (word_sub sx5 (word 48)))))
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q4; Q5] ,,
+      MAYCHANGE SOME_FLAGS ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (134--137) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
