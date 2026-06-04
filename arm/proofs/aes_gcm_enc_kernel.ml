@@ -9926,6 +9926,85 @@ let AES_GCM_LENC_TAIL_BLOCKS4_ST_LD_REV_EOR_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — Lenc_blocks_4_remaining second batch (rest of arm).       *)
+(*                                                                           *)
+(* Slice instr indices 158..168, kernel offsets 0x83c..0x864 (11 instr).      *)
+(* Continues from BLOCKS4_ST_LD_REV_EOR_CORRECT's exit (pc + 0x274) and      *)
+(* exits at pc + 0x2a0 (= kernel 0x868 = .Lenc_blocks_3_remaining).           *)
+(*                                                                           *)
+(*   0x83c  arm_EOR          X7 X7 X14         ; X7 ^= rk10_hi               *)
+(*   0x840  arm_DUP_GEN      Q22 Q4 64 1       ; Q22 := dup(high(Q4))        *)
+(*                                              ;  (== mov d22, v4.d[1] but *)
+(*                                              ;   simulator emits dup_gen) *)
+(*   0x844  arm_FMOV_ItoF    Q5 X6 0           ; Q5_lo := X6                 *)
+(*   0x848  arm_FMOV_ItoF    Q5 X7 1           ; Q5_hi := X7 (post-eor)      *)
+(*   0x84c  arm_EOR_VEC      Q22 Q22 Q4 64     ; Q22.lo ^= Q4.lo (mid form)  *)
+(*   0x850  arm_MOVI         Q8 (word 0) 8     ; Q8.lo := 0 (suppress feed)  *)
+(*   0x854  arm_DUP_GEN      Q10 Q17 64 1      ; Q10 := dup(high(Q17))       *)
+(*                                              ;  (== mov d10, v17.d[1])    *)
+(*   0x858  arm_PMULL_VEC    Q11 Q4 Q15 64     ; block-4 LOW                 *)
+(*   0x85c  arm_PMULL2_VEC   Q9 Q4 Q15 64      ; block-4 HIGH                *)
+(*   0x860  arm_PMULL_VEC    Q10 Q22 Q10 64    ; block-4 MID (Q22.lo *      *)
+(*                                              ;             Q10.lo where  *)
+(*                                              ;   Q10.lo = Q17.hi after   *)
+(*                                              ;   the dup_gen)             *)
+(*   0x864  arm_EOR_VEC      Q5 Q5 Q1 128      ; Q5 := built_q5 ^ Q1 (CT 5) *)
+(*                                                                           *)
+(* Q22's exit form is `word_zx (word_xor (word_subword q4_in (64,64))        *)
+(*                                       (word_subword q4_in (0,64)))` —     *)
+(* the GHASH MID input combining Q4's high and low 64-bit halves XOR'd.      *)
+(*                                                                           *)
+(* Q11/Q9/Q10 hold block-4's PMULL components ready for accumulation in the *)
+(* subsequent blocks_3 arm.  Q5 holds CT block 5 ready for store at the      *)
+(* head of blocks_3.                                                         *)
+(*                                                                           *)
+(* Several of the MAYCHANGE-only outputs (Q5, Q22, Q10, Q8) have well-       *)
+(* defined values but are not pinned to the post — the subsequent blocks_3  *)
+(* cut consumes them via PRE-state names rather than tracking them          *)
+(* through this cut's POST.  The post commits to Q11/Q9 because those are   *)
+(* final block-4 PMULL outputs that downstream finalization depends on.     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS4_PMULL_MIDLOWHIGH_CORRECT = prove
+ (`!pc (sx14:int64) (x6_post:int64) (x7_pre:int64)
+       (q1_in:int128) (q4_in:int128) (q5_in:int128)
+       (q15_in:int128) (q17_in:int128) (q10_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x274) /\
+         read X6 s = x6_post /\
+         read X7 s = x7_pre /\
+         read X14 s = sx14 /\
+         read Q1 s = q1_in /\
+         read Q4 s = q4_in /\
+         read Q5 s = q5_in /\
+         read Q10 s = q10_in /\
+         read Q15 s = q15_in /\
+         read Q17 s = q17_in)
+    (\s. read PC s = word (pc + 0x2a0) /\
+         read X6 s = x6_post /\
+         read X7 s = word_xor x7_pre sx14 /\
+         read X14 s = sx14 /\
+         read Q1 s = q1_in /\
+         read Q11 s = (word_pmul (word_subword q4_in (0,64):int64)
+                                 (word_subword q15_in (0,64):int64) :int128) /\
+         read Q9 s = (word_pmul (word_subword q4_in (64,64):int64)
+                                (word_subword q15_in (64,64):int64) :int128) /\
+         read Q15 s = q15_in /\
+         read Q17 s = q17_in)
+    (MAYCHANGE [PC] ,,
+     MAYCHANGE [X7] ,,
+     MAYCHANGE [Q5; Q8; Q9; Q10; Q11; Q22])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (158--168) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
