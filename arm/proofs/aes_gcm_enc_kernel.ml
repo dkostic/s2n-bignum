@@ -9129,6 +9129,87 @@ let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_CORRECT = prove
     REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s065) — H-table cut variant exposing X12's zero-high-32-bits     *)
+(* invariant.                                                                *)
+(*                                                                           *)
+(* Same as HTABLE_KMID_FLAG_CORRECT but parametrizes over `sx12:int32`        *)
+(* (a Hilbert-style witness for the int32 underlying X12's PRE value)        *)
+(* and tracks X12 algebraically through the single `add w12, w12, #1` at    *)
+(* offset 0x14c (slice instr ~80) inside this range.                        *)
+(*                                                                           *)
+(*  PRE:  read X12 s = word_zx sx12          (sx12 : int32)                  *)
+(*  POST: read X12 s = word_zx (word_add sx12 (word 1):int32)               *)
+(*                                                                           *)
+(* The closure of the X12 conjunct: ARM_STEPS produces                       *)
+(*   `word_zx (word_add (word_zx (word_zx sx12)) (word 1))`                  *)
+(* which collapses to `word_zx (word_add sx12 (word 1):int32)` via           *)
+(*   IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH].  *)
+(*                                                                           *)
+(* This cut is the X12-tracking variant used by the prelude SLICE_FULL      *)
+(* composition (chain1_X5_X12_PT -> FIRSTBLOCKS_FULL): it lets the SLICE_FULL*)
+(* outer wrapper assert `read X12 s = word_zx (word_subword (read X12 s)    *)
+(* (0,32):int32)` (the form FIRSTBLOCKS_FULL's PRE expects).                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_X12_CORRECT = prove
+ (`!pc (sx0:int64) (sx5:int64) (sx12:int32) (htable_ptr:int64) (h:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (htable_ptr, 96)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0xf0) /\
+              read X0 s = sx0 /\
+              read X5 s = sx5 /\
+              read X6 s = htable_ptr /\
+              read X12 s = word_zx sx12 /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3))
+         (\s. read PC s = word (pc + 0x244) /\
+              read X0 s = sx0 /\
+              read X5 s = sx5 /\
+              read X6 s = htable_ptr /\
+              read X12 s = word_zx (word_add sx12 (word 1):int32) /\
+              read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+              read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+              read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+              read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+              read Q16 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+                 :int128) /\
+              read Q17 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+                 :int128) /\
+              (read NF s <=> ival (word_sub sx0 sx5) < &0) /\
+              (read VF s <=>
+               ~(ival sx0 - ival sx5 = ival (word_sub sx0 sx5))))
+         (MAYCHANGE [PC; X9; X12] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q22; Q26; Q27; Q28; Q29; Q30] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (61--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THENL
+   [IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH];
+    REWRITE_TAC[byteswap128; karatsuba_mid] THEN CONV_TAC WORD_BLAST;
+    REWRITE_TAC[byteswap128; karatsuba_mid] THEN CONV_TAC WORD_BLAST;
+    REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s060) — first 4-block region opening: b.ge fall-through + first  *)
 (* two plaintext-block loads (slice instr indices 146..149, kernel offsets  *)
 (* 0x244..0x254).                                                            *)
