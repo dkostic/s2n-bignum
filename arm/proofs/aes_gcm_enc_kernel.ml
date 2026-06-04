@@ -9848,6 +9848,84 @@ let AES_GCM_LENC_TAIL_BGT_BLOCKS4_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — Lenc_blocks_4_remaining first 5 instructions cut.        *)
+(*                                                                           *)
+(* Slice instr indices 153..157, kernel offsets 0x828..0x838 (5 instr).      *)
+(* Entry point of the .Lenc_blocks_4_remaining arm; the b.gt branch above   *)
+(* (slice 138, BLOCKS4 cut) lands here when 48 < val sx5 (i.e. ≥4 full      *)
+(* blocks of plaintext remain after the prepretail's first batch).          *)
+(*                                                                           *)
+(*   0x828  arm_ST1_VEC      Q5 X2 16          ; store CT block 4 to [cptr] *)
+(*   0x82c  arm_LDP          X6 X7 X0 16       ; load PT block 5 from [sx0] *)
+(*   0x830  arm_REV64_VEC    Q4 Q5 8           ; GHASH PRE block-4: byterev *)
+(*   0x834  arm_EOR          X6 X6 X13         ; X6 ^= rk10_lo (last-key)   *)
+(*   0x838  arm_EOR_VEC      Q4 Q4 Q8 128      ; v4 ^= partial tag Q8       *)
+(*                                                                           *)
+(* Inputs: cptr (X2 = output ptr, 16-byte writable), sx0 (X0 = input ptr,   *)
+(* 16-byte readable), sx13/sx14 (last-key halves, preserved), q5_pre        *)
+(* (the post-AES-r9 ciphertext block 4 from CMP30_FMOV's Q5), q8_pre        *)
+(* (the partial tag from OPENING's Q8 = byteswap128 q11_in), b1_lo/b1_hi    *)
+(* (PT block 5 halves at [sx0..sx0+16)).                                     *)
+(*                                                                           *)
+(* Outputs: X0 += 16, X2 += 16, X6 = b1_lo XOR sx13 (rk10-low XOR'd PT      *)
+(* low half), X7 = b1_hi (PT high half not yet rk10-XOR'd; that comes at    *)
+(* slice 158, deferred), Q4 = aes_gcm_rev64_int128 q5_pre XOR q8_pre        *)
+(* (rev64'd CT block 4 with partial tag absorbed), memory[cptr] = q5_pre    *)
+(* (the CT block 4 stored).                                                  *)
+(*                                                                           *)
+(* MAYCHANGE: PC, X0/X2 (advance), X6/X7 (LDP plus eor on X6),              *)
+(* Q4 (rev64+eor), memory[cptr] (st1), events.  Q5/Q8/X13/X14 preserved.    *)
+(*                                                                           *)
+(* Closes with the prepretail rev64 pattern: REWRITE[aes_gcm_rev64_int128]  *)
+(* then ASM_REWRITE + WORD_BLAST.                                            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS4_ST_LD_REV_EOR_CORRECT = prove
+ (`!pc (cptr:int64) (sx0:int64) (sx13:int64) (sx14:int64)
+       (q5_pre:int128) (q8_pre:int128)
+       (b1_lo:int64) (b1_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (cptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (sx0, 16) /\
+   nonoverlapping (cptr, 16) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+             read PC s = word (pc + 0x260) /\
+             read X0 s = sx0 /\
+             read X2 s = cptr /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q5 s = q5_pre /\
+             read Q8 s = q8_pre /\
+             read (memory :> bytes64 sx0) s = b1_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b1_hi)
+        (\s. read PC s = word (pc + 0x274) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X2 s = word_add cptr (word 16) /\
+             read X6 s = word_xor b1_lo sx13 /\
+             read X7 s = b1_hi /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q4 s = word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre /\
+             read Q5 s = q5_pre /\
+             read Q8 s = q8_pre /\
+             read (memory :> bytes128 cptr) s = q5_pre)
+        (MAYCHANGE [PC; X0; X2; X6; X7] ,,
+         MAYCHANGE [Q4] ,,
+         MAYCHANGE [memory :> bytes128 cptr] ,,
+         MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (153--157) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
