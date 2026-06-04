@@ -10247,6 +10247,72 @@ let AES_GCM_LENC_TAIL_BLOCKS3_ST_LD_REV_EOR_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — Lenc_blocks_3_remaining second batch (rest of arm).      *)
+(*                                                                           *)
+(* Slice instr indices 174..186, kernel offsets 0x87c..0x8ac (13 instr).     *)
+(* Continues from BLOCKS3_ST_LD_REV_EOR's exit (pc + 0x2b4) and exits at    *)
+(* pc + 0x2e8 (= kernel 0x8b0 = .Lenc_blocks_2_remaining).                   *)
+(*                                                                           *)
+(* Structurally analogous to BLOCKS4_PMULL_MIDLOWHIGH but with two key      *)
+(* differences:                                                              *)
+(*   1. Uses Q14 (= byteswap128 (h_power 2) = H_3) instead of Q15 (H_4)     *)
+(*      for the GHASH PMULLs.                                                *)
+(*   2. ACCUMULATES into Q9/Q10/Q11 (Q9 += block-3 HIGH, Q11 += block-3 LOW,*)
+(*      Q10 += block-3 MID via subsequent EOR_VECs) instead of overwriting. *)
+(*   3. The MID PMULL uses Q17.lo (= karatsuba_mid h^2) directly via       *)
+(*      `pmull v22, v22, v17` — no intermediate `mov d10, v17.d[1]` setup. *)
+(*   4. Block-6 plaintext is XOR'd against Q2 (the AES output for block-6).*)
+(*                                                                           *)
+(* The cut commits POST values for the GHASH HIGH/LOW accumulators (Q9     *)
+(* and Q11) but defers Q10 (the MID accumulator), Q5 (the next-block CT), *)
+(* and Q22 to MAYCHANGE — they're staging values consumed by the next arm.*)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS3_PMULL_ACCUM_CORRECT = prove
+ (`!pc (sx14:int64) (x6_post:int64) (x7_pre:int64)
+       (q2_in:int128) (q4_in:int128) (q5_in:int128)
+       (q9_in:int128) (q10_in:int128) (q11_in:int128)
+       (q14_in:int128) (q17_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x2b4) /\
+         read X6 s = x6_post /\
+         read X7 s = x7_pre /\
+         read X14 s = sx14 /\
+         read Q2 s = q2_in /\
+         read Q4 s = q4_in /\
+         read Q5 s = q5_in /\
+         read Q9 s = q9_in /\
+         read Q10 s = q10_in /\
+         read Q11 s = q11_in /\
+         read Q14 s = q14_in /\
+         read Q17 s = q17_in)
+    (\s. read PC s = word (pc + 0x2e8) /\
+         read X6 s = x6_post /\
+         read X7 s = word_xor x7_pre sx14 /\
+         read X14 s = sx14 /\
+         read Q2 s = q2_in /\
+         read Q9 s = word_xor q9_in
+                       (word_pmul (word_subword q4_in (64,64):int64)
+                                  (word_subword q14_in (64,64):int64) :int128) /\
+         read Q11 s = word_xor q11_in
+                        (word_pmul (word_subword q4_in (0,64):int64)
+                                   (word_subword q14_in (0,64):int64) :int128) /\
+         read Q14 s = q14_in /\
+         read Q17 s = q17_in)
+    (MAYCHANGE [PC] ,,
+     MAYCHANGE [X7] ,,
+     MAYCHANGE [Q5; Q8; Q9; Q10; Q11; Q20; Q21; Q22])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (174--186) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
