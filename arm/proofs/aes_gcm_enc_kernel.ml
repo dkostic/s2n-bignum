@@ -9399,6 +9399,60 @@ let AES_GCM_PREPRETAIL_R5R6_BLOCK0123_Q10_BLOCK0MID2_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s069) — prepretail R6R7 multi-block AES + Q9 += block-3 HIGH + *)
+(* Q8 movi-staging.  Slice instr indices 91..100, kernel offsets            *)
+(* 0x730..0x754.                                                             *)
+(*                                                                           *)
+(*   0x730  arm_MOVI_VEC  Q8 #0xc2 8B          ; Q8 := word_join (high(Q8)) *)
+(*                                              ;   (replicate 0xc2 in low) *)
+(*   0x734  arm_AESE      Q3 Q24                ; round 6 block 3           *)
+(*   0x738  arm_AESMC     Q3 Q3                                              *)
+(*   0x73c  arm_AESE      Q1 Q25                ; round 7 block 1 (rk7=Q25) *)
+(*   0x740  arm_AESMC     Q1 Q1                                              *)
+(*   0x744  arm_EOR_VEC   Q9 Q9 Q5 128         ; Q9 += block-3 HIGH         *)
+(*   0x748  arm_AESE      Q0 Q25                ; round 7 block 0           *)
+(*   0x74c  arm_AESMC     Q0 Q0                                              *)
+(*   0x750  arm_AESE      Q3 Q25                ; round 7 block 3           *)
+(*   0x754  arm_AESMC     Q3 Q3                                              *)
+(*                                                                           *)
+(* Q8 transitioning to GF reduction polynomial setup; absorbed in MAYCHANGE.*)
+(* All four blocks advance to round 7.  Q9 absorbs block-3 HIGH (Q5_pre).   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R6R7_BLOCK0123_Q9_BLOCK3HIGH_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q3_in:int128) (q5_in:int128) (q9_in:int128)
+       (rk6:int128) (rk7:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x168) /\
+          read Q0 s = q0_in /\
+          read Q1 s = q1_in /\
+          read Q3 s = q3_in /\
+          read Q5 s = q5_in /\
+          read Q9 s = q9_in /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7)
+     (\s. read PC s = word (pc + 0x190) /\
+          read Q0 s = aes_arm_round q0_in rk7 /\
+          read Q1 s = aes_arm_round q1_in rk7 /\
+          read Q3 s = aes_arm_round (aes_arm_round q3_in rk6) rk7 /\
+          read Q5 s = q5_in /\
+          read Q9 s = word_xor q9_in q5_in /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q3; Q8; Q9] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (91--100) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
