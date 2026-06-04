@@ -10788,6 +10788,105 @@ let AES_GCM_LENC_TAIL_BLOCKS4_FULL_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s073) — Lenc_blocks_3_remaining FULL chain composition.          *)
+(*                                                                           *)
+(* Composes BLOCKS3_ST_LD_REV_EOR (slice 169..173) +                         *)
+(* BLOCKS3_PMULL_ACCUM (slice 174..186) into a single ensures over the      *)
+(* full blocks_3 arm body (slice 169..186, kernel offsets 0x868..0x8ac,     *)
+(* 18 instructions).  Entry PC is pc + 0x2a0, exit PC is pc + 0x2e8         *)
+(* (= entry of blocks_2_remaining).                                          *)
+(*                                                                           *)
+(* Postcondition exposes Q9 and Q11 with the block-3 PMULL HIGH/LOW values *)
+(* ACCUMULATED into the input Q9/Q11 (from upstream blocks_4 in the chain   *)
+(* or the cleared accumulators in the fall-through path).  Q14 = H_3        *)
+(* (h-power 2 byteswapped).                                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS3_FULL_CORRECT = prove
+ (`!pc (cptr:int64) (sx0:int64) (sx13:int64) (sx14:int64)
+       (q2_in:int128) (q5_pre:int128) (q8_pre:int128)
+       (q9_in:int128) (q10_in:int128) (q11_in:int128)
+       (q14_in:int128) (q17_in:int128)
+       (b1_lo:int64) (b1_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (cptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (sx0, 16) /\
+   nonoverlapping (cptr, 16) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+             read PC s = word (pc + 0x2a0) /\
+             read X0 s = sx0 /\
+             read X2 s = cptr /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q2 s = q2_in /\
+             read Q5 s = q5_pre /\
+             read Q8 s = q8_pre /\
+             read Q9 s = q9_in /\
+             read Q10 s = q10_in /\
+             read Q11 s = q11_in /\
+             read Q14 s = q14_in /\
+             read Q17 s = q17_in /\
+             read (memory :> bytes64 sx0) s = b1_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b1_hi)
+        (\s. read PC s = word (pc + 0x2e8) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X2 s = word_add cptr (word 16) /\
+             read X6 s = word_xor b1_lo sx13 /\
+             read X7 s = word_xor b1_hi sx14 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q2 s = q2_in /\
+             read Q9 s = word_xor q9_in
+                          (word_pmul
+                            (word_subword
+                              (word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre)
+                              (64,64):int64)
+                            (word_subword q14_in (64,64):int64) :int128) /\
+             read Q11 s = word_xor q11_in
+                           (word_pmul
+                             (word_subword
+                               (word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre)
+                               (0,64):int64)
+                             (word_subword q14_in (0,64):int64) :int128) /\
+             read Q14 s = q14_in /\
+             read Q17 s = q17_in /\
+             read (memory :> bytes128 cptr) s = q5_pre)
+        (MAYCHANGE [PC; X0; X2; X6; X7] ,,
+         MAYCHANGE [Q4; Q5; Q8; Q9; Q10; Q11; Q20; Q21; Q22] ,,
+         MAYCHANGE [memory :> bytes128 cptr] ,,
+         MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC]) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  MP_TAC(SPECL[`pc:num`; `cptr:int64`; `sx0:int64`; `sx13:int64`; `sx14:int64`;
+               `q5_pre:int128`; `q8_pre:int128`;
+               `b1_lo:int64`; `b1_hi:int64`]
+              AES_GCM_LENC_TAIL_BLOCKS3_ST_LD_REV_EOR_CORRECT) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+    NONOVERLAPPING_TAC;
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s5" THEN
+  MP_TAC(SPECL[`pc:num`; `sx14:int64`;
+               `word_xor (b1_lo:int64) (sx13:int64) :int64`;
+               `b1_hi:int64`;
+               `q2_in:int128`;
+               `word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre :int128`;
+               `q5_pre:int128`;
+               `q9_in:int128`;
+               `q10_in:int128`;
+               `q11_in:int128`;
+               `q14_in:int128`;
+               `q17_in:int128`]
+              AES_GCM_LENC_TAIL_BLOCKS3_PMULL_ACCUM_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s18" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
