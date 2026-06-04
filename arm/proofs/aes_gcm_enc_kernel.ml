@@ -14489,3 +14489,142 @@ let AES_GCM_MAIN_LOOP_PRELUDE_FULL_KERNEL_CORRECT = prove
     ASM_REWRITE_TAC[] THEN
     MP_TAC(SPECL[`x:armstate`; `pc:num`] SLICE_TO_KERNEL_PRELUDE_LOAD) THEN
     ASM_REWRITE_TAC[ARITH_RULE `pc + 0 = pc`]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s074) — prepretail chain composition: OPENING + R0_BLOCK0.       *)
+(*                                                                           *)
+(* Composes AES_GCM_PREPRETAIL_OPENING (slice instr 1..6) +                  *)
+(* AES_GCM_PREPRETAIL_R0_BLOCK0_Q4Q11 (slice instr 7..11) into a single      *)
+(* ensures over the first 11 instructions of the prepretail region          *)
+(* (kernel offsets 0..0x2c).  Entry PC is pc, exit PC is pc + 0x2c.          *)
+(*                                                                           *)
+(* Antecedent threading: OPENING's POST sets Q3 := word_zx sx10:int128;      *)
+(* this is bound at the SPECL site of R0_BLOCK0 as the q3_pre parameter      *)
+(* with explicit `(word_zx (sx10:int64):int128)` annotation to avoid the     *)
+(* polymorphism trap documented in [[mp_tac_polymorphic_intermediate]].      *)
+(*                                                                           *)
+(* This is the first cut of the planned multi-step prepretail chain          *)
+(* composition (s073's continuation #5: PREPRETAIL_FULL_CORRECT over all 15  *)
+(* prepretail cuts).  Validates the chain composition recipe at length 2     *)
+(* before extending.                                                         *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_OPENING_R0_BLOCK0_CORRECT = prove
+ (`!pc (q0_pre:int128) (q1_pre:int128) (q2_pre:int128)
+       (q4_pre:int128) (q6_pre:int128) (q11_pre:int128)
+       (rk0:int128) (sx9:int64) (sx10:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q2 s = q2_pre /\
+          read Q4 s = q4_pre /\
+          read Q6 s = q6_pre /\
+          read Q11 s = q11_pre /\
+          read Q18 s = rk0 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0x2c) /\
+          read Q0 s = aes_arm_round q0_pre rk0 /\
+          read Q1 s = aes_arm_round q1_pre rk0 /\
+          read Q2 s = aes_arm_round q2_pre rk0 /\
+          read Q3 s = (word_insert (word_zx sx10:int128) (64,64) sx9 :int128) /\
+          read Q4 s = aes_gcm_rev64_int128 q4_pre /\
+          read Q6 s = aes_gcm_rev64_int128 q6_pre /\
+          read Q11 s = byteswap128 q11_pre /\
+          read Q18 s = rk0 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q6; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL[`pc:num`; `q1_pre:int128`; `q2_pre:int128`;
+               `q6_pre:int128`; `rk0:int128`; `sx10:int64`]
+              AES_GCM_PREPRETAIL_OPENING_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s6" THEN
+  MP_TAC(SPECL[`pc:num`; `q0_pre:int128`;
+               `(word_zx (sx10:int64):int128)`;
+               `q4_pre:int128`; `q11_pre:int128`;
+               `rk0:int128`; `sx9:int64`]
+              AES_GCM_PREPRETAIL_R0_BLOCK0_Q4Q11_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s11" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s074) — prepretail chain composition extended: + R1R2_Q4Q5.      *)
+(*                                                                           *)
+(* Extends OPENING_R0_BLOCK0 with AES_GCM_PREPRETAIL_R1R2_Q4Q5_CORRECT       *)
+(* (slice instr 12..19) into a single ensures over slice instr 1..19         *)
+(* (kernel offsets 0..0x4c).  Entry PC is pc, exit PC is pc + 0x4c.          *)
+(*                                                                           *)
+(* Antecedent threading: The post of the previous chain provides Q0/Q1/Q2 = *)
+(* aes_arm_round of the pre-Q values with rk0; Q4 = aes_gcm_rev64_int128;   *)
+(* Q11 = byteswap128.  R1R2_Q4Q5 needs Q5 fresh (q5_pre), plus Q19=rk1 and  *)
+(* Q20=rk2 round keys.  All bound at the SPECL site; no polymorphism issues *)
+(* this round (sx9, sx10 not consumed by R1R2).                              *)
+(*                                                                           *)
+(* Note Q1's POST in R1R2_Q4Q5 is `Q1 = q1_in` (preserved — R1 of block 1   *)
+(* is at pc+0x4c-ish but not in this slice yet; the AES rounds for Q0 and   *)
+(* Q2 advance further than Q1 here).  So composed Q1 stays at               *)
+(* aes_arm_round q1_pre rk0.                                                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_CORRECT = prove
+ (`!pc (q0_pre:int128) (q1_pre:int128) (q2_pre:int128)
+       (q4_pre:int128) (q5_pre:int128) (q6_pre:int128) (q11_pre:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (sx9:int64) (sx10:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q2 s = q2_pre /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q11 s = q11_pre /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0x4c) /\
+          read Q0 s = aes_arm_round (aes_arm_round q0_pre rk0) rk1 /\
+          read Q1 s = aes_arm_round q1_pre rk0 /\
+          read Q2 s = aes_arm_round (aes_arm_round (aes_arm_round q2_pre rk0) rk1) rk2 /\
+          read Q3 s = (word_insert (word_zx sx10:int128) (64,64) sx9 :int128) /\
+          read Q4 s = word_xor (aes_gcm_rev64_int128 q4_pre) (byteswap128 q11_pre) /\
+          read Q5 s = aes_gcm_rev64_int128 q5_pre /\
+          read Q6 s = aes_gcm_rev64_int128 q6_pre /\
+          read Q11 s = byteswap128 q11_pre /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL[`pc:num`; `q0_pre:int128`; `q1_pre:int128`; `q2_pre:int128`;
+               `q4_pre:int128`; `q6_pre:int128`; `q11_pre:int128`;
+               `rk0:int128`; `sx9:int64`; `sx10:int64`]
+              AES_GCM_PREPRETAIL_OPENING_R0_BLOCK0_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s11" THEN
+  MP_TAC(SPECL[`pc:num`;
+               `aes_arm_round q0_pre rk0 :int128`;
+               `aes_arm_round q1_pre rk0 :int128`;
+               `aes_arm_round q2_pre rk0 :int128`;
+               `aes_gcm_rev64_int128 q4_pre :int128`;
+               `q5_pre:int128`;
+               `byteswap128 q11_pre :int128`;
+               `rk1:int128`; `rk2:int128`]
+              AES_GCM_PREPRETAIL_R1R2_Q4Q5_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s19" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
