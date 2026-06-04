@@ -9011,6 +9011,76 @@ let AES_GCM_PREPRETAIL_R1R2R3_BLOCK0123_Q8EOR_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s069) — prepretail block-1 LOW/HIGH PMULL + block-0 MID PMULL  *)
+(* + Q9 += block-1 HIGH.  Slice instr indices 37..44, kernel offsets        *)
+(* 0x658..0x674.                                                             *)
+(*                                                                           *)
+(*   0x658  arm_AESE      Q1 Q21              ; round 3 block 1             *)
+(*   0x65c  arm_AESMC     Q1 Q1                                              *)
+(*   0x660  arm_PMULL_VEC  Q10 Q8 Q10 64      ; block-0 MID                 *)
+(*   0x664  arm_PMULL2_VEC Q4  Q5 Q14 64      ; block-1 HIGH                *)
+(*   0x668  arm_PMULL_VEC  Q8  Q5 Q14 64      ; block-1 LOW                 *)
+(*   0x66c  arm_AESE      Q3 Q20              ; round 2 block 3             *)
+(*   0x670  arm_AESMC     Q3 Q3                                              *)
+(*   0x674  arm_EOR_VEC   Q9 Q9 Q4 128        ; Q9 += block-1 HIGH          *)
+(*                                                                           *)
+(* New PMULL outputs:                                                        *)
+(*   Q4 := pmull(high(Q5), high(Q14)) -- block-1 HIGH (overwriting prior Q4)*)
+(*   Q8 := pmull(low(Q5), low(Q14))   -- block-1 LOW                        *)
+(*   Q10 := pmull(low(Q8_pre), low(Q10_pre)) -- block-0 MID                 *)
+(* Note Q8_pre was set in cut 5 via 8B EOR (low half = q4 XOR q8_orig).     *)
+(* Q9 := Q9_pre XOR pmull(high(Q5), high(Q14))  -- Q9 accumulates HIGH      *)
+(*                                                                           *)
+(* MAYCHANGE: PC, Q1/Q3 (AES), Q4/Q8/Q9/Q10 (GHASH).                         *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_GHASH_BLOCK1_LOWHIGH_BLOCK0_MID_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q3_in:int128)
+       (q5:int128) (q8_in:int128) (q9_in:int128) (q10_in:int128) (q14:int128)
+       (rk2:int128) (rk3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x90) /\
+          read Q0 s = q0_in /\
+          read Q1 s = q1_in /\
+          read Q3 s = q3_in /\
+          read Q5 s = q5 /\
+          read Q8 s = q8_in /\
+          read Q9 s = q9_in /\
+          read Q10 s = q10_in /\
+          read Q14 s = q14 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3)
+     (\s. read PC s = word (pc + 0xb0) /\
+          read Q0 s = q0_in /\
+          read Q1 s = aes_arm_round q1_in rk3 /\
+          read Q3 s = aes_arm_round q3_in rk2 /\
+          read Q4 s = (word_pmul (word_subword q5 (64,64):int64)
+                                 (word_subword q14 (64,64):int64) :int128) /\
+          read Q5 s = q5 /\
+          read Q8 s = (word_pmul (word_subword q5 (0,64):int64)
+                                 (word_subword q14 (0,64):int64) :int128) /\
+          read Q9 s = word_xor q9_in
+                       (word_pmul (word_subword q5 (64,64):int64)
+                                  (word_subword q14 (64,64):int64) :int128) /\
+          read Q10 s = (word_pmul (word_subword q8_in (0,64):int64)
+                                  (word_subword q10_in (0,64):int64) :int128) /\
+          read Q14 s = q14 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q1; Q3; Q4; Q8; Q9; Q10] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (37--44) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
