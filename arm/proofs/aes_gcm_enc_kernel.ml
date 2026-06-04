@@ -10561,6 +10561,53 @@ let AES_GCM_LENC_TAIL_BLOCKS1_PMULL_ABSORB_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s072) — Lenc_blocks_1_remaining MODULO fold cut.                 *)
+(*                                                                           *)
+(* Slice instr indices 217..226, kernel offsets 0x928..0x94c (10 instr).    *)
+(* Continues from BLOCKS1_PMULL_ABSORB's exit (pc + 0x360) and exits at    *)
+(* pc + 0x388 (= kernel 0x950 = `str w9, [x16, #12]`, common finalization).*)
+(*                                                                           *)
+(*   0x928  movi  v8.8b, #0xc2            ; Q8.lo := 0xc2 (low byte)        *)
+(*   0x92c  eor   v4, v11, v9             ; Q4 := Q11 XOR Q9 (Karatsuba)    *)
+(*   0x930  shl   d8, d8, #56             ; Q8.lo := 0xc2 << 56 (mod const) *)
+(*   0x934  eor   v10, v10, v4            ; Q10 ^= Q4 (Karatsuba tidy)      *)
+(*   0x938  pmull v7, v9.1d, v8.1d        ; Q7 := pmull(Q9.lo, Q8.lo)       *)
+(*   0x93c  ext   v9, v9, v9, #8          ; Q9 := swap halves               *)
+(*   0x940  eor   v10, v10, v7            ; Q10 ^= Q7 (fold)                *)
+(*   0x944  eor   v10, v10, v9            ; Q10 ^= swapped-Q9 (fold)        *)
+(*   0x948  pmull v9, v10.1d, v8.1d       ; Q9 := pmull(Q10.lo, Q8.lo)      *)
+(*   0x94c  ext   v10, v10, v10, #8       ; Q10 := swap halves              *)
+(*                                                                           *)
+(* This is the GF(2^128) reduction (POLYVAL/GHASH MODULO step) folding the *)
+(* Karatsuba-laid-out high/mid/low (Q9/Q10/Q11) into the form expected by  *)
+(* the final st1 v11 tag-store path.  The cut commits Q11 and Q5 are       *)
+(* preserved (Q11 is read by `eor v4, v11, v9` but never written here;    *)
+(* Q5 is untouched).  Q9, Q10, Q4, Q7, Q8 go in MAYCHANGE — the downstream*)
+(* finalization cut reads their post-MODULO values via the chain          *)
+(* composition's ARM_BIGSTEP propagation.                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS1_MODULO_CORRECT = prove
+ (`!pc (q5_in:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x360) /\
+         read Q5 s = q5_in /\
+         read Q9 s = q9_in /\
+         read Q10 s = q10_in /\
+         read Q11 s = q11_in)
+    (\s. read PC s = word (pc + 0x388) /\
+         read Q5 s = q5_in /\
+         read Q11 s = q11_in)
+    (MAYCHANGE [PC] ,,
+     MAYCHANGE [Q4; Q7; Q8; Q9; Q10])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (217--226) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
