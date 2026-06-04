@@ -10454,6 +10454,113 @@ let AES_GCM_LENC_TAIL_BLOCKS2_PMULL_ACCUM_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s072) — Lenc_blocks_1_remaining REV+EOR cut.                     *)
+(*                                                                           *)
+(* Slice instr indices 206..207, kernel offsets 0x8fc..0x900 (2 instr).     *)
+(*                                                                           *)
+(*   0x8fc  rev64 v4.16b, v5.16b          ; Q4 := rev64(Q5)                 *)
+(*   0x900  eor   v4.16b, v4.16b, v8.16b  ; Q4 := Q4 XOR Q8 (feed prev tag) *)
+(*                                                                           *)
+(* Mirrors the rev64+eor pair at the start of blocks_2/3/4's first batch    *)
+(* but blocks_1 has NO ST1 / LDP — there's no plaintext to load and no     *)
+(* ciphertext to store yet (last block's CT is still in Q5; final store    *)
+(* happens in the common finalization region at kernel 0x954).              *)
+(*                                                                           *)
+(* Split out as its own cut so the downstream PMULL absorption cut can      *)
+(* take a clean q4_in parameter (rather than threading                       *)
+(* `aes_gcm_rev64_int128 q5_pre` through the proof's WORD_BLAST barrier).   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS1_REV_EOR_CORRECT = prove
+ (`!pc (q5_pre:int128) (q8_pre:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x334) /\
+         read Q5 s = q5_pre /\
+         read Q8 s = q8_pre)
+    (\s. read PC s = word (pc + 0x33c) /\
+         read Q4 s = word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre /\
+         read Q5 s = q5_pre /\
+         read Q8 s = q8_pre)
+    (MAYCHANGE [PC] ,, MAYCHANGE [Q4])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (206--207) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9 (s072) — Lenc_blocks_1_remaining PMULL absorption cut.            *)
+(*                                                                           *)
+(* Slice instr indices 208..216, kernel offsets 0x904..0x924 (9 instr).      *)
+(* Continues from BLOCKS1_REV_EOR's exit (pc + 0x33c) and exits at          *)
+(* pc + 0x360 (= kernel 0x928 = `movi v8.8b, #0xc2` — start of MODULO).     *)
+(*                                                                           *)
+(*   0x904  pmull2 v20, v4.2d, v12.2d     ; Q20 := PMULL2 HIGH               *)
+(*   0x908  mov   d8, v4.d[1]             ; Q8 := dup_low(Q4.hi)             *)
+(*   0x90c  rev   w9, w12                 ; W9 := bytereverse(W12)           *)
+(*   0x910  pmull v21, v4.1d, v12.1d      ; Q21 := PMULL LOW                 *)
+(*   0x914  eor   v9, v9, v20             ; Q9 += HIGH                       *)
+(*   0x918  eor   v8, v8, v4 (8b)         ; Q8.lo := Q4.hi XOR Q4.lo         *)
+(*   0x91c  pmull v8, v8, v16             ; Q8 := PMULL(Q4.hi^Q4.lo, Q16.lo)*)
+(*   0x920  eor   v11, v11, v21           ; Q11 += LOW                       *)
+(*   0x924  eor   v10, v10, v8            ; Q10 += MID                       *)
+(*                                                                           *)
+(* Q12 = byteswap128 (h_power 0) = H_1 (block-position 6 H-power for the    *)
+(* final residual block).  Q16.lo = karatsuba_mid h^0 (the middle Karatsuba *)
+(* factor for the same H-power).                                             *)
+(*                                                                           *)
+(* The cut commits POST values for X9 (counter-store-ready), Q9 (HIGH       *)
+(* accumulator) and Q11 (LOW accumulator).  Q10, Q8, Q20, Q21 are deferred  *)
+(* to MAYCHANGE — Q10 (MID accumulator) is consumed by the MODULO fold's    *)
+(* `eor v10, v10, v4` and `eor v10, v10, v7` chain, but the value of Q10    *)
+(* at this cut's exit is part of the larger MODULO computation captured     *)
+(* by the next cut.                                                          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS1_PMULL_ABSORB_CORRECT = prove
+ (`!pc (sx12:int32)
+       (q4_in:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128)
+       (q12_in:int128) (q16_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x33c) /\
+         read X12 s = word_zx sx12 /\
+         read Q4 s = q4_in /\
+         read Q9 s = q9_in /\
+         read Q10 s = q10_in /\
+         read Q11 s = q11_in /\
+         read Q12 s = q12_in /\
+         read Q16 s = q16_in)
+    (\s. read PC s = word (pc + 0x360) /\
+         read X9 s = word_zx (word_bytereverse sx12) /\
+         read X12 s = word_zx sx12 /\
+         read Q4 s = q4_in /\
+         read Q9 s = word_xor q9_in
+                       (word_pmul (word_subword q4_in (64,64):int64)
+                                  (word_subword q12_in (64,64):int64) :int128) /\
+         read Q11 s = word_xor q11_in
+                        (word_pmul (word_subword q4_in (0,64):int64)
+                                   (word_subword q12_in (0,64):int64) :int128) /\
+         read Q12 s = q12_in /\
+         read Q16 s = q16_in)
+    (MAYCHANGE [PC; X9] ,,
+     MAYCHANGE [Q8; Q9; Q10; Q11; Q20; Q21])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (208--216) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
