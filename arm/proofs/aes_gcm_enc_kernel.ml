@@ -9674,6 +9674,76 @@ let AES_GCM_PREPRETAIL_FINAL_FOLD_R9_AESE_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s070) — Lenc_tail opening cut.  Slice instr indices 129..133,   *)
+(* kernel offsets 0x7c8..0x7d8 (5 instr).  This is the first cut into the   *)
+(* tail-cascade region; it covers the unconditional prefix before the      *)
+(* first `cmp x5, #0x30` + `b.gt`.                                          *)
+(*                                                                           *)
+(*   0x7c8  arm_EXT       Q8 Q11 Q11 64    ; Q8 := byteswap128 Q11          *)
+(*                                         ;   (rotate halves; carries the  *)
+(*                                         ;   pre-tail byte-reversed Q11   *)
+(*                                         ;   from prepretail's final      *)
+(*                                         ;   fold)                         *)
+(*   0x7cc  arm_SUB       X5 X4 X0         ; X5 := X4 - X0 (remaining       *)
+(*                                         ;   bytes from current X0 to     *)
+(*                                         ;   end_input_ptr X4)            *)
+(*   0x7d0  arm_LDP_POSTIMM X6 X7 X0 16    ; load plaintext block 0 into    *)
+(*                                         ;   (X6,X7), advance X0 += 16    *)
+(*   0x7d4  arm_EOR       X6 X6 X13        ; X6 ^= last-key-low (X13)       *)
+(*   0x7d8  arm_EOR       X7 X7 X14        ; X7 ^= last-key-high (X14)      *)
+(*                                                                           *)
+(* X0 advances by 16 bytes (one plaintext block).  X5 = remaining-byte      *)
+(* count is set ONCE by the SUB; subsequent `cmp` against 0x30 / 0x20 /     *)
+(* 0x10 dispatches the 4/3/2-blocks-remaining branches.                    *)
+(*                                                                           *)
+(* The `nonoverlapping` precondition for the LDP at X0 is required; the    *)
+(* simulator emits memory reads that need to not clash with the program-   *)
+(* text region.                                                              *)
+(*                                                                           *)
+(* MAYCHANGE: PC (advance 0x14), Q8 (EXT write), X0/X5/X6/X7 (SUB/LDP/EOR  *)
+(* writes), events.  Q11 is preserved (only read by EXT, not written).     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_OPENING_CORRECT = prove
+ (`!pc (q11_in:int128) (sx0:int64) (sx4:int64) (sx13:int64) (sx14:int64)
+       (b0_lo:int64) (b0_hi:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (sx0, 16)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+              read PC s = word (pc + 0x200) /\
+              read Q11 s = q11_in /\
+              read X0 s = sx0 /\
+              read X4 s = sx4 /\
+              read X13 s = sx13 /\
+              read X14 s = sx14 /\
+              read (memory :> bytes64 sx0) s = b0_lo /\
+              read (memory :> bytes64 (word_add sx0 (word 8))) s = b0_hi)
+         (\s. read PC s = word (pc + 0x214) /\
+              read Q8 s = byteswap128 q11_in /\
+              read Q11 s = q11_in /\
+              read X0 s = word_add sx0 (word 16) /\
+              read X4 s = sx4 /\
+              read X5 s = word_sub sx4 sx0 /\
+              read X6 s = word_xor b0_lo sx13 /\
+              read X7 s = word_xor b0_hi sx14 /\
+              read X13 s = sx13 /\
+              read X14 s = sx14)
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q8] ,,
+          MAYCHANGE [X0; X5; X6; X7] ,,
+          MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (129--133) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[byteswap128] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
