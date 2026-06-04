@@ -10608,6 +10608,93 @@ let AES_GCM_LENC_TAIL_BLOCKS1_MODULO_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s072) — Lenc_tail finalization cut.                              *)
+(*                                                                           *)
+(* Slice instr indices 227..234, kernel offsets 0x950..0x96c (8 instr).      *)
+(* The common finalization region — reached from all four blocks_N arms     *)
+(* via fallthrough — performs the final stores and Q11 byteswap.             *)
+(*                                                                           *)
+(*   0x950  str   w9, [x16, #12]          ; store updated counter to ivec  *)
+(*   0x954  st1   {v5.16b}, [x2]          ; store last CT block (no #16!)  *)
+(*   0x958  eor   v11, v11, v9            ; Q11 ^= Q9                       *)
+(*   0x95c  eor   v11, v11, v10           ; Q11 ^= Q10                      *)
+(*   0x960  ext   v11, v11, v11, #8       ; Q11 := swap halves              *)
+(*   0x964  rev64 v11, v11                ; Q11 := rev64(Q11)               *)
+(*   0x968  mov   x0, x15                 ; X0 := X15 (return value)        *)
+(*   0x96c  st1   {v11.16b}, [x3]         ; store final tag at Xi pointer  *)
+(*                                                                           *)
+(* The cut takes the post-MODULO state's Q9, Q10, Q11 as parameters and    *)
+(* commits memory writes:                                                    *)
+(*   - 4 bytes at x16+12: low 32 bits of W9 (= bytereversed counter).       *)
+(*   - 16 bytes at x2  : Q5 (last CT block).                                *)
+(*   - 16 bytes at x3  : aes_gcm_rev64_int128 of swap-halves(Q11^Q9^Q10)   *)
+(*     (the final NIST GHASH tag in NIST byte order).                       *)
+(*                                                                           *)
+(* X0 := X15 (the saved input-end pointer is moved into the C-return       *)
+(* register as the kernel's return value — number of plaintext bytes        *)
+(* processed).                                                              *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_FINALIZATION_CORRECT = prove
+ (`!pc (sx9:int64) (sx15:int64) (sx16:int64) (cptr:int64) (xiptr:int64)
+       (q5_in:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128).
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (cptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (xiptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc)
+                  (word_add sx16 (word 12), 4) /\
+   nonoverlapping (cptr, 16) (xiptr, 16) /\
+   nonoverlapping (cptr, 16) (word_add sx16 (word 12), 4) /\
+   nonoverlapping (xiptr, 16) (word_add sx16 (word 12), 4)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+             read PC s = word (pc + 0x388) /\
+             read X9 s = sx9 /\
+             read X15 s = sx15 /\
+             read X16 s = sx16 /\
+             read X2 s = cptr /\
+             read X3 s = xiptr /\
+             read Q5 s = q5_in /\
+             read Q9 s = q9_in /\
+             read Q10 s = q10_in /\
+             read Q11 s = q11_in)
+        (\s. read PC s = word (pc + 0x3a8) /\
+             read X0 s = sx15 /\
+             read X9 s = sx9 /\
+             read X15 s = sx15 /\
+             read X16 s = sx16 /\
+             read X2 s = cptr /\
+             read X3 s = xiptr /\
+             read Q5 s = q5_in /\
+             read (memory :> bytes32 (word_add sx16 (word 12))) s =
+                  word_subword sx9 (0,32):int32 /\
+             read (memory :> bytes128 cptr) s = q5_in /\
+             read (memory :> bytes128 xiptr) s =
+                  aes_gcm_rev64_int128
+                    (word_join (word_subword
+                                 (word_xor (word_xor q11_in q9_in) q10_in)
+                                 (0,64):int64)
+                               (word_subword
+                                 (word_xor (word_xor q11_in q9_in) q10_in)
+                                 (64,64):int64) :int128))
+        (MAYCHANGE [PC; X0] ,,
+         MAYCHANGE [Q11] ,,
+         MAYCHANGE [memory :> bytes128 cptr;
+                    memory :> bytes128 xiptr] ,,
+         MAYCHANGE [memory :> bytes32 (word_add sx16 (word 12))] ,,
+         MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (227--234) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
