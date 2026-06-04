@@ -10608,6 +10608,73 @@ let AES_GCM_LENC_TAIL_BLOCKS1_MODULO_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b (s079) — BLOCKS1_MODULO variant exposing post-MODULO Q9/Q10.     *)
+(*                                                                           *)
+(* Same instructions as BLOCKS1_MODULO_CORRECT (slice 217..226, kernel       *)
+(* offsets 0x928..0x94c = pc+0x360..pc+0x388) but POST exposes the           *)
+(* algebraic forms of Q9 and Q10 at exit.  Eliminates the Hilbert-style      *)
+(* `read Q9 s` / `read Q10 s` placeholders that BLOCKS1_FINALIZATION_FULL   *)
+(* was forced to use because BLOCKS1_FULL's POST left Q9/Q10 as MAYCHANGE.  *)
+(*                                                                           *)
+(* Define M = swap_halves(q9_in)                                             *)
+(*           XOR pmull(q9_in.lo, 0xc200000000000000)                          *)
+(*           XOR q9_in XOR q11_in XOR q10_in.                                *)
+(* Then:                                                                     *)
+(*   Q9_post  = pmull(M.lo, 0xc200000000000000)                              *)
+(*   Q10_post = swap_halves(M)                                               *)
+(*                                                                           *)
+(* (0xc200000000000000 = word 13979173243358019584 — the GHASH polynomial   *)
+(* reduction constant.  swap_halves of an int128 v is                        *)
+(* `word_subword (word_join v v :int256) (64,128)`, the simulator's emit     *)
+(* form for the `ext v.16b, v.16b, v.16b, #8` instruction.)                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS1_MODULO_Q9_Q10_CORRECT = prove
+ (`!pc (q5_in:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x360) /\
+         read Q5 s = q5_in /\
+         read Q9 s = q9_in /\
+         read Q10 s = q10_in /\
+         read Q11 s = q11_in)
+    (\s. read PC s = word (pc + 0x388) /\
+         read Q5 s = q5_in /\
+         read Q11 s = q11_in /\
+         read Q9 s =
+           word_pmul (word_subword
+             (word_xor (word_subword (word_join (q9_in:int128) q9_in :int256)
+                                     (64,128) :int128)
+                       (word_xor (word_pmul (word_subword q9_in (0,64):int64)
+                                            (word 13979173243358019584:int64)
+                                            :int128)
+                                 (word_xor (word_xor q9_in q11_in) q10_in)))
+             (0,64):int64)
+             (word 13979173243358019584:int64) :int128 /\
+         read Q10 s =
+           (word_subword (word_join
+             (word_xor (word_subword (word_join (q9_in:int128) q9_in :int256)
+                                     (64,128) :int128)
+                       (word_xor (word_pmul (word_subword q9_in (0,64):int64)
+                                            (word 13979173243358019584:int64)
+                                            :int128)
+                                 (word_xor (word_xor q9_in q11_in) q10_in)))
+             (word_xor (word_subword (word_join q9_in q9_in :int256)
+                                     (64,128) :int128)
+                       (word_xor (word_pmul (word_subword q9_in (0,64):int64)
+                                            (word 13979173243358019584:int64)
+                                            :int128)
+                                 (word_xor (word_xor q9_in q11_in) q10_in)))
+             :int256) (64,128) :int128))
+    (MAYCHANGE [PC] ,,
+     MAYCHANGE [Q4; Q7; Q8; Q9; Q10])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (217--226) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s072) — Lenc_tail finalization cut.                              *)
 (*                                                                           *)
 (* Slice instr indices 227..234, kernel offsets 0x950..0x96c (8 instr).      *)
