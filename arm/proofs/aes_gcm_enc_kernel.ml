@@ -10561,6 +10561,71 @@ let AES_GCM_LENC_TAIL_BLOCKS1_PMULL_ABSORB_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b (s079) — BLOCKS1_PMULL_ABSORB variant exposing Q10 closed form.  *)
+(*                                                                           *)
+(* Same instructions as BLOCKS1_PMULL_ABSORB_CORRECT (slice 208..216), but   *)
+(* POST adds Q10 closed form:                                                *)
+(*   Q10_after_absorb = word_xor q10_in (word_pmul                           *)
+(*     (word_subword (word_zx (word_subword                                  *)
+(*        (word_xor q4_in (word_zx (word_subword q4_in (64,64) :int64)       *)
+(*                                  :int128)) (0,64) :int64) :int128)        *)
+(*        (0,64) :int64)                                                     *)
+(*     (word_subword q16_in (0,64) :int64) :int128).                         *)
+(*                                                                           *)
+(* The simulator's emit form for the `mov d8, v4.d[1]; eor v8, v8, v4 (8b);  *)
+(* pmull v8, v8, v16` chain is verbose: the intermediate `mov d8, v4.d[1]`   *)
+(* zero-extends the high 64 of q4 to 128 bits, then `eor v8, v4 (8b)` XORs   *)
+(* with the low 8-byte slice (clearing high 64 bits in the 8b variant), and  *)
+(* finally `pmull v8, v8, v16` is a 64×64→128 polynomial multiply.           *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS1_PMULL_ABSORB_Q10_CORRECT = prove
+ (`!pc (sx12:int32)
+       (q4_in:int128) (q9_in:int128) (q10_in:int128) (q11_in:int128)
+       (q12_in:int128) (q16_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x33c) /\
+         read X12 s = word_zx sx12 /\
+         read Q4 s = q4_in /\
+         read Q9 s = q9_in /\
+         read Q10 s = q10_in /\
+         read Q11 s = q11_in /\
+         read Q12 s = q12_in /\
+         read Q16 s = q16_in)
+    (\s. read PC s = word (pc + 0x360) /\
+         read X9 s = word_zx (word_bytereverse sx12) /\
+         read X12 s = word_zx sx12 /\
+         read Q4 s = q4_in /\
+         read Q9 s = word_xor q9_in
+                       (word_pmul (word_subword q4_in (64,64):int64)
+                                  (word_subword q12_in (64,64):int64) :int128) /\
+         read Q10 s = word_xor q10_in
+                        (word_pmul (word_subword
+                                     (word_zx (word_subword
+                                                (word_xor q4_in
+                                                  (word_zx (word_subword q4_in
+                                                              (64,64):int64) :int128))
+                                                (0,64):int64) :int128)
+                                     (0,64):int64)
+                                   (word_subword q16_in (0,64):int64) :int128) /\
+         read Q11 s = word_xor q11_in
+                        (word_pmul (word_subword q4_in (0,64):int64)
+                                   (word_subword q12_in (0,64):int64) :int128) /\
+         read Q12 s = q12_in /\
+         read Q16 s = q16_in)
+    (MAYCHANGE [PC; X9] ,,
+     MAYCHANGE [Q8; Q9; Q10; Q11; Q20; Q21])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (208--216) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s072) — Lenc_blocks_1_remaining MODULO fold cut.                 *)
 (*                                                                           *)
 (* Slice instr indices 217..226, kernel offsets 0x928..0x94c (10 instr).    *)
