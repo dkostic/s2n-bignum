@@ -10313,6 +10313,71 @@ let AES_GCM_LENC_TAIL_BLOCKS3_PMULL_ACCUM_CORRECT = prove
   TRY (CONV_TAC WORD_RULE));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s072) — Lenc_blocks_2_remaining first batch (ST/LD/REV/EOR).     *)
+(*                                                                           *)
+(* Slice instr indices 187..191, kernel offsets 0x8b0..0x8c0 (5 instr).      *)
+(* Mirrors BLOCKS3_ST_LD_REV_EOR but the instruction *order* differs and    *)
+(* the `movi v8.8b, #0` (clearing Q8) is part of THIS cut (in blocks_3 the *)
+(* movi happens later, in the PMULL_ACCUM cut).                              *)
+(*                                                                           *)
+(*   0x8b0  st1   {v5.16b}, [x2], #16     ; store CT block, X2 += 16        *)
+(*   0x8b4  rev64 v4.16b, v5.16b          ; Q4 := rev64(Q5)                 *)
+(*   0x8b8  ldp   x6, x7, [x0], #16       ; load PT block, X0 += 16         *)
+(*   0x8bc  eor   v4.16b, v4.16b, v8.16b  ; Q4 := Q4 XOR Q8 (feed prev tag) *)
+(*   0x8c0  movi  v8.8b, #0               ; Q8 := 0 (suppress further feed) *)
+(*                                                                           *)
+(* The cut commits Q8 = (word 0:int128) so downstream cuts (blocks_1's      *)
+(* eor v4, v4, v8 at kernel 0x900) can use the constant value.              *)
+(* The b1_lo/b1_hi loads are NOT XORed with sx13/sx14 yet (those happen at *)
+(* slice 192/195 in the PMULL ACCUM cut).                                   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BLOCKS2_ST_LD_REV_EOR_CORRECT = prove
+ (`!pc (cptr:int64) (sx0:int64) (sx13:int64) (sx14:int64)
+       (q5_pre:int128) (q8_pre:int128)
+       (b1_lo:int64) (b1_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (cptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (sx0, 16) /\
+   nonoverlapping (cptr, 16) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+             read PC s = word (pc + 0x2e8) /\
+             read X0 s = sx0 /\
+             read X2 s = cptr /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q5 s = q5_pre /\
+             read Q8 s = q8_pre /\
+             read (memory :> bytes64 sx0) s = b1_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b1_hi)
+        (\s. read PC s = word (pc + 0x2fc) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X2 s = word_add cptr (word 16) /\
+             read X6 s = b1_lo /\
+             read X7 s = b1_hi /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q4 s = word_xor (aes_gcm_rev64_int128 q5_pre) q8_pre /\
+             read Q5 s = q5_pre /\
+             read Q8 s = (word 0:int128) /\
+             read (memory :> bytes128 cptr) s = q5_pre)
+        (MAYCHANGE [PC; X0; X2; X6; X7] ,,
+         MAYCHANGE [Q4; Q8] ,,
+         MAYCHANGE [memory :> bytes128 cptr] ,,
+         MAYCHANGE [events])`,
+  REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (187--191) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_RULE));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
