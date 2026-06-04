@@ -8768,6 +8768,65 @@ let AES_GCM_PREPRETAIL_OPENING_CORRECT = prove
        ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s069) — prepretail Q0 round-0 + Q4 rev64 + Q3 high-half + Q11   *)
+(* byteswap.  Slice instr indices 7..11, kernel offsets 0x5e0..0x5f0.       *)
+(*                                                                           *)
+(*   0x5e0  arm_AESE      Q0 Q18         ; round 0 block 0 (AESE)           *)
+(*   0x5e4  arm_AESMC     Q0 Q0          ; round 0 block 0 (AESMC)           *)
+(*   0x5e8  arm_REV64_VEC Q4 Q4 8        ; GHASH PRE block-0 byte-reverse   *)
+(*   0x5ec  arm_FMOV_ItoF Q3 X9 1        ; CTR block 4k+5 high half setup   *)
+(*   0x5f0  arm_EXT       Q11 Q11 Q11 64 ; PRE 0 (rotate Q11 by 64 bits)    *)
+(*                                                                           *)
+(* The FMOV at 0x5ec writes the high 64 bits of Q3 from X9, so the simulator*)
+(* emits `Q3 := word_insert Q3_pre (64,64) X9_in`.  The EXT at 0x5f0 is a   *)
+(* 64-bit byte-rotation of Q11 (equivalent to swapping its two 64-bit       *)
+(* halves), encoded by `byteswap128`.  After this cut, Q11 holds the        *)
+(* rotated GHASH "PRE" block ready for the first GHASH XOR-with-ciphertext  *)
+(* below.                                                                    *)
+(*                                                                           *)
+(* Closing pattern extends the previous opening cut's TRY-chain with two    *)
+(* additional branches: `byteswap128 + WORD_BLAST` for the EXT, and         *)
+(* `word_insert + WORD_BLAST` for the FMOV high-half.  The simulator emits  *)
+(* `word_insert q3_pre (64,64) sx9` directly, so the rewrite is a noop for *)
+(* the Q3 conjunct; the residual that WORD_BLAST closes is the Q11 EXT     *)
+(* identity.                                                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R0_BLOCK0_Q4Q11_CORRECT = prove
+ (`!pc (q0_pre:int128) (q3_pre:int128) (q4_pre:int128) (q11_pre:int128)
+       (rk0:int128) (sx9:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x18) /\
+          read Q0 s = q0_pre /\
+          read Q3 s = q3_pre /\
+          read Q4 s = q4_pre /\
+          read Q11 s = q11_pre /\
+          read Q18 s = rk0 /\
+          read X9 s = sx9)
+     (\s. read PC s = word (pc + 0x2c) /\
+          read Q0 s = aes_arm_round q0_pre rk0 /\
+          read Q3 s = (word_insert q3_pre (64,64) sx9:int128) /\
+          read Q4 s = aes_gcm_rev64_int128 q4_pre /\
+          read Q11 s = byteswap128 q11_pre /\
+          read Q18 s = rk0 /\
+          read X9 s = sx9)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q3; Q4; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (7--11) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (REWRITE_TAC[byteswap128] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (REWRITE_TAC[word_insert] THEN CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
