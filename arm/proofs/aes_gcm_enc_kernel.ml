@@ -9572,6 +9572,108 @@ let AES_GCM_PREPRETAIL_R7R8_BLOCK2_MODULO_PMULL_Q9EXT_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s070) — prepretail final GF MODULO fold + round 9 AESE-only.     *)
+(* Slice instr indices 118..128, kernel offsets 0x79c..0x7c4 (11 instr).    *)
+(* This is the FINAL prepretail cut — closes the 127-instr prepretail at   *)
+(* `pc + 0x200` (kernel 0x7c8 = `Lenc_tail`).                                *)
+(*                                                                           *)
+(*   0x79c  arm_EOR_VEC   Q10 Q10 Q11 128         ; Q10 ^= Q11_pre           *)
+(*   0x7a0  arm_EOR_VEC   Q10 Q10 Q4 128          ; Q10 ^= Q4_pre (= mid     *)
+(*                                                ;   pmull from prior cut)  *)
+(*   0x7a4  arm_EOR_VEC   Q10 Q10 Q9 128          ; Q10 ^= Q9 (=             *)
+(*                                                ;   byteswap128 q9_pre_pre)*)
+(*   0x7a8  arm_PMULL_VEC Q4 Q10 Q8 64            ; Q4 := pmull(low Q10,     *)
+(*                                                ;   low Q8 = poly const)   *)
+(*   0x7ac  arm_EXT       Q10 Q10 Q10 64          ; Q10 := byteswap128 Q10   *)
+(*   0x7b0  arm_AESE      Q1 Q31                  ; round 9 final block 1   *)
+(*                                                ;   (rk9 = Q31)            *)
+(*   0x7b4  arm_EOR_VEC   Q11 Q11 Q4 128          ; Q11 ^= Q4 (new)          *)
+(*   0x7b8  arm_AESE      Q3 Q31                  ; round 9 final block 3   *)
+(*   0x7bc  arm_AESE      Q0 Q31                  ; round 9 final block 0   *)
+(*   0x7c0  arm_AESE      Q2 Q31                  ; round 9 final block 2   *)
+(*   0x7c4  arm_EOR_VEC   Q11 Q11 Q10 128         ; Q11 ^= Q10 (= byteswap   *)
+(*                                                ;   of folded combined)    *)
+(*                                                                           *)
+(* After this 11-instr window:                                              *)
+(*   - Q0..Q3 carry the round-9 AESE-only outputs (`aes_arm_final_round`     *)
+(*     of their pre-state ^ rk9). Round 9 final XOR with rk10 happens later  *)
+(*     in the tail cascade, mixed with plaintext loads.                      *)
+(*   - Q11 carries the GF(2^128) MODULO-reduced GHASH accumulator: the       *)
+(*     residual XOR of the running tag (q11_in pre-fold), the byteswap of   *)
+(*     the folded combined sum (Q10), and one final pmull through the poly  *)
+(*     constant (Q4). This is a partial reduction; the full reduction       *)
+(*     happens after one more pmull-byteswap pair in `Lenc_tail`.            *)
+(*   - Q4, Q9, Q10 are intermediate; their post-values are the              *)
+(*     simulator-emit forms exposed in the postcondition for chain          *)
+(*     composition.                                                          *)
+(*                                                                           *)
+(* Note: this cut uses the simulator's right-associated XOR form             *)
+(* `word_xor q9_in (word_xor q4_in (word_xor q11_in q10_in))` for the       *)
+(* combined sum.  This matches what the simulator emits exactly, which       *)
+(* lets the close be `byteswap128 unfold + WORD_BLAST` for the EXT/EOR      *)
+(* chain (Q10 form) and a plain ASM_REWRITE for the rest.  Downstream       *)
+(* chain composition can re-bracket via WORD_RULE if a different XOR form   *)
+(* is needed.                                                                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_FINAL_FOLD_R9_AESE_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q2_in:int128) (q3_in:int128)
+       (q4_in:int128) (q8_in:int128) (q9_in:int128) (q10_in:int128)
+       (q11_in:int128) (rk9:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x1d4) /\
+          read Q0 s = q0_in /\
+          read Q1 s = q1_in /\
+          read Q2 s = q2_in /\
+          read Q3 s = q3_in /\
+          read Q4 s = q4_in /\
+          read Q8 s = q8_in /\
+          read Q9 s = q9_in /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in /\
+          read Q31 s = rk9)
+     (\s. read PC s = word (pc + 0x200) /\
+          read Q0 s = aes_arm_final_round q0_in rk9 /\
+          read Q1 s = aes_arm_final_round q1_in rk9 /\
+          read Q2 s = aes_arm_final_round q2_in rk9 /\
+          read Q3 s = aes_arm_final_round q3_in rk9 /\
+          read Q4 s = (word_pmul (word_subword
+                                    (word_xor q9_in (word_xor q4_in
+                                       (word_xor q11_in q10_in))) (0,64):int64)
+                                 (word_subword q8_in (0,64):int64) :int128) /\
+          read Q8 s = q8_in /\
+          read Q9 s = q9_in /\
+          read Q10 s = byteswap128
+                          (word_xor q9_in (word_xor q4_in
+                             (word_xor q11_in q10_in))) /\
+          read Q11 s = word_xor
+                          (byteswap128
+                             (word_xor q9_in (word_xor q4_in
+                                (word_xor q11_in q10_in))))
+                          (word_xor
+                             (word_pmul (word_subword
+                                          (word_xor q9_in (word_xor q4_in
+                                             (word_xor q11_in q10_in)))
+                                          (0,64):int64)
+                                        (word_subword q8_in (0,64):int64)
+                                       :int128)
+                             q11_in) /\
+          read Q31 s = rk9)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (118--128) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (REWRITE_TAC[byteswap128] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
