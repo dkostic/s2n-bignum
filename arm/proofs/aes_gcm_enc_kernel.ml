@@ -9218,6 +9218,72 @@ let AES_GCM_PREPRETAIL_R4R5_BLOCK03_BLOCK0MID_BLOCK2LOW_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s069) — prepretail R4/R5 block 2 + Q10 += block-0 MID + Q11 +=  *)
+(* block-2 LOW + block-2 HIGH PMULL into Q4 + Q8 high-dup staging.          *)
+(* Slice instr indices 64..71, kernel offsets 0x6c4..0x6d8 (one beyond, so *)
+(* through Q2-AESMC at 0x6e0).                                              *)
+(*                                                                           *)
+(* The exact 8 instructions are:                                             *)
+(*   0x6c4  arm_AESE      Q2 Q22                ; round 4 block 2           *)
+(*   0x6c8  arm_AESMC     Q2 Q2                                              *)
+(*   0x6cc  arm_EOR_VEC   Q10 Q10 Q4 128        ; Q10 += block-0 MID         *)
+(*   0x6d0  arm_PMULL2_VEC Q4 Q6 Q13 64         ; block-2 HIGH               *)
+(*   0x6d4  arm_EOR_VEC   Q11 Q11 Q5 128        ; Q11 += block-2 LOW         *)
+(*   0x6d8  arm_DUP_GEN   Q8 Q8 64 1            ; Q8 := dup(low(Q8)) (high  *)
+(*                                              ;   <- low; for upcoming    *)
+(*                                              ;   block-0 MID pmull)       *)
+(*   0x6dc  arm_AESE      Q2 Q23                ; round 5 block 2           *)
+(*   0x6e0  arm_AESMC     Q2 Q2                                              *)
+(*                                                                           *)
+(* Post-state new values:                                                    *)
+(*   Q2 advances through rk4, rk5 (two rounds, since the AESE/AESMC pair    *)
+(*       at 0x6c4..0x6c8 + 0x6dc..0x6e0 are interleaved across other ops).  *)
+(*   Q4 := pmull(high(Q6), high(Q13))    -- block-2 HIGH (overwrites Q4)   *)
+(*   Q10 := Q10_pre XOR Q4_pre           -- accumulates block-0 MID         *)
+(*   Q11 := Q11_pre XOR Q5_pre           -- accumulates block-2 LOW         *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R4R5_BLOCK2_GHASH_BLOCK2HIGH_CORRECT = prove
+ (`!pc (q2_in:int128) (q4_in:int128) (q5_in:int128) (q6:int128)
+       (q8_in:int128) (q10_in:int128) (q11_in:int128) (q13:int128)
+       (rk4:int128) (rk5:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0xfc) /\
+          read Q2 s = q2_in /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5_in /\
+          read Q6 s = q6 /\
+          read Q8 s = q8_in /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in /\
+          read Q13 s = q13 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (\s. read PC s = word (pc + 0x11c) /\
+          read Q2 s = aes_arm_round (aes_arm_round q2_in rk4) rk5 /\
+          read Q4 s = (word_pmul (word_subword q6 (64,64):int64)
+                                 (word_subword q13 (64,64):int64) :int128) /\
+          read Q5 s = q5_in /\
+          read Q6 s = q6 /\
+          read Q10 s = word_xor q10_in q4_in /\
+          read Q11 s = word_xor q11_in q5_in /\
+          read Q13 s = q13 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q2; Q4; Q8; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (64--71) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
