@@ -9802,6 +9802,52 @@ let AES_GCM_LENC_TAIL_CMP30_FMOV_Q4Q5_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — Lenc_tail b.gt 0x828 (branch-taken) cut.                 *)
+(*                                                                           *)
+(* Slice instr 138, kernel offset 0x7ec (1 instr).                           *)
+(*                                                                           *)
+(*   0x7ec  arm_BGT  0x828          ; if Condition_GT then PC := pc + 0x260  *)
+(*                                  ; (= kernel 0x828 = Lenc_blocks_4_remaining) *)
+(*                                  ; else fall through to pc + 0x228         *)
+(*                                                                           *)
+(* Condition_GT semantics is `~ZF /\ (NF <=> VF)` — branch-taken iff the    *)
+(* preceding `cmp x5, #0x30` set the flags such that x5 > 48 (signed).       *)
+(*                                                                           *)
+(* This cut takes a `condition_semantics Condition_GT s` precondition and    *)
+(* derives the branch-taken PC `pc + 0x260` (= kernel 0x828, the entry of    *)
+(* the 4-blocks-remaining arm).  It mirrors the back-edge cut pattern from   *)
+(* `AES_GCM_MAIN_LOOP_BACKEDGE_KERNEL_CORRECT` (s045, line ~6392): unfold    *)
+(* `condition_semantics` into the raw NF/VF/ZF facts via `RULE_ASSUM_TAC`,   *)
+(* step the b.gt instruction (the simulator emits the if-then-else PC, which *)
+(* `ASM_REWRITE_TAC` collapses against the pre-state flag facts), then close.*)
+(*                                                                           *)
+(* Downstream cuts in the 4-blocks-remaining arm (kernel 0x828..0x864) will  *)
+(* take this cut's POST as their PRE; chain composition will couple the      *)
+(* CMP30_FMOV cut (s070) → this cut → the first 4-blocks-remaining body cut  *)
+(* via ARM_BIGSTEP_TAC.  At that point the chain will need a flag-bridge     *)
+(* precondition shape (`&48 < ival sx5` or similar) and use                  *)
+(* `IVAL_WORD_SUB_NFVF_TO_LT` + `condition_semantics` to bridge the          *)
+(* simulator-emit form to the abstract Condition_GT.                         *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_BGT_BLOCKS4_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x224) /\
+          read X5 s = sx5 /\
+          condition_semantics Condition_GT s)
+     (\s. read PC s = word (pc + 0x260) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [138] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
