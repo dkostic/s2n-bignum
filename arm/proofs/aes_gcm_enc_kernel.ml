@@ -10071,6 +10071,109 @@ let AES_GCM_LENC_TAIL_B_BLOCKS1_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9 (s071) — three fall-through scalar/vector setup cuts.             *)
+(*                                                                           *)
+(* Between the blocks_4 b.gt and the eventual blocks_1 unconditional b,     *)
+(* the cascade fall-through path executes scalar/vector setup before each   *)
+(* branch test:                                                              *)
+(*                                                                           *)
+(*   FALLTHROUGH_BLOCKS3_SETUP (slice 139..145, kernel 0x7f0..0x808):        *)
+(*     cmp x5, #32 ; mov v3,v2 ; movi v11.0 ; movi v9.0 ; sub w12,w12,#1   *)
+(*     ; mov v2,v1 ; movi v10.0                                              *)
+(*     Sets flags for blocks_3 b.gt; clears Q9/Q10/Q11 (GHASH accumulators);*)
+(*     stages Q3 := Q2_pre, Q2 := Q1_pre; decrements W12 counter.           *)
+(*                                                                           *)
+(*   FALLTHROUGH_BLOCKS2_SETUP (slice 147..149, kernel 0x810..0x818):        *)
+(*     mov v3,v1 ; sub w12,w12,#1 ; cmp x5, #16                              *)
+(*     Stages Q3 := Q1_pre; decrements W12; sets flags for blocks_2 b.gt.   *)
+(*                                                                           *)
+(*   FALLTHROUGH_BLOCKS1_SETUP (slice 151, kernel 0x820):                    *)
+(*     sub w12,w12,#1                                                        *)
+(*     Decrements W12 once more before unconditional b to blocks_1.         *)
+(*                                                                           *)
+(* Each cut threads the W12 counter through `word_zx (word_sub _ (word 1))` *)
+(* form, closing via IMP_REWRITE_TAC[WORD_ZX_ZX; ...] to collapse the       *)
+(* simulator-emit `word_zx (word_sub (word_zx (word_zx sx12)) (word 1))`    *)
+(* down to the canonical form.                                               *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS3_SETUP_CORRECT = prove
+ (`!pc (sx5:int64) (sx12:int32) (q1_in:int128) (q2_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x228) /\
+         read X5 s = sx5 /\
+         read X12 s = word_zx sx12 /\
+         read Q1 s = q1_in /\
+         read Q2 s = q2_in)
+    (\s. read PC s = word (pc + 0x244) /\
+         read X5 s = sx5 /\
+         read X12 s = word_zx (word_sub sx12 (word 1):int32) /\
+         read Q1 s = q1_in /\
+         read Q2 s = q1_in /\
+         read Q3 s = q2_in /\
+         (read NF s <=> ival (word_sub sx5 (word 32)) < &0) /\
+         (read ZF s <=> val (word_sub sx5 (word 32)) = 0) /\
+         (read CF s <=> 32 <= val sx5) /\
+         (read VF s <=>
+            ~(ival sx5 - &32 = ival (word_sub sx5 (word 32)))))
+    (MAYCHANGE [PC; X12] ,,
+     MAYCHANGE [Q2; Q3; Q9; Q10; Q11] ,,
+     MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (139--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
+
+let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS2_SETUP_CORRECT = prove
+ (`!pc (sx5:int64) (sx12:int32) (q1_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x248) /\
+         read X5 s = sx5 /\
+         read X12 s = word_zx sx12 /\
+         read Q1 s = q1_in)
+    (\s. read PC s = word (pc + 0x254) /\
+         read X5 s = sx5 /\
+         read X12 s = word_zx (word_sub sx12 (word 1):int32) /\
+         read Q1 s = q1_in /\
+         read Q3 s = q1_in /\
+         (read NF s <=> ival (word_sub sx5 (word 16)) < &0) /\
+         (read ZF s <=> val (word_sub sx5 (word 16)) = 0) /\
+         (read CF s <=> 16 <= val sx5) /\
+         (read VF s <=>
+            ~(ival sx5 - &16 = ival (word_sub sx5 (word 16)))))
+    (MAYCHANGE [PC; X12] ,,
+     MAYCHANGE [Q3] ,,
+     MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (147--149) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
+
+let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS1_SETUP_CORRECT = prove
+ (`!pc (sx12:int32).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x258) /\
+         read X12 s = word_zx sx12)
+    (\s. read PC s = word (pc + 0x25c) /\
+         read X12 s = word_zx (word_sub sx12 (word 1):int32))
+    (MAYCHANGE [PC; X12])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [151] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s057) — post-prologue baseline cut.                              *)
 (*                                                                           *)
 (* The 11 prologue instructions (kernel offsets 0..0x28, slice instr indices *)
