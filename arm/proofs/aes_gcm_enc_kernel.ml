@@ -18537,3 +18537,91 @@ let AES_GCM_LENC_TAIL_BLOCKS1_FINALIZATION_FULL_CLOSED_KERNEL_CORRECT = prove
     ASM_REWRITE_TAC[] THEN
     MP_TAC(SPECL[`x:armstate`; `pc:num`] SLICE_TO_KERNEL_TAIL_LOAD) THEN
     ASM_REWRITE_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9b (s083) — slice-to-kernel promotion of DISPATCH_N1_CORRECT.        *)
+(*                                                                           *)
+(* Promotes the slice-level DISPATCH_N1 (slice 129..152, slice offsets       *)
+(* 0x200..0x334) to the full kernel mc context (kernel offsets 0x7c8..0x8fc).*)
+(* The kernel's tail slice begins at kernel offset 0x5c8, so the slice       *)
+(* offsets shift by +0x5c8: 0x200 + 0x5c8 = 0x7c8 (entry of .Lenc_tail's     *)
+(* dispatch cascade, after the OPENING block); 0x334 + 0x5c8 = 0x8fc         *)
+(* (entry of .Lenc_blocks_1_remaining).                                     *)
+(*                                                                           *)
+(* Standard SLICE_TO_KERNEL_TAIL_LOAD pattern: NONOVERLAPPING_TAC discharges *)
+(* the slice's nonoverlapping antecedent against the kernel mc; ENSURES_     *)
+(* PRECONDITION_THM lifts the precondition (pc + 0x5c8) → pc; the           *)
+(* aligned_bytes_loaded predicate is provided by SLICE_TO_KERNEL_TAIL_LOAD.  *)
+(*                                                                           *)
+(* This kernel-level cut composes with                                       *)
+(* AES_GCM_LENC_TAIL_BLOCKS1_FINALIZATION_FULL_CLOSED_KERNEL_CORRECT         *)
+(* (line ~18234) at PC=pc+0x8fc to give the full N=1 tail wrapper covering  *)
+(* pc+0x7c8..pc+0x970.                                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_DISPATCH_N1_KERNEL_CORRECT = prove
+ (`!pc (sx0:int64) (sx4:int64) (sx12:int32) (sx13:int64) (sx14:int64)
+       (q0_in:int128) (q1_in:int128) (q2_in:int128)
+       (q11_in:int128)
+       (b0_lo:int64) (b0_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+             read PC s = word (pc + 0x7c8) /\
+             read X0 s = sx0 /\
+             read X4 s = sx4 /\
+             read X12 s = word_zx sx12 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q0 s = q0_in /\
+             read Q1 s = q1_in /\
+             read Q2 s = q2_in /\
+             read Q11 s = q11_in /\
+             read (memory :> bytes64 sx0) s = b0_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b0_hi /\
+             ival (word_sub sx4 sx0) <= &16)
+        (\s. read PC s = word (pc + 0x8fc) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X4 s = sx4 /\
+             read X5 s = word_sub sx4 sx0 /\
+             read X12 s = word_zx (word_sub sx12 (word 3):int32) /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q1 s = q1_in /\
+             read Q2 s = q1_in /\
+             read Q3 s = q1_in /\
+             read Q5 s = word_xor q0_in
+                          (word_insert
+                            (word_zx (word_xor b0_lo sx13):int128)
+                            (64,64)
+                            (word_xor b0_hi sx14)) /\
+             read Q8 s = byteswap128 q11_in /\
+             read Q9 s = (word 0:int128) /\
+             read Q10 s = (word 0:int128) /\
+             read Q11 s = (word 0:int128))
+        (MAYCHANGE [PC; X0; X5; X6; X7; X12] ,,
+         MAYCHANGE [Q2; Q3; Q4; Q5; Q8; Q9; Q10; Q11] ,,
+         MAYCHANGE SOME_FLAGS ,,
+         MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC (SPECL[`pc + 0x5c8:num`; `sx0:int64`; `sx4:int64`; `sx12:int32`;
+                `sx13:int64`; `sx14:int64`;
+                `q0_in:int128`; `q1_in:int128`; `q2_in:int128`;
+                `q11_in:int128`;
+                `b0_lo:int64`; `b0_hi:int64`]
+               AES_GCM_LENC_TAIL_DISPATCH_N1_CORRECT) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+    REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC;
+                fst AES_GCM_ENC_KERNEL_EXEC] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[fst AES_GCM_ENC_KERNEL_EXEC;
+                                NONOVERLAPPING_CLAUSES]) THEN
+    NONOVERLAPPING_TAC;
+    REWRITE_TAC[ARITH_RULE `(pc + 0x5c8) + 0x200 = pc + 0x7c8`;
+                ARITH_RULE `(pc + 0x5c8) + 0x334 = pc + 0x8fc`] THEN
+    MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+    GEN_TAC THEN STRIP_TAC THEN
+    POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(SPECL[`x:armstate`; `pc:num`] SLICE_TO_KERNEL_TAIL_LOAD) THEN
+    ASM_REWRITE_TAC[]]);;
