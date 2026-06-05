@@ -23462,22 +23462,25 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_CORRECT = prove
     REPEAT CONJ_TAC THEN
     NONOVERLAPPING_TAC;
     ALL_TAC] THEN
-  ARM_BIGSTEP_TAC AES_GCM_ENC_KERNEL_EXEC "s_end" THEN
-  (* BIGSTEP leaves residuals: X12 self-ref hyp + ival ≤ &16 byte_len bridge. *)
-  ASM_REWRITE_TAC[] THEN
-  CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
-  SUBGOAL_THEN
-    `word_sub (word_add (ptr0:int64) (word_ushr bit_len 3)) ptr0 =
-     word_ushr bit_len 3`
-    SUBST1_TAC THENL
-   [CONV_TAC WORD_RULE; ALL_TAC] THEN
-  SUBGOAL_THEN
-    `ival (word_ushr (bit_len:int64) 3) = &(val (word_ushr bit_len 3))`
-    SUBST1_TAC THENL
-   [MATCH_MP_TAC IVAL_EQ_VAL THEN
-    REWRITE_TAC[DIMINDEX_64] THEN
-    SIMP_TAC[ARITH_RULE `64 - 1 = 63`] THEN
-    MATCH_MP_TAC LET_TRANS THEN EXISTS_TAC `16` THEN
-    ASM_REWRITE_TAC[] THEN ARITH_TAC;
-    ALL_TAC] THEN
-  REWRITE_TAC[INT_OF_NUM_LE] THEN ASM_REWRITE_TAC[]);;
+  ARM_BIGSTEP_TAC AES_GCM_ENC_KERNEL_EXEC "s_end" THENL
+   [(* BIGSTEP residuals: X12 self-ref hyp + ival ≤ &16 byte_len bridge. *)
+    ASM_REWRITE_TAC[] THEN
+    CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN
+      `word_sub (word_add (ptr0:int64) (word_ushr bit_len 3)) ptr0 =
+       word_ushr bit_len 3`
+      SUBST1_TAC THENL
+     [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    SUBGOAL_THEN
+      `ival (word_ushr (bit_len:int64) 3) = &(val (word_ushr bit_len 3))`
+      SUBST1_TAC THENL
+     [MATCH_MP_TAC IVAL_EQ_VAL THEN
+      REWRITE_TAC[DIMINDEX_64] THEN
+      SIMP_TAC[ARITH_RULE `64 - 1 = 63`] THEN
+      MATCH_MP_TAC LET_TRANS THEN EXISTS_TAC `16` THEN
+      ASM_REWRITE_TAC[] THEN ARITH_TAC;
+      ALL_TAC] THEN
+    REWRITE_TAC[INT_OF_NUM_LE] THEN ASM_REWRITE_TAC[];
+    (* Close the eventually goal: PC + MAYCHANGE subsumption. *)
+    ENSURES_FINAL_STATE_TAC THEN
+    ASM_REWRITE_TAC[]]);;
