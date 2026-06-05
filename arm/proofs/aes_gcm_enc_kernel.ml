@@ -10071,6 +10071,182 @@ let AES_GCM_LENC_TAIL_B_BLOCKS1_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b (s082) — BGT-not-taken bridges (LE form) + per-cmp not-taken     *)
+(* cuts.                                                                     *)
+(*                                                                           *)
+(* The tail dispatch cascade has three b.gt branches at slice 138, 146, 150 *)
+(* (kernel 0x7ec, 0x80c, 0x81c) gated on `cmp x5, #48 / #32 / #16`.          *)
+(* Each existing `_BGT_BLOCKS_{4,3,2}_CORRECT` cut takes                     *)
+(* `condition_semantics Condition_GT s` as PRE.  For the path where sx5 ≤ K *)
+(* (and the b.gt at cmp #K therefore falls through), we need the *negated*  *)
+(* cuts + the bridge that derives `~condition_semantics Condition_GT` from  *)
+(* the precondition `ival sx5 <= &K` plus the simulator's flag-emit form.   *)
+(*                                                                           *)
+(* The bridges are structurally identical for K = 48 / 32 / 16, and use the *)
+(* *boundary-inclusive* form `ival sx5 <= &K` (instead of the strict        *)
+(* `<= &(K-1)`).  The boundary case `ival sx5 = &K` is handled by the        *)
+(* `val(word_sub sx5 (word K)) = 0 → ZF holds` branch; the strict-LT case   *)
+(* is handled by `IVAL_WORD_SUB_NFVF_TO_LT` plus `ival sx5 < &K`.            *)
+(*                                                                           *)
+(* The boundary inclusion is needed for DISPATCH_N1 (sx5 = 16 exactly, the  *)
+(* one-block boundary) and DISPATCH_N{2,3} mirrors (sx5 = 32/48 boundaries).*)
+(*                                                                           *)
+(* (s081 originally authored these with `<= &(K-1)` and a buggy             *)
+(* SUBGOAL_THEN-ival reduction; the s082 versions strengthen the PRE and    *)
+(* add `CONV_TAC WORD_REDUCE_CONV` to evaluate `val(word K)`.)              *)
+(* ------------------------------------------------------------------------- *)
+
+let CMP_NOT_GT_BRIDGE_48 = prove
+ (`!s sx5.
+    (read NF s <=> ival (word_sub sx5 (word 48):int64) < &0) /\
+    (read ZF s <=> val (word_sub sx5 (word 48):int64) = 0) /\
+    (read VF s <=>
+       ~(ival (sx5:int64) - &48 = ival (word_sub sx5 (word 48):int64))) /\
+    ival sx5 <= &48
+    ==> ~condition_semantics Condition_GT s`,
+  REWRITE_TAC[condition_semantics] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[DE_MORGAN_THM] THEN
+  ASM_CASES_TAC `val(word_sub (sx5:int64) (word 48):int64) = 0` THENL
+   [ASM_REWRITE_TAC[];
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(SPECL[`sx5:int64`; `word 48:int64`] IVAL_WORD_SUB_NFVF_TO_LT) THEN
+    SUBGOAL_THEN `ival(word 48:int64) = &48` SUBST1_TAC THENL
+     [CONV_TAC WORD_REDUCE_CONV THEN REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV;
+      ALL_TAC] THEN
+    DISCH_TAC THEN ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN `~(ival(sx5:int64) = &48)` ASSUME_TAC THENL
+     [DISCH_TAC THEN
+      UNDISCH_TAC `~(val(word_sub (sx5:int64) (word 48):int64) = 0)` THEN
+      REWRITE_TAC[VAL_WORD_SUB_EQ_0] THEN CONV_TAC WORD_REDUCE_CONV THEN
+      MP_TAC(ISPEC `sx5:int64` VAL_BOUND_64) THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      UNDISCH_TAC `ival(sx5:int64) = &48` THEN
+      REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      REWRITE_TAC[GSYM INT_OF_NUM_EQ; GSYM INT_OF_NUM_LT] THEN
+      INT_ARITH_TAC;
+      ASM_INT_ARITH_TAC]]);;
+
+let CMP_NOT_GT_BRIDGE_32 = prove
+ (`!s sx5.
+    (read NF s <=> ival (word_sub sx5 (word 32):int64) < &0) /\
+    (read ZF s <=> val (word_sub sx5 (word 32):int64) = 0) /\
+    (read VF s <=>
+       ~(ival (sx5:int64) - &32 = ival (word_sub sx5 (word 32):int64))) /\
+    ival sx5 <= &32
+    ==> ~condition_semantics Condition_GT s`,
+  REWRITE_TAC[condition_semantics] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[DE_MORGAN_THM] THEN
+  ASM_CASES_TAC `val(word_sub (sx5:int64) (word 32):int64) = 0` THENL
+   [ASM_REWRITE_TAC[];
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(SPECL[`sx5:int64`; `word 32:int64`] IVAL_WORD_SUB_NFVF_TO_LT) THEN
+    SUBGOAL_THEN `ival(word 32:int64) = &32` SUBST1_TAC THENL
+     [CONV_TAC WORD_REDUCE_CONV THEN REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV;
+      ALL_TAC] THEN
+    DISCH_TAC THEN ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN `~(ival(sx5:int64) = &32)` ASSUME_TAC THENL
+     [DISCH_TAC THEN
+      UNDISCH_TAC `~(val(word_sub (sx5:int64) (word 32):int64) = 0)` THEN
+      REWRITE_TAC[VAL_WORD_SUB_EQ_0] THEN CONV_TAC WORD_REDUCE_CONV THEN
+      MP_TAC(ISPEC `sx5:int64` VAL_BOUND_64) THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      UNDISCH_TAC `ival(sx5:int64) = &32` THEN
+      REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      REWRITE_TAC[GSYM INT_OF_NUM_EQ; GSYM INT_OF_NUM_LT] THEN
+      INT_ARITH_TAC;
+      ASM_INT_ARITH_TAC]]);;
+
+let CMP_NOT_GT_BRIDGE_16 = prove
+ (`!s sx5.
+    (read NF s <=> ival (word_sub sx5 (word 16):int64) < &0) /\
+    (read ZF s <=> val (word_sub sx5 (word 16):int64) = 0) /\
+    (read VF s <=>
+       ~(ival (sx5:int64) - &16 = ival (word_sub sx5 (word 16):int64))) /\
+    ival sx5 <= &16
+    ==> ~condition_semantics Condition_GT s`,
+  REWRITE_TAC[condition_semantics] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[DE_MORGAN_THM] THEN
+  ASM_CASES_TAC `val(word_sub (sx5:int64) (word 16):int64) = 0` THENL
+   [ASM_REWRITE_TAC[];
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(SPECL[`sx5:int64`; `word 16:int64`] IVAL_WORD_SUB_NFVF_TO_LT) THEN
+    SUBGOAL_THEN `ival(word 16:int64) = &16` SUBST1_TAC THENL
+     [CONV_TAC WORD_REDUCE_CONV THEN REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV;
+      ALL_TAC] THEN
+    DISCH_TAC THEN ASM_REWRITE_TAC[] THEN
+    SUBGOAL_THEN `~(ival(sx5:int64) = &16)` ASSUME_TAC THENL
+     [DISCH_TAC THEN
+      UNDISCH_TAC `~(val(word_sub (sx5:int64) (word 16):int64) = 0)` THEN
+      REWRITE_TAC[VAL_WORD_SUB_EQ_0] THEN CONV_TAC WORD_REDUCE_CONV THEN
+      MP_TAC(ISPEC `sx5:int64` VAL_BOUND_64) THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      UNDISCH_TAC `ival(sx5:int64) = &16` THEN
+      REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      REWRITE_TAC[GSYM INT_OF_NUM_EQ; GSYM INT_OF_NUM_LT] THEN
+      INT_ARITH_TAC;
+      ASM_INT_ARITH_TAC]]);;
+
+let AES_GCM_LENC_TAIL_BGT_BLOCKS4_NOT_TAKEN_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x224) /\
+          read X5 s = sx5 /\
+          ~condition_semantics Condition_GT s)
+     (\s. read PC s = word (pc + 0x228) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [138] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+let AES_GCM_LENC_TAIL_BGT_BLOCKS3_NOT_TAKEN_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x244) /\
+          read X5 s = sx5 /\
+          ~condition_semantics Condition_GT s)
+     (\s. read PC s = word (pc + 0x248) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [146] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+let AES_GCM_LENC_TAIL_BGT_BLOCKS2_NOT_TAKEN_CORRECT = prove
+ (`!pc (sx5:int64).
+   ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x254) /\
+          read X5 s = sx5 /\
+          ~condition_semantics Condition_GT s)
+     (\s. read PC s = word (pc + 0x258) /\
+          read X5 s = sx5)
+     (MAYCHANGE [PC] ,, MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[condition_semantics]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC [150] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s071) — three fall-through scalar/vector setup cuts.             *)
 (*                                                                           *)
 (* Between the blocks_4 b.gt and the eventual blocks_1 unconditional b,     *)
