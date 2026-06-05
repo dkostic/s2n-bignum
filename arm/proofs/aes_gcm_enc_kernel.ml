@@ -22724,3 +22724,59 @@ let AES_GCM_LENC_TAIL_N4_FULL_CLOSED_KERNEL_CORRECT = prove
      word_add (word_add cptr (word 16)) (word 32):int64`
     SUBST1_TAC THENL
    [CONV_TAC WORD_RULE; ASM_REWRITE_TAC[]]));;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9b (s089) — bridge lemmas for the N=0 case of the kernel wrapper.   *)
+(*                                                                           *)
+(* When `byte_len <= 64` (i.e. zero full 4-block iterations), the prelude's  *)
+(* `cmp x0, x5; b.ge .Lenc_tail` at offsets 0x224..0x244 takes the branch    *)
+(* and jumps to PC = pc + 0x7c8 (`Lenc_tail`).                                *)
+(*                                                                           *)
+(* The flag derivation needed: at PC=0x244 the simulator emits NF = ival     *)
+(* (word_sub ptr0 x5_init) < &0 and VF/NF logic where x5_init = ptr0 +       *)
+(* ((byte_len-1) AND ~63).  For byte_len in [1,64], (byte_len-1) AND ~63 = 0,*)
+(* so x5_init = ptr0, hence NF=FALSE and VF=FALSE, hence Condition_GE.      *)
+(*                                                                           *)
+(* Two atomic algebraic lemmas:                                              *)
+(*  - AES_GCM_BYTE_LEN_LE_64_AND_MASK: the and-mask itself is word 0.        *)
+(*  - AES_GCM_BYTE_LEN_LE_64_X5_EQ_PTR0: x5_init = ptr0 directly.            *)
+(*                                                                           *)
+(* These are independent of any kernel/slice mc context and reusable in any  *)
+(* downstream Phase 9b N=0 prelude wrapper proof (and in the public byte-    *)
+(* level theorem for handling the byte_len ≤ 64 input case).                 *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_BYTE_LEN_LE_64_AND_MASK = prove
+ (`!byte_len:int64.
+     1 <= val byte_len /\ val byte_len <= 64
+     ==> word_and (word_sub byte_len (word 1))
+                  (word 18446744073709551552:int64) = (word 0:int64)`,
+  GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[GSYM VAL_EQ_0; VAL_WORD_AND_MASK_WORD] THEN
+  SUBGOAL_THEN
+   `(word 18446744073709551552:int64) = word_not (word (2 EXP 6 - 1))`
+   SUBST1_TAC THENL
+   [CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_REDUCE_CONV;
+    ALL_TAC] THEN
+  REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+  SUBGOAL_THEN `val (word_sub (byte_len:int64) (word 1)) = val byte_len - 1`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  SUBGOAL_THEN `(val (byte_len:int64) - 1) DIV 64 = 0`
+    (fun th -> REWRITE_TAC[th]) THENL
+   [MATCH_MP_TAC DIV_LT THEN ASM_ARITH_TAC;
+    ARITH_TAC]);;
+
+let AES_GCM_BYTE_LEN_LE_64_X5_EQ_PTR0 = prove
+ (`!ptr0 byte_len:int64.
+     1 <= val byte_len /\ val byte_len <= 64
+     ==> word_add ptr0
+                  (word_and (word_sub byte_len (word 1))
+                            (word 18446744073709551552:int64)) = ptr0`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPEC `byte_len:int64` AES_GCM_BYTE_LEN_LE_64_AND_MASK) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+  CONV_TAC WORD_RULE);;
