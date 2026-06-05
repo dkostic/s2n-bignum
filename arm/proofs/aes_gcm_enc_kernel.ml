@@ -19442,3 +19442,92 @@ let AES_GCM_LENC_TAIL_N4_FULL_KERNEL_CORRECT = prove
      word_add (word_add cptr (word 16)) (word 32):int64`
     SUBST1_TAC THENL
    [CONV_TAC WORD_RULE; ASM_REWRITE_TAC[]]));;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 9b (s084) — slice-to-kernel promotion of DISPATCH_N3_CORRECT.        *)
+(*                                                                           *)
+(* Promotes the slice-level DISPATCH_N3 (slice 129..146, slice offsets       *)
+(* 0x200..0x2a0) to the full kernel mc context (kernel offsets 0x7c8..0x868).*)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_DISPATCH_N3_KERNEL_CORRECT = prove
+ (`!pc (sx0:int64) (sx4:int64) (sx12:int32) (sx13:int64) (sx14:int64)
+       (q0_in:int128) (q1_in:int128) (q2_in:int128)
+       (q11_in:int128)
+       (q12_in:int128) (q13_in:int128) (q14_in:int128)
+       (q16_in:int128) (q17_in:int128)
+       (b0_lo:int64) (b0_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+             read PC s = word (pc + 0x7c8) /\
+             read X0 s = sx0 /\
+             read X4 s = sx4 /\
+             read X12 s = word_zx sx12 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q0 s = q0_in /\
+             read Q1 s = q1_in /\
+             read Q2 s = q2_in /\
+             read Q11 s = q11_in /\
+             read Q12 s = q12_in /\
+             read Q13 s = q13_in /\
+             read Q14 s = q14_in /\
+             read Q16 s = q16_in /\
+             read Q17 s = q17_in /\
+             read (memory :> bytes64 sx0) s = b0_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b0_hi /\
+             &32 < ival (word_sub sx4 sx0) /\
+             ival (word_sub sx4 sx0) <= &48)
+        (\s. read PC s = word (pc + 0x868) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X4 s = sx4 /\
+             read X5 s = word_sub sx4 sx0 /\
+             read X12 s = word_zx (word_sub sx12 (word 1):int32) /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q1 s = q1_in /\
+             read Q2 s = q1_in /\
+             read Q3 s = q2_in /\
+             read Q5 s = word_xor q0_in
+                          (word_insert
+                            (word_zx (word_xor b0_lo sx13):int128)
+                            (64,64)
+                            (word_xor b0_hi sx14)) /\
+             read Q8 s = byteswap128 q11_in /\
+             read Q9 s = (word 0:int128) /\
+             read Q10 s = (word 0:int128) /\
+             read Q11 s = (word 0:int128) /\
+             read Q12 s = q12_in /\
+             read Q13 s = q13_in /\
+             read Q14 s = q14_in /\
+             read Q16 s = q16_in /\
+             read Q17 s = q17_in)
+        (MAYCHANGE [PC; X0; X5; X6; X7; X12] ,,
+         MAYCHANGE [Q2; Q3; Q4; Q5; Q8; Q9; Q10; Q11] ,,
+         MAYCHANGE SOME_FLAGS ,,
+         MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC (SPECL[`pc + 0x5c8:num`; `sx0:int64`; `sx4:int64`; `sx12:int32`;
+                `sx13:int64`; `sx14:int64`;
+                `q0_in:int128`; `q1_in:int128`; `q2_in:int128`;
+                `q11_in:int128`;
+                `q12_in:int128`; `q13_in:int128`; `q14_in:int128`;
+                `q16_in:int128`; `q17_in:int128`;
+                `b0_lo:int64`; `b0_hi:int64`]
+               AES_GCM_LENC_TAIL_DISPATCH_N3_CORRECT) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[NONOVERLAPPING_CLAUSES] THEN
+    REWRITE_TAC[fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC;
+                fst AES_GCM_ENC_KERNEL_EXEC] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[fst AES_GCM_ENC_KERNEL_EXEC;
+                                NONOVERLAPPING_CLAUSES]) THEN
+    NONOVERLAPPING_TAC;
+    REWRITE_TAC[ARITH_RULE `(pc + 0x5c8) + 0x200 = pc + 0x7c8`;
+                ARITH_RULE `(pc + 0x5c8) + 0x2a0 = pc + 0x868`] THEN
+    MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+    GEN_TAC THEN STRIP_TAC THEN
+    POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(SPECL[`x:armstate`; `pc:num`] SLICE_TO_KERNEL_TAIL_LOAD) THEN
+    ASM_REWRITE_TAC[]]);;
