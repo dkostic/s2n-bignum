@@ -10304,6 +10304,52 @@ let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS3_SETUP_CORRECT = prove
   ASM_REWRITE_TAC[] THEN
   IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 9b (s083) — FALLTHROUGH_BLOCKS3_SETUP variant exposing               *)
+(* Q9 = Q10 = Q11 = word 0 facts in POST.                                     *)
+(*                                                                           *)
+(* Same instructions as FALLTHROUGH_BLOCKS3_SETUP_CORRECT (slice 139..145),  *)
+(* but POST adds the closed-form Q9/Q10/Q11 = 0 facts produced by the three  *)
+(* `movi v9.8b, #0; movi v10.8b, #0; movi v11.8b, #0` instructions in the    *)
+(* setup.  The CLR variant lets DISPATCH_N1 / DISPATCH_N2 / DISPATCH_N3      *)
+(* expose these zeros explicitly to downstream BLOCKS_{1,2,3} cuts that take *)
+(* Q9/Q10/Q11 as parameters.                                                  *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS3_SETUP_CLR_CORRECT = prove
+ (`!pc (sx5:int64) (sx12:int32) (q1_in:int128) (q2_in:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x228) /\
+         read X5 s = sx5 /\
+         read X12 s = word_zx sx12 /\
+         read Q1 s = q1_in /\
+         read Q2 s = q2_in)
+    (\s. read PC s = word (pc + 0x244) /\
+         read X5 s = sx5 /\
+         read X12 s = word_zx (word_sub sx12 (word 1):int32) /\
+         read Q1 s = q1_in /\
+         read Q2 s = q1_in /\
+         read Q3 s = q2_in /\
+         read Q9 s = (word 0:int128) /\
+         read Q10 s = (word 0:int128) /\
+         read Q11 s = (word 0:int128) /\
+         (read NF s <=> ival (word_sub sx5 (word 32)) < &0) /\
+         (read ZF s <=> val (word_sub sx5 (word 32)) = 0) /\
+         (read CF s <=> 32 <= val sx5) /\
+         (read VF s <=>
+            ~(ival sx5 - &32 = ival (word_sub sx5 (word 32)))))
+    (MAYCHANGE [PC; X12] ,,
+     MAYCHANGE [Q2; Q3; Q9; Q10; Q11] ,,
+     MAYCHANGE SOME_FLAGS)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (139--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH]);;
+
 let AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS2_SETUP_CORRECT = prove
  (`!pc (sx5:int64) (sx12:int32) (q1_in:int128).
    ensures arm
