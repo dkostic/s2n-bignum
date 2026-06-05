@@ -10652,6 +10652,136 @@ let AES_GCM_LENC_TAIL_DISPATCH_N1_CORRECT = prove
   AP_TERM_TAC THEN CONV_TAC WORD_RULE);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b (s084) — DISPATCH_N3: slice-level chain composition for the tail *)
+(* dispatch path with `&32 < ival(sx4 - sx0) <= &48` (3 residual plaintext  *)
+(* blocks).                                                                  *)
+(*                                                                           *)
+(* Composes 5 cuts via ARM_BIGSTEP from the tail's entry at PC=pc+0x200      *)
+(* through the .Lenc_blocks_3_remaining entry at PC=pc+0x2a0:                *)
+(*                                                                           *)
+(*   1. OPENING (slice 129..133, s0→s5)            — load Q8, X5, X6, X7    *)
+(*   2. CMP30_FMOV_Q4Q5 (slice 134..137, s5→s9)    — Q4/Q5 build + flags    *)
+(*   3. BGT4_NOT_TAKEN (slice 138, s9→s10)         — discharged via         *)
+(*                                                    CMP_NOT_GT_BRIDGE_48  *)
+(*   4. FALLTHROUGH_BLOCKS3_SETUP_CLR (slice 139..145, s10→s17) — Q9/Q10/Q11*)
+(*                                                    cleared to 0           *)
+(*   5. BGT3_TAKEN (slice 146, s17→s18)            — discharged via         *)
+(*                                                    CMP_GT_BRIDGE_32      *)
+(*                                                                           *)
+(* POST exposes the BLOCKS3_FINALIZATION PRE shape: Q5 = ciphertext block,  *)
+(* Q8 = byteswap128 q11_in, Q2 := q1_in (from `mov v2,v1`), Q3 := q2_in     *)
+(* (from `mov v3,v2`), Q9=Q10=Q11=0 (cleared by the CLR variant), and the   *)
+(* GHASH-side Q registers preserved (Q12..Q14, Q16, Q17).                   *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_DISPATCH_N3_CORRECT = prove
+ (`!pc (sx0:int64) (sx4:int64) (sx12:int32) (sx13:int64) (sx14:int64)
+       (q0_in:int128) (q1_in:int128) (q2_in:int128)
+       (q11_in:int128)
+       (q12_in:int128) (q13_in:int128) (q14_in:int128)
+       (q16_in:int128) (q17_in:int128)
+       (b0_lo:int64) (b0_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_main_loop_tail_slice_mc) (sx0, 16)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+             read PC s = word (pc + 0x200) /\
+             read X0 s = sx0 /\
+             read X4 s = sx4 /\
+             read X12 s = word_zx sx12 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q0 s = q0_in /\
+             read Q1 s = q1_in /\
+             read Q2 s = q2_in /\
+             read Q11 s = q11_in /\
+             read Q12 s = q12_in /\
+             read Q13 s = q13_in /\
+             read Q14 s = q14_in /\
+             read Q16 s = q16_in /\
+             read Q17 s = q17_in /\
+             read (memory :> bytes64 sx0) s = b0_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b0_hi /\
+             &32 < ival (word_sub sx4 sx0) /\
+             ival (word_sub sx4 sx0) <= &48)
+        (\s. read PC s = word (pc + 0x2a0) /\
+             read X0 s = word_add sx0 (word 16) /\
+             read X4 s = sx4 /\
+             read X5 s = word_sub sx4 sx0 /\
+             read X12 s = word_zx (word_sub sx12 (word 1):int32) /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read Q1 s = q1_in /\
+             read Q2 s = q1_in /\
+             read Q3 s = q2_in /\
+             read Q5 s = word_xor q0_in
+                          (word_insert
+                            (word_zx (word_xor b0_lo sx13):int128)
+                            (64,64)
+                            (word_xor b0_hi sx14)) /\
+             read Q8 s = byteswap128 q11_in /\
+             read Q9 s = (word 0:int128) /\
+             read Q10 s = (word 0:int128) /\
+             read Q11 s = (word 0:int128) /\
+             read Q12 s = q12_in /\
+             read Q13 s = q13_in /\
+             read Q14 s = q14_in /\
+             read Q16 s = q16_in /\
+             read Q17 s = q17_in)
+        (MAYCHANGE [PC; X0; X5; X6; X7; X12] ,,
+         MAYCHANGE [Q2; Q3; Q4; Q5; Q8; Q9; Q10; Q11] ,,
+         MAYCHANGE SOME_FLAGS ,,
+         MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC]) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  (* Cut 1: OPENING (slice 129..133, s0 -> s5) *)
+  MP_TAC(SPECL[`pc:num`; `q11_in:int128`; `sx0:int64`; `sx4:int64`;
+               `sx13:int64`; `sx14:int64`;
+               `b0_lo:int64`; `b0_hi:int64`]
+              AES_GCM_LENC_TAIL_OPENING_CORRECT) THEN
+  ANTS_TAC THENL
+   [REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                fst AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC] THEN
+    NONOVERLAPPING_TAC;
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s5" THEN
+  (* Cut 2: CMP30_FMOV_Q4Q5 (slice 134..137, s5 -> s9) *)
+  MP_TAC(REWRITE_RULE[SOME_FLAGS]
+          (SPECL[`pc:num`; `q0_in:int128`;
+                 `read Q4 (s5:armstate):int128`;
+                 `word_sub (sx4:int64) (sx0:int64) :int64`;
+                 `word_xor (b0_lo:int64) (sx13:int64) :int64`;
+                 `word_xor (b0_hi:int64) (sx14:int64) :int64`]
+                AES_GCM_LENC_TAIL_CMP30_FMOV_Q4Q5_CORRECT)) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s9" THEN
+  (* Cut 3: BGT4_NOT_TAKEN (slice 138, s9 -> s10) *)
+  MP_TAC(SPECL[`pc:num`; `word_sub (sx4:int64) (sx0:int64) :int64`]
+              AES_GCM_LENC_TAIL_BGT_BLOCKS4_NOT_TAKEN_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s10" THENL
+   [MATCH_MP_TAC CMP_NOT_GT_BRIDGE_48 THEN
+    EXISTS_TAC `word_sub (sx4:int64) (sx0:int64) :int64` THEN
+    ASM_REWRITE_TAC[] THEN ASM_INT_ARITH_TAC;
+    ALL_TAC] THEN
+  (* Cut 4: FALLTHROUGH_BLOCKS3_SETUP_CLR (slice 139..145, s10 -> s17) *)
+  MP_TAC(REWRITE_RULE[SOME_FLAGS]
+          (SPECL[`pc:num`; `word_sub (sx4:int64) (sx0:int64) :int64`;
+                 `sx12:int32`; `q1_in:int128`; `q2_in:int128`]
+                AES_GCM_LENC_TAIL_FALLTHROUGH_BLOCKS3_SETUP_CLR_CORRECT)) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s17" THEN
+  (* Cut 5: BGT3_TAKEN (slice 146, s17 -> s18) *)
+  MP_TAC(SPECL[`pc:num`; `word_sub (sx4:int64) (sx0:int64) :int64`]
+              AES_GCM_LENC_TAIL_BGT_BLOCKS3_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s18" THENL
+   [MATCH_MP_TAC CMP_GT_BRIDGE_32 THEN
+    EXISTS_TAC `word_sub (sx4:int64) (sx0:int64) :int64` THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s084) — DISPATCH_N4: slice-level chain composition for the tail *)
 (* dispatch path with `&48 < ival(sx4 - sx0)` (≥4 residual plaintext blocks).*)
 (*                                                                           *)
