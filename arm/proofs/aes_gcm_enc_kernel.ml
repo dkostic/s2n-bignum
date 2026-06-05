@@ -23167,3 +23167,118 @@ let AES_GCM_MAIN_LOOP_PRELUDE_N0_KERNEL_CORRECT = prove
   CONJ_TAC THENL
    [REWRITE_TAC[WORD_NEG_0; IVAL_WORD_0; INT_LT_REFL; INT_SUB_REFL];
     FIRST_X_ASSUM ACCEPT_TAC]);;
+
+(* ==========================================================================
+ * Phase 9b/10 (s091) — WHOLE-KERNEL COMPOSITION DESIGN.
+ *
+ * Status as of s091:
+ *   - All 5 per-case kernel wrappers landed (s068, s076, s083, s084, s088,
+ *     s090).
+ *   - Cold-reload of HEAD e29560ac validated (file loads cleanly from
+ *     fresh s2n-arm-aes checkpoint via Sys.chdir + loadt).
+ *   - Whole-kernel composition designed but not landed — see below for the
+ *     blueprint and pitfalls discovered.
+ *
+ * Composition path (PC pc → PC pc+0x970 covers entry through pre-epilogue):
+ *
+ *   Case 1 (1 ≤ byte_len ≤ 64):
+ *     N=0 prelude wrapper                       [pc → pc+0x7c8]
+ *     ↓
+ *     case-split on ival(sx4-sx0) = ival(byte_len):
+ *       ≤ &16            → N=1 tail wrapper    [pc+0x7c8 → pc+0x970]
+ *       (&16, &32]       → N=2 tail wrapper    [pc+0x7c8 → pc+0x970]
+ *       (&32, &48]       → N=3 tail wrapper    [pc+0x7c8 → pc+0x970]
+ *       (&48, _)         → N=4 tail wrapper    [pc+0x7c8 → pc+0x970]
+ *
+ *   Case 2 (byte_len > 64):
+ *     N≥1 prelude wrapper                       [pc → pc+0x308]
+ *     ↓
+ *     Phase 8 main loop wrapper (N iters)       [pc+0x308 → pc+0x5c8]
+ *     ↓
+ *     Prepretail wrapper                        [pc+0x5c8 → pc+0x7c8]
+ *     ↓
+ *     case-split on ival(sx4-sx0) = ival(byte_len mod 64):
+ *       same 4 N{1,2,3,4} tail wrappers
+ *
+ * Bridge issues discovered during s091's draft attempts:
+ *
+ * 1. **N=0 prelude POST: X12 self-referential**.
+ *    `read X12 s_mid = word_zx (word_subword (read X12 s_mid) (0,32):int32)`
+ *    The N=1..4 tail wrappers' PRE expects `read X12 s = word_zx sx12` for
+ *    some `sx12:int32`.  Bridge: existentially abstract `sx12 := word_subword
+ *    (read X12 s_mid) (0,32):int32` at the SPECL site.  This is the s065
+ *    Approach-A pattern.
+ *
+ * 2. **Q0/Q1/Q2/Q11 not specified in N=0 prelude POST** (in MAYCHANGE only).
+ *    The N=1..4 tail wrappers' PRE expects specific values for these.
+ *    Bridge: instantiate as `read Qi s_mid:int128` Hilbert-style witnesses
+ *    at the SPECL site.
+ *
+ * 3. **Missing PRE conjunct in s091's first draft**:
+ *    `nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (ptr0, 64)`
+ *    must be added to the wrapper's PRE — required by the N=0 prelude
+ *    wrapper's nonoverlapping and the N=1..4 tail wrappers' (sx0, 16)
+ *    nonoverlapping (since sx0 = ptr0).  The N=0 prelude wrapper already
+ *    has this in its PRE; the whole-kernel wrapper must thread it through.
+ *
+ * 4. **Address-arithmetic bridge sx4 = word_add ptr0 (word_ushr bit_len 3)**.
+ *    The N=1..4 tail wrappers parameterize `sx4` directly, so SPECL just
+ *    instantiates it.  The `ival(sx4-sx0) ≤ &16` antecedent becomes
+ *    `ival(word_sub (word_add ptr0 (word_ushr bit_len 3)) ptr0) ≤ &16`,
+ *    which simplifies via WORD_RULE to `ival(word_zx(word_ushr bit_len 3))
+ *    ≤ &16` then to `val(word_ushr bit_len 3) ≤ 16` (since byte_len ≤ 64
+ *    keeps ushr non-negative when interpreted as int64).
+ *
+ * 5. **MAYCHANGE composition**.
+ *    PRELUDE_N0 MAYCHANGE: [PC; SP; X4; X5; X8; X9; X10; X11; X12; X13;
+ *      X14; X15; X16; X17; X19; X29] ,, [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
+ *      Q12..Q31] ,, SOME_FLAGS ,, [memory :> bytes(sp-128, 128)] ,, [events]
+ *    N=1 tail MAYCHANGE: [PC; X0; X5; X6; X7; X9; X12] ,, [Q2; Q3; Q4; Q5;
+ *      Q7; Q8; Q9; Q10; Q11; Q20; Q21] ,, [memory :> bytes128 cptr;
+ *      memory :> bytes128 xiptr] ,, [memory :> bytes32 (sx16+12)] ,,
+ *      SOME_FLAGS ,, [events]
+ *    Whole-kernel MAYCHANGE (subsumes both):
+ *      MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+ *      [memory :> bytes(sp-128, 128)] ,,
+ *      [memory :> bytes128 cptr; memory :> bytes128 xiptr] ,,
+ *      [memory :> bytes32 (word_add ivec_ptr (word 12))] ,,
+ *      [events]
+ *    Bridge: ENSURES_FRAME_SUBSUMED + SUBSUMED_MAYCHANGE_TAC, applied
+ *    before composing the two cuts via ARM_BIGSTEP_TAC chain or
+ *    MP_TAC + ENSURES_PREPOSTCONDITION_THM.
+ *
+ * 6. **N=1 vs N=2/3/4 closed POST shape mismatch** (carryover from s088/s089).
+ *    The N=1 closed POST has explicit `q9_post`/`q10_post` let-chain;
+ *    N=2/3/4 closed POSTs Hilbert-leak `read Q9 s` / `read Q10 s` directly.
+ *    For the byte_len ≤ 64 wrapper, the simplest path is to keep the POST
+ *    as a 4-way disjunction over the N{1,2,3,4} cases (each preserves its
+ *    own POST shape).  Algebraic unification can be deferred to Phase 11
+ *    (public byte-level theorem) or attacked separately.
+ *
+ * Recommended next session approach:
+ *
+ *   1. Cold-reload smoke test of latest HEAD (Sys.chdir first).
+ *   2. Author the byte_len ≤ 16 sub-case wrapper first (simplest):
+ *      AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_CORRECT.
+ *      PRE: full kernel preconditions + 1 ≤ byte_len ≤ 16.
+ *      POST: PC = pc+0x970 (no algebraic spec yet — treat as control-flow
+ *        wrapper).
+ *      Strategy: ENSURES_FRAME_SUBSUMED + ENSURES_PREPOSTCONDITION_THM
+ *        between PRELUDE_N0 and TAIL_N1_FULL kernel wrappers.
+ *      Likely <1 session.
+ *   3. Extend to N=2/3/4 sub-cases (16 < byte_len ≤ 32, etc).  Each 1
+ *      session.
+ *   4. Combine the 4 sub-cases into AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_CORRECT
+ *      via case-split on val(byte_len).  ~1 session.
+ *   5. Author the byte_len > 64 wrapper composing N≥1 prelude + main loop +
+ *      prepretail + tail dispatch.  ~2 sessions.
+ *   6. Combine into AES_GCM_ENC_KERNEL_CORRECT.  ~1 session.
+ *   7. Apply ARM_ADD_RETURN_STACK_TAC with pre_post_nsteps:(0, 9), callee-
+ *      saved [X19;X20;X21;X22;X23;X24;X29;X30;D8..D15], stack 128.
+ *      ~0.5 session.
+ *
+ * Total estimate to AES_GCM_ENC_KERNEL_SUBROUTINE_CORRECT: ~7 sessions.
+ *
+ * Reference: HEAD e29560ac (after s090) — N=0 prelude wrapper landed.
+ *            s091 cold-reload validated.
+ * ========================================================================= *)
