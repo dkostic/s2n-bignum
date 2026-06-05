@@ -22780,3 +22780,31 @@ let AES_GCM_BYTE_LEN_LE_64_X5_EQ_PTR0 = prove
   ASM_REWRITE_TAC[] THEN
   DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
   CONV_TAC WORD_RULE);;
+
+(* Flag bridge: under byte_len ≤ 64, the prelude's `cmp x0,x5`-emitted        *)
+(* simulator NF/VF facts both collapse to FALSE, hence Condition_GE holds.    *)
+(* Stated in the exact shape the prelude POST exposes (so it can be applied  *)
+(* via direct substitution into the wrapper's flag conjunct).                 *)
+
+let AES_GCM_BYTE_LEN_LE_64_NF_VF_FACTS = prove
+ (`!ptr0 byte_len:int64.
+     1 <= val byte_len /\ val byte_len <= 64
+     ==> ~(ival (word_sub ptr0
+                  (word_add ptr0
+                    (word_and (word_sub byte_len (word 1))
+                              (word 18446744073709551552:int64)))) < &0) /\
+         (ival ptr0 -
+          ival (word_add ptr0
+                  (word_and (word_sub byte_len (word 1))
+                            (word 18446744073709551552:int64))) =
+          ival (word_sub ptr0
+                  (word_add ptr0
+                    (word_and (word_sub byte_len (word 1))
+                              (word 18446744073709551552:int64)))))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPECL[`ptr0:int64`; `byte_len:int64`]
+              AES_GCM_BYTE_LEN_LE_64_X5_EQ_PTR0) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+  REWRITE_TAC[WORD_SUB_REFL; IVAL_WORD_0; INT_LT_REFL] THEN
+  INT_ARITH_TAC);;
