@@ -10195,6 +10195,103 @@ let CMP_NOT_GT_BRIDGE_16 = prove
       INT_ARITH_TAC;
       ASM_INT_ARITH_TAC]]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 9b (s084) — BGT-taken bridges (strict-GT form) for K = 48 / 32 / 16. *)
+(*                                                                           *)
+(* Mirror of CMP_NOT_GT_BRIDGE_{48,32,16} above: derives                     *)
+(* `condition_semantics Condition_GT s` from `&K < ival sx5` (strictly       *)
+(* greater) plus the simulator's flag-emit form.  Used by the DISPATCH_N4 /  *)
+(* DISPATCH_N3 / DISPATCH_N2 dispatcher cuts to discharge the b.gt branches  *)
+(* taken at the matching cmp #K.                                              *)
+(* ------------------------------------------------------------------------- *)
+
+let CMP_GT_BRIDGE_48 = prove
+ (`!s sx5.
+    (read NF s <=> ival (word_sub sx5 (word 48):int64) < &0) /\
+    (read ZF s <=> val (word_sub sx5 (word 48):int64) = 0) /\
+    (read VF s <=>
+       ~(ival (sx5:int64) - &48 = ival (word_sub sx5 (word 48):int64))) /\
+    &48 < ival sx5
+    ==> condition_semantics Condition_GT s`,
+  REWRITE_TAC[condition_semantics] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_EQ_0] THEN
+    CONV_TAC WORD_REDUCE_CONV THEN
+    MP_TAC(ISPEC `sx5:int64` VAL_BOUND_64) THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    STRIP_TAC THEN
+    UNDISCH_TAC `&48 < ival(sx5:int64)` THEN
+    REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    REWRITE_TAC[GSYM INT_OF_NUM_EQ; GSYM INT_OF_NUM_LT] THEN
+    INT_ARITH_TAC;
+    MP_TAC(SPECL[`sx5:int64`; `word 48:int64`] IVAL_WORD_SUB_NFVF_TO_LT) THEN
+    SUBGOAL_THEN `ival(word 48:int64) = &48` SUBST1_TAC THENL
+     [CONV_TAC WORD_REDUCE_CONV THEN REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV;
+      ALL_TAC] THEN
+    ASM_INT_ARITH_TAC]);;
+
+let CMP_GT_BRIDGE_32 = prove
+ (`!s sx5.
+    (read NF s <=> ival (word_sub sx5 (word 32):int64) < &0) /\
+    (read ZF s <=> val (word_sub sx5 (word 32):int64) = 0) /\
+    (read VF s <=>
+       ~(ival (sx5:int64) - &32 = ival (word_sub sx5 (word 32):int64))) /\
+    &32 < ival sx5
+    ==> condition_semantics Condition_GT s`,
+  REWRITE_TAC[condition_semantics] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_EQ_0] THEN
+    CONV_TAC WORD_REDUCE_CONV THEN
+    MP_TAC(ISPEC `sx5:int64` VAL_BOUND_64) THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    STRIP_TAC THEN
+    UNDISCH_TAC `&32 < ival(sx5:int64)` THEN
+    REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    REWRITE_TAC[GSYM INT_OF_NUM_EQ; GSYM INT_OF_NUM_LT] THEN
+    INT_ARITH_TAC;
+    MP_TAC(SPECL[`sx5:int64`; `word 32:int64`] IVAL_WORD_SUB_NFVF_TO_LT) THEN
+    SUBGOAL_THEN `ival(word 32:int64) = &32` SUBST1_TAC THENL
+     [CONV_TAC WORD_REDUCE_CONV THEN REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV;
+      ALL_TAC] THEN
+    ASM_INT_ARITH_TAC]);;
+
+let CMP_GT_BRIDGE_16 = prove
+ (`!s sx5.
+    (read NF s <=> ival (word_sub sx5 (word 16):int64) < &0) /\
+    (read ZF s <=> val (word_sub sx5 (word 16):int64) = 0) /\
+    (read VF s <=>
+       ~(ival (sx5:int64) - &16 = ival (word_sub sx5 (word 16):int64))) /\
+    &16 < ival sx5
+    ==> condition_semantics Condition_GT s`,
+  REWRITE_TAC[condition_semantics] THEN
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_EQ_0] THEN
+    CONV_TAC WORD_REDUCE_CONV THEN
+    MP_TAC(ISPEC `sx5:int64` VAL_BOUND_64) THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    STRIP_TAC THEN
+    UNDISCH_TAC `&16 < ival(sx5:int64)` THEN
+    REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    REWRITE_TAC[GSYM INT_OF_NUM_EQ; GSYM INT_OF_NUM_LT] THEN
+    INT_ARITH_TAC;
+    MP_TAC(SPECL[`sx5:int64`; `word 16:int64`] IVAL_WORD_SUB_NFVF_TO_LT) THEN
+    SUBGOAL_THEN `ival(word 16:int64) = &16` SUBST1_TAC THENL
+     [CONV_TAC WORD_REDUCE_CONV THEN REWRITE_TAC[INT_IVAL; DIMINDEX_64] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC INT_REDUCE_CONV;
+      ALL_TAC] THEN
+    ASM_INT_ARITH_TAC]);;
+
 let AES_GCM_LENC_TAIL_BGT_BLOCKS4_NOT_TAKEN_CORRECT = prove
  (`!pc (sx5:int64).
    ensures arm
