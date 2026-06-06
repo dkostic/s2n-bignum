@@ -18888,6 +18888,91 @@ let AES_GCM_PREPRETAIL_X12_SELF_REF_NO_PRE_KERNEL_CORRECT = prove
   ASM_MESON_TAC[SLICE_TO_KERNEL_PREPRETAIL_LOAD]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b/10 (s113) — strengthened leaf with X12 self-ref in POST.         *)
+(*                                                                           *)
+(* Strengthening of AES_GCM_PREPRETAIL_R4R5_BLOCK03_BLOCK0MID_BLOCK2LOW_     *)
+(* CORRECT (s069, line 9170) that adds                                       *)
+(*   read X12 s = word_zx (word_subword (read X12 s) (0,32):int32)           *)
+(* to the POST.  Slice 53..63 contains the W12 ADD at slice 60 (kernel       *)
+(* offset 0x6b4) — the only W12 write in the entire prepretail slice.       *)
+(* ARM_VERBOSE_STEP_TAC at slice 60 (no auto-discard) lets us register the   *)
+(* state-only X12 self-ref fact via inline SUBGOAL_THEN; subsequent          *)
+(* ARM_STEPS_TAC (61--63) preserves the fact since X12 is unmodified.       *)
+(*                                                                           *)
+(* This is the BOTTOM LEAF of the chain that the prepretail "X12-strengthened*)
+(* spec POST" needs.  Subsequent levels (R45_03MID_X12, R45_2_GH2H_X12,      *)
+(* R45_1_GH3H_X12, R56_0123_X12, R67_X12, R67_R8_X12, R67_R8_R78_2_MOD_X12,  *)
+(* FULL_X12) extend the X12 self-ref through the chain — each upper level    *)
+(* adds the X12 conjunct in POST closed via ASM_REWRITE_TAC (X12 self-ref    *)
+(* propagates from the strengthened-prior cut's POST hyp through subsequent  *)
+(* BIGSTEPs since no W12 writes occur between slice 60 and slice 128).       *)
+(*                                                                           *)
+(* Validated in alive `s111smoke` (port 12068) — the leaf strengthens        *)
+(* cleanly via the ARM_VERBOSE_STEP "s60" + SUBGOAL_THEN inline pattern from *)
+(* AES_GCM_PREPRETAIL_X12_SELF_REF_NO_PRE_CORRECT (s112, line 18847).        *)
+(* See `[[arm-verbose-step-for-inline-extract]]` memory for the pattern.     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R4R5_BLOCK03_BLOCK0MID_BLOCK2LOW_X12_CORRECT = prove
+ (`!pc (q0_in:int128) (q2_in:int128) (q3_in:int128)
+       (q4_in:int128) (q5_in:int128) (q6:int128) (q7_pre:int128)
+       (q8_in:int128) (q10_in:int128) (q13:int128) (q17:int128)
+       (rk4:int128) (rk5:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0xd0) /\
+          read Q0 s = q0_in /\
+          read Q2 s = q2_in /\
+          read Q3 s = q3_in /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5_in /\
+          read Q6 s = q6 /\
+          read Q7 s = q7_pre /\
+          read Q8 s = q8_in /\
+          read Q10 s = q10_in /\
+          read Q13 s = q13 /\
+          read Q17 s = q17 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (\s. read PC s = word (pc + 0xfc) /\
+          read Q0 s = aes_arm_round q0_in rk4 /\
+          read Q2 s = q2_in /\
+          read Q3 s = aes_arm_round (aes_arm_round q3_in rk4) rk5 /\
+          read Q4 s = (word_pmul (word_subword q4_in (0,64):int64)
+                                 (word_subword q17 (0,64):int64) :int128) /\
+          read Q5 s = (word_pmul (word_subword q6 (0,64):int64)
+                                 (word_subword q13 (0,64):int64) :int128) /\
+          read Q6 s = q6 /\
+          read Q7 s = aes_gcm_rev64_int128 q7_pre /\
+          read Q10 s = q10_in /\
+          read Q13 s = q13 /\
+          read Q17 s = q17 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read X12 s = word_zx (word_subword (read X12 s) (0,32):int32))
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q3; Q4; Q5; Q7; Q8] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (53--59) THEN
+  ARM_VERBOSE_STEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s60" THEN
+  SUBGOAL_THEN
+    `read X12 s60 = word_zx (word_subword (read X12 s60) (0,32):int32)`
+    ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN MATCH_ACCEPT_TAC WORD_ZX_SELF_REF_64_32;
+    ALL_TAC] THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (61--63) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (FIRST_ASSUM ACCEPT_TAC) THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (REWRITE_TAC[aes_gcm_rev64_int128] THEN
+       ASM_REWRITE_TAC[] THEN CONV_TAC WORD_BLAST) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — BLOCKS1_FULL + FINALIZATION composition.                *)
 (*                                                                           *)
 (* Composes AES_GCM_LENC_TAIL_BLOCKS1_FULL_CORRECT (s072, slice 206..226;    *)
