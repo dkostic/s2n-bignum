@@ -25037,3 +25037,53 @@ let MAIN_LOOP_WRAPPER_BYTESWAP_EXISTS = prove
     SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
   EXPAND_TAC "Y" THEN
   REWRITE_TAC[BYTESWAP128_INVOLUTION_LOCAL]);;
+
+(* ==========================================================================
+ * Phase 9b/10 (s100) — N-iteration count helpers for byte_len > 128 wrapper.
+ *
+ * The byte_len > 128 wrapper composition needs to compute the
+ * MAIN_LOOP_WRAPPER's iteration count `N` from byte_len.  After the prelude,
+ *
+ *   x0_after_prelude = ptr0 + 64
+ *   x5_init           = ptr0 + M    where M = (byte_len_w - 1) AND ~63.
+ *
+ * MAIN_LOOP_WRAPPER's antecedents include:
+ *   ~(N = 0)
+ *   word_add x0_init (word (64*N)) = x5_init
+ *   val x0_init + 64*N < 2 EXP 63
+ *
+ * Substituting x0_init = ptr0+64 and x5_init = ptr0+M:
+ *   ~(N = 0)
+ *   word_add (word_add ptr0 (word 64)) (word (64*N)) = word_add ptr0 (word M)
+ *   val (word_add ptr0 (word 64)) + 64*N < 2 EXP 63
+ *
+ * The natural choice is N := (M - 64) / 64 = ((byte_len_w-1) AND ~63 - 64) / 64.
+ *
+ * For byte_len > 128 (i.e. val byte_len_w >= 129), M >= 128 so N >= 1, hence
+ * `~(N = 0)`.  Below: N nonzero helper.  The arithmetic identity
+ * `word_add (word_add ptr0 (word 64)) (word (64*N)) = word_add ptr0 (word M)`
+ * follows from M = 64 + 64*N (provable via DIVISION_SIMP since M is a
+ * multiple of 64) plus word_add associativity.
+ * ========================================================================= *)
+
+let MAIN_LOOP_WRAPPER_N_NONZERO = prove
+ (`!byte_len_w:int64.
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> ~(((val (word_and (word_sub byte_len_w (word 1):int64)
+                           (word 18446744073709551552:int64)) - 64) DIV 64) = 0)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+    SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  SUBGOAL_THEN `word 63:int64 = word (2 EXP 6 - 1):int64` SUBST1_TAC THENL
+   [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+  REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+  SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+    COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  SUBGOAL_THEN `2 <= (val (byte_len_w:int64) - 1) DIV 64` MP_TAC THENL
+   [SIMP_TAC[ARITH_RULE `2 <= n DIV 64 <=> 128 <= n`] THEN ASM_ARITH_TAC;
+    ARITH_TAC]);;
