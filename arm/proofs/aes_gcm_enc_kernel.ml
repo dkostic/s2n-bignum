@@ -24339,3 +24339,64 @@ let WORD_AND_NOT_63_UB = prove
   CONV_TAC NUM_REDUCE_CONV THEN
   MATCH_MP_TAC LE_TRANS THEN EXISTS_TAC `val (byte_len_w:int64) - 1` THEN
   CONJ_TAC THENL [MESON_TAC[DIV_MUL_LE]; ARITH_TAC]);;
+
+(* ==========================================================================
+ * Phase 9b/10 (s098) — existential PRE bridge helper for byte_len > 128.
+ *
+ * The MAIN_LOOP_WRAPPER_FULL_CORRECT (line ~8106) PRE quantifies
+ *   ?(q4:int128) (q5:int128) (q6:int128) (q7:int128)
+ *    (b0:int128) (b1:int128) (b2:int128)
+ *    (ct0:int128) (ct1:int128) (ct2:int128) (ct3:int128).
+ *      <byteswap identifications relating q4..q7 to ct0..ct3>
+ * over the Q-state at PC=pc+0x308 entering the main loop.  After
+ * PRELUDE_FULL_KERNEL_CORRECT (which puts Q4..Q7 in MAYCHANGE), the
+ * concrete q4..q7 values at pc+0x308 are Hilbert-style witnesses
+ * `read Q4 s_after_prelude`, etc.  The b0..b2 existentials similarly
+ * bind to `read Q0/Q1/Q2 s_after_prelude`.
+ *
+ * The byteswap-identification conjuncts are *trivially satisfiable*:
+ * - For q5/q6/q7 conjuncts, pick `cti := byteswap128 (rev64 qi)`; then
+ *   `byteswap128 cti = byteswap128 (byteswap128 (rev64 qi)) = rev64 qi`
+ *   by BYTESWAP128_INVOLUTION_LOCAL.
+ * - For the q4 conjunct, pick
+ *   `ct0 := word_xor T (byteswap128 (word_xor (rev64 q4) (byteswap128 T)))`
+ *   where `T = initial_tag`; XOR self-cancellation + involution then
+ *   discharge the equation.
+ *
+ * This helper isolates that algebraic content as a forall-exists statement
+ * over q4..q7, initial_tag.  The wrapper proof can discharge the
+ * existential PRE by:
+ *   1. After PRELUDE BIGSTEP, instantiate `initial_tag :=
+ *      read Q11 s_after_prelude`.
+ *   2. MP_TAC this helper specialized to `read Q4..Q7 s_after_prelude`.
+ *   3. STRIP off the existential via REPEAT_TCL CHOOSE_THEN STRIP_ASSUME_TAC.
+ *   4. Use the witnessed ct0..ct3 + Hilbert q4..q7 + read Q0..Q2 b0..b2 as
+ *      MAIN_LOOP_WRAPPER PRE existentials.
+ *
+ * Proof: 4 EXISTS_TAC instantiating the witnesses; REWRITE with INVOLUTION
+ * collapses 3 of 4 conjuncts; ABBREV the q4-side byteswap intermediate;
+ * WORD_BLAST handles XOR cancellation; final REWRITE with INVOLUTION closes.
+ * ========================================================================= *)
+
+let MAIN_LOOP_WRAPPER_BYTESWAP_EXISTS = prove
+ (`!q4 q5 q6 q7 (initial_tag:int128).
+    ?ct0 ct1 ct2 ct3.
+      word_xor (aes_gcm_rev64_int128 q4) (byteswap128 initial_tag) =
+              byteswap128 (word_xor initial_tag ct0) /\
+      aes_gcm_rev64_int128 q5 = byteswap128 ct1 /\
+      aes_gcm_rev64_int128 q6 = byteswap128 ct2 /\
+      aes_gcm_rev64_int128 q7 = byteswap128 ct3`,
+  REPEAT GEN_TAC THEN
+  EXISTS_TAC `word_xor (initial_tag:int128) (byteswap128
+                (word_xor (aes_gcm_rev64_int128 q4) (byteswap128 initial_tag)))` THEN
+  EXISTS_TAC `byteswap128 (aes_gcm_rev64_int128 q5):int128` THEN
+  EXISTS_TAC `byteswap128 (aes_gcm_rev64_int128 q6):int128` THEN
+  EXISTS_TAC `byteswap128 (aes_gcm_rev64_int128 q7):int128` THEN
+  REWRITE_TAC[BYTESWAP128_INVOLUTION_LOCAL] THEN
+  ABBREV_TAC `Y:int128 = byteswap128 (word_xor (aes_gcm_rev64_int128 q4)
+                                               (byteswap128 initial_tag))` THEN
+  SUBGOAL_THEN
+    `word_xor (initial_tag:int128) (word_xor initial_tag (Y:int128)) = Y`
+    SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  EXPAND_TAC "Y" THEN
+  REWRITE_TAC[BYTESWAP128_INVOLUTION_LOCAL]);;
