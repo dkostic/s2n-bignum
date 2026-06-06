@@ -19986,6 +19986,103 @@ let AES_GCM_PREPRETAIL_FULL_X12_CORRECT = prove
   TRY (FIRST_ASSUM ACCEPT_TAC));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b/10 (s114) — slice-to-kernel promotion of FULL_X12_CORRECT.       *)
+(*                                                                           *)
+(* Mechanically promotes AES_GCM_PREPRETAIL_FULL_X12_CORRECT (s114) from the *)
+(* tail-slice mc context to the full kernel mc context per                   *)
+(* [[slice_to_kernel_ensures_promotion]].  Mirrors the s076 unstrengthened   *)
+(* FULL_KERNEL promotion but uses the X12-strengthened slice ensures.        *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_FULL_KERNEL_X12_CORRECT = prove
+ (`!pc (q0_pre:int128) (q1_pre:int128) (q2_pre:int128)
+       (q4_pre:int128) (q5_pre:int128) (q6_pre:int128) (q7_pre:int128)
+       (q11_pre:int128)
+       (q12:int128) (q13:int128) (q14:int128) (q15:int128) (q16:int128) (q17:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+       (rk4:int128) (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+       (sx9:int64) (sx10:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+          read PC s = word (pc + 0x5c8) /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q2 s = q2_pre /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q7 s = q7_pre /\
+          read Q11 s = q11_pre /\
+          read Q12 s = q12 /\
+          read Q13 s = q13 /\
+          read Q14 s = q14 /\
+          read Q15 s = q15 /\
+          read Q16 s = q16 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8 /\
+          read Q31 s = rk9 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0x7c8) /\
+          read Q0 s = aes_arm_final_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round q0_pre rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+          read Q1 s = aes_arm_final_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round q1_pre rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+          read Q2 s = aes_arm_final_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round q2_pre rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+          read Q3 s = aes_arm_final_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (aes_arm_round (word_insert (word_zx (sx10:int64):int128) (64,64) sx9 :int128) rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+          read Q5 s = (word_pmul (word_subword (aes_gcm_rev64_int128 q7_pre) (64,64):int64) (word_subword q12 (64,64):int64) :int128) /\
+          read Q6 s = (word_pmul (word_subword (aes_gcm_rev64_int128 q7_pre) (0,64):int64) (word_subword q12 (0,64):int64) :int128) /\
+          read Q7 s = aes_gcm_rev64_int128 q7_pre /\
+          read Q9 s = byteswap128 (word_xor (word_xor (word_pmul (word_subword (aes_gcm_rev64_int128 q6_pre) (64,64):int64) (word_subword q13 (64,64):int64) :int128) (word_xor (word_pmul (word_subword (word_xor (aes_gcm_rev64_int128 q4_pre) (byteswap128 q11_pre)) (64,64):int64) (word_subword q15 (64,64):int64) :int128) (word_pmul (word_subword (aes_gcm_rev64_int128 q5_pre) (64,64):int64) (word_subword q14 (64,64):int64) :int128))) (word_pmul (word_subword (aes_gcm_rev64_int128 q7_pre) (64,64):int64) (word_subword q12 (64,64):int64) :int128)) /\
+          read Q12 s = q12 /\
+          read Q13 s = q13 /\
+          read Q14 s = q14 /\
+          read Q15 s = q15 /\
+          read Q16 s = q16 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8 /\
+          read Q31 s = rk9 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10 /\
+          read X12 s = word_zx (word_subword (read X12 s) (0,32):int32))
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  MP_TAC (SPECL [`pc + 0x5c8:num`;
+                 `q0_pre:int128`; `q1_pre:int128`; `q2_pre:int128`;
+                 `q4_pre:int128`; `q5_pre:int128`; `q6_pre:int128`;
+                 `q7_pre:int128`;
+                 `q11_pre:int128`;
+                 `q12:int128`; `q13:int128`; `q14:int128`; `q15:int128`;
+                 `q16:int128`; `q17:int128`;
+                 `rk0:int128`; `rk1:int128`; `rk2:int128`; `rk3:int128`;
+                 `rk4:int128`; `rk5:int128`; `rk6:int128`; `rk7:int128`;
+                 `rk8:int128`; `rk9:int128`;
+                 `sx9:int64`; `sx10:int64`]
+                AES_GCM_PREPRETAIL_FULL_X12_CORRECT) THEN
+  REWRITE_TAC[ARITH_RULE `(pc + 0x5c8) + 0x200 = pc + 0x7c8`] THEN
+  MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+  GEN_TAC THEN STRIP_TAC THEN
+  POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+  ASM_REWRITE_TAC[] THEN
+  ASM_MESON_TAC[SLICE_TO_KERNEL_PREPRETAIL_LOAD]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — BLOCKS1_FULL + FINALIZATION composition.                *)
 (*                                                                           *)
 (* Composes AES_GCM_LENC_TAIL_BLOCKS1_FULL_CORRECT (s072, slice 206..226;    *)
