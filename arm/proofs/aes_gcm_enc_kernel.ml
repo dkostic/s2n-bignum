@@ -18753,6 +18753,71 @@ let AES_GCM_PREPRETAIL_FULL_KERNEL_CORRECT = prove
   ASM_MESON_TAC[SLICE_TO_KERNEL_PREPRETAIL_LOAD]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b/10 (s110) — X12 self-ref helper + slice-level X12 self-ref       *)
+(* ensures + kernel-level promotion.                                         *)
+(*                                                                           *)
+(* PURPOSE: STRONG_PREPRETAIL's POST is silent on X12, so after BIGSTEP      *)
+(* through it, the simulator's X12 emit form is dropped by DISCARD_OLDSTATE  *)
+(* and the N=1 (and N=2/3/4) tail wrappers can't close the X12 self-ref      *)
+(* residual that TAIL_N{1,2,3,4}'s sx12 = word_subword (read X12 s_mid)      *)
+(* (0,32):int32 instantiation generates.  These three artifacts give a clean *)
+(* path: the slice-level X12 ensures uses ARM_STEPS_TAC over slice 1..128 to *)
+(* establish the self-ref; the kernel promotion mirrors s076's slice-to-     *)
+(* kernel pattern; together they enable a STRONG_PREPRETAIL_X12 variant     *)
+(* (next session) for use in the byte_len > 128 wrappers.                    *)
+(*                                                                           *)
+(* WORD_ZX_SELF_REF_64_32 is the structural lemma: any word_zx of an int32   *)
+(* satisfies the self-ref form word_zx (word_subword W (0,32):int32) = W.    *)
+(* This lets MATCH_ACCEPT_TAC close after ASM_REWRITE substitutes the        *)
+(* simulator-emit form for read X12 s.                                       *)
+(* ------------------------------------------------------------------------- *)
+
+let WORD_ZX_SELF_REF_64_32 = prove
+ (`!(w:int32).
+    word_zx w :int64 =
+      word_zx (word_subword (word_zx w :int64) (0,32) :int32)`,
+  CONV_TAC WORD_BLAST);;
+
+let AES_GCM_PREPRETAIL_X12_SELF_REF_CORRECT = prove
+ (`!pc (sx12:int32).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc /\
+          read X12 s = word_zx sx12)
+     (\s. read PC s = word (pc + 0x200) /\
+          read X12 s = word_zx (word_subword (read X12 s) (0,32):int32))
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (1--128) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  MATCH_ACCEPT_TAC WORD_ZX_SELF_REF_64_32);;
+
+let AES_GCM_PREPRETAIL_X12_SELF_REF_KERNEL_CORRECT = prove
+ (`!pc (sx12:int32).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+          read PC s = word (pc + 0x5c8) /\
+          read X12 s = word_zx sx12)
+     (\s. read PC s = word (pc + 0x7c8) /\
+          read X12 s = word_zx (word_subword (read X12 s) (0,32):int32))
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  MP_TAC (SPECL [`pc + 0x5c8:num`; `sx12:int32`]
+                AES_GCM_PREPRETAIL_X12_SELF_REF_CORRECT) THEN
+  REWRITE_TAC[ARITH_RULE `(pc + 0x5c8) + 0x200 = pc + 0x7c8`] THEN
+  MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+  GEN_TAC THEN STRIP_TAC THEN
+  POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+  ASM_REWRITE_TAC[] THEN
+  ASM_MESON_TAC[SLICE_TO_KERNEL_PREPRETAIL_LOAD]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — BLOCKS1_FULL + FINALIZATION composition.                *)
 (*                                                                           *)
 (* Composes AES_GCM_LENC_TAIL_BLOCKS1_FULL_CORRECT (s072, slice 206..226;    *)
