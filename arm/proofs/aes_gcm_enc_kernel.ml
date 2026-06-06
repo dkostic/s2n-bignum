@@ -18818,6 +18818,76 @@ let AES_GCM_PREPRETAIL_X12_SELF_REF_KERNEL_CORRECT = prove
   ASM_MESON_TAC[SLICE_TO_KERNEL_PREPRETAIL_LOAD]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 9b/10 (s112) — no-PRE X12 self-ref helpers.                          *)
+(*                                                                           *)
+(* Variant of AES_GCM_PREPRETAIL_X12_SELF_REF_{,KERNEL_}CORRECT (s110) that  *)
+(* discharges the X12 self-ref obligation WITHOUT requiring `read X12 s =    *)
+(* word_zx sx12` in PRE.  Per advisor s111 diagnosis: the W12 ADD at slice  *)
+(* offset 0xec (kernel offset 0x6b4) writes through `zerotop_32`, so the    *)
+(* simulator's emit form at the immediately-following state has the         *)
+(* shape `read X12 sK = word_zx (E:int32)`.  By WORD_ZX_SELF_REF_64_32, the *)
+(* state-only self-ref fact `read X12 sK = word_zx (word_subword (read X12  *)
+(* sK) (0,32):int32)` is derivable from this emit form.  The state-only     *)
+(* fact survives subsequent DISCARD_OLDSTATE calls (per                     *)
+(* [[self_referential_post_for_arm_bigstep]]).                              *)
+(*                                                                           *)
+(* Proof technique: `ARM_VERBOSE_STEP_TAC` (no auto-discard) at slice index *)
+(* 60 (the W12 ADD), inline SUBGOAL_THEN to register the state-only         *)
+(* self-ref hyp, then continue with `ARM_STEPS_TAC (61--128)`.  The hyp     *)
+(* survives 68 subsequent DISCARD_OLDSTATE calls and closes the POST at     *)
+(* state s128 directly via FIRST_ASSUM ACCEPT_TAC.                          *)
+(*                                                                           *)
+(* These no-PRE variants enable downstream wrappers (Stage B N=1/2/3/4) to  *)
+(* land the X12 self-ref fact without modifying the wrapper's PRE — the     *)
+(* X12 register is caller-saved scratch in the public ABI and cannot be     *)
+(* constrained at kernel entry.                                              *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_X12_SELF_REF_NO_PRE_CORRECT = prove
+ (`!pc.
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc)
+     (\s. read PC s = word (pc + 0x200) /\
+          read X12 s = word_zx (word_subword (read X12 s) (0,32):int32))
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (1--59) THEN
+  ARM_VERBOSE_STEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s60" THEN
+  SUBGOAL_THEN
+    `read X12 s60 = word_zx (word_subword (read X12 s60) (0,32):int32)`
+    ASSUME_TAC THENL
+   [ASM_REWRITE_TAC[] THEN MATCH_ACCEPT_TAC WORD_ZX_SELF_REF_64_32;
+    ALL_TAC] THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (61--128) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  FIRST_ASSUM ACCEPT_TAC);;
+
+let AES_GCM_PREPRETAIL_X12_SELF_REF_NO_PRE_KERNEL_CORRECT = prove
+ (`!pc.
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+          read PC s = word (pc + 0x5c8))
+     (\s. read PC s = word (pc + 0x7c8) /\
+          read X12 s = word_zx (word_subword (read X12 s) (0,32):int32))
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  GEN_TAC THEN
+  MP_TAC (SPECL [`pc + 0x5c8:num`]
+                AES_GCM_PREPRETAIL_X12_SELF_REF_NO_PRE_CORRECT) THEN
+  REWRITE_TAC[ARITH_RULE `(pc + 0x5c8) + 0x200 = pc + 0x7c8`] THEN
+  MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+  GEN_TAC THEN STRIP_TAC THEN
+  POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+  ASM_REWRITE_TAC[] THEN
+  ASM_MESON_TAC[SLICE_TO_KERNEL_PREPRETAIL_LOAD]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — BLOCKS1_FULL + FINALIZATION composition.                *)
 (*                                                                           *)
 (* Composes AES_GCM_LENC_TAIL_BLOCKS1_FULL_CORRECT (s072, slice 206..226;    *)
