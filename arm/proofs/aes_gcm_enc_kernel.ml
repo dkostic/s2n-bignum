@@ -25087,3 +25087,73 @@ let MAIN_LOOP_WRAPPER_N_NONZERO = prove
   SUBGOAL_THEN `2 <= (val (byte_len_w:int64) - 1) DIV 64` MP_TAC THENL
    [SIMP_TAC[ARITH_RULE `2 <= n DIV 64 <=> 128 <= n`] THEN ASM_ARITH_TAC;
     ARITH_TAC]);;
+
+(* Helper: arithmetic identity tying x0_after_prelude + word(64*N) to x5_init.
+ *
+ * For byte_len > 128, with M = (byte_len_w - 1) AND ~63 and N = (M-64)/64:
+ *   word_add (word_add ptr0 (word 64)) (word (64 * N)) = word_add ptr0 (word M).
+ *
+ * Composes with [[main_loop_wrapper_n_nonzero]] to discharge the
+ * MAIN_LOOP_WRAPPER PRE conjunct
+ *   `word_add x0_init (word (64 * N)) = x5_init`
+ * after binding x0_init := word_add ptr0 (word 64), x5_init := word_add ptr0 M.
+ *)
+
+let MAIN_LOOP_WRAPPER_X0_ADD_X5 = prove
+ (`!ptr0:int64 byte_len_w:int64.
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> word_add (word_add ptr0 (word 64))
+                  (word (64 *
+                         (val (word_and (word_sub byte_len_w (word 1):int64)
+                                        (word 18446744073709551552:int64)) - 64)
+                         DIV 64)) =
+         word_add ptr0
+                  (word_and (word_sub byte_len_w (word 1):int64)
+                            (word 18446744073709551552:int64))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+    SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ABBREV_TAC
+    `mask_w:int64 = word_and (word_sub (byte_len_w:int64) (word 1))
+                             (word_not (word 63:int64))` THEN
+  SUBGOAL_THEN
+    `val (mask_w:int64) MOD 64 = 0 /\
+     128 <= val mask_w /\
+     val mask_w <= val (byte_len_w:int64) - 1`
+    STRIP_ASSUME_TAC THENL
+   [EXPAND_TAC "mask_w" THEN
+    SUBGOAL_THEN `word_not (word 63:int64) = word_not (word (2 EXP 6 - 1):int64)`
+      SUBST1_TAC THENL [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+    REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+      SUBST1_TAC THENL
+     [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+      COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    REPEAT CONJ_TAC THENL
+     [SIMP_TAC[MOD_MULT; ARITH_EQ];
+      SIMP_TAC[ARITH_RULE `128 <= 64 * n <=> 2 <= n`;
+               ARITH_RULE `2 <= n DIV 64 <=> 128 <= n`] THEN ASM_ARITH_TAC;
+      MESON_TAC[DIV_MUL_LE]];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `64 * (val (mask_w:int64) - 64) DIV 64 = val mask_w - 64`
+    SUBST1_TAC THENL
+   [MP_TAC (CONJUNCT2 DIVISION_SIMP) THEN
+    DISCH_THEN(MP_TAC o SPECL[`val (mask_w:int64)`; `64`]) THEN
+    ASM_REWRITE_TAC[ADD_CLAUSES] THEN DISCH_TAC THEN
+    POP_ASSUM(SUBST1_TAC o SYM) THEN
+    REWRITE_TAC[ARITH_RULE `64 * x - 64 = 64 * (x - 1)`; MOD_MULT] THEN
+    SIMP_TAC[DIV_MULT; ARITH_EQ];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `word (val (mask_w:int64) - 64):int64 = word_sub mask_w (word 64)`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[GSYM VAL_EQ; VAL_WORD] THEN
+    REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    COND_CASES_TAC THENL
+     [POP_ASSUM(K ALL_TAC) THEN MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+      POP_ASSUM MP_TAC THEN ASM_ARITH_TAC];
+    ALL_TAC] THEN
+  CONV_TAC WORD_RULE);;
