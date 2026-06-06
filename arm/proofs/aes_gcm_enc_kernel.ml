@@ -28323,7 +28323,6 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_GT_128_PRELUDE_MAIN_LOOP_PREPRETAIL_STRONG_X12_C
 (* X2 must be in the goal MAYCHANGE (TAIL_N1_FULL_KERNEL writes X2).         *)
 (* ------------------------------------------------------------------------- *)
 
- *)
 let AES_GCM_ENC_KERNEL_BYTE_LEN_GT_128_LE_16_CORRECT = prove
  (`!pc (ptr0:int64) (bit_len:int64) (cptr:int64) (xiptr:int64)
        (ivec_ptr:int64) (key_ptr:int64) (htable_ptr:int64)
