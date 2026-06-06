@@ -24264,3 +24264,78 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_CORRECT = prove
         ASM_REWRITE_TAC[] THEN
         REPEAT CONJ_TAC THEN
         TRY NONOVERLAPPING_TAC]]]);;
+
+(* ==========================================================================
+ * Phase 9b/10 (s097) — helper lemmas for byte_len > 64 wrapper antecedents.
+ *
+ * The PRELUDE_FULL_KERNEL_CORRECT theorem (used by the byte_len > 64 case
+ * wrapper) requires three antecedents on byte_len:
+ *
+ *   (a) val ptr0 + 64 < 2 EXP 63
+ *   (b) val ptr0 + 16 < val (ptr0 + ((byte_len_w - 1) AND ~63))
+ *   (c) ival (ptr0 + 64) < ival (ptr0 + ((byte_len_w - 1) AND ~63))
+ *
+ * The expression `(byte_len_w - 1) AND ~63 = (byte_len_w - 1) DIV 64 * 64`
+ * captures the start of the trailing residual region — equivalently, the
+ * total bytes processed by FIRSTBLOCKS + main loop + prepretail.  These
+ * helper lemmas reduce the cluttered antecedent shapes to algebraic
+ * conditions on `val byte_len_w`.
+ *
+ * Note (deferred): the `ival(ptr0+64) < ival(ptr0+M)` antecedent on
+ * PRELUDE_FULL_KERNEL is strictly stronger than `val byte_len_w > 64`.
+ * It actually requires `M > 64`, equivalently `val byte_len_w > 128`
+ * (i.e. ≥ 129 bytes — at least 2 main-loop iterations after the
+ * FIRSTBLOCKS region).  The byte_len = 65..128 case (1 main-loop "iter"
+ * which is just FIRSTBLOCKS, no prepretail or main_loop) takes a
+ * different control-flow path through the prelude (the `b.lt
+ * .Lenc_prepretail` branch at offset 0x304 is not taken; instead the
+ * fall-through proceeds directly to the prepretail/tail).  Wrapper
+ * authoring for that sub-case is a separate task from the byte_len > 128
+ * wrapper.
+ * ========================================================================= *)
+
+let WORD_AND_NOT_63_LB = prove
+ (`!byte_len_w:int64.
+     64 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> 64 <=
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+    SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  SUBGOAL_THEN `word 63:int64 = word (2 EXP 6 - 1):int64` SUBST1_TAC THENL
+   [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+  REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+  SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+    COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  SUBGOAL_THEN `1 <= (val (byte_len_w:int64) - 1) DIV 64` MP_TAC THENL
+   [REWRITE_TAC[ARITH_RULE `1 <= n <=> ~(n = 0)`] THEN
+    REWRITE_TAC[DIV_EQ_0; ARITH_EQ] THEN ASM_ARITH_TAC;
+    ARITH_TAC]);;
+
+let WORD_AND_NOT_63_UB = prove
+ (`!byte_len_w:int64.
+     1 <= val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64))
+         <= val byte_len_w`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+    SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  SUBGOAL_THEN `word 63:int64 = word (2 EXP 6 - 1):int64` SUBST1_TAC THENL
+   [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+  REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+  SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+    COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  MATCH_MP_TAC LE_TRANS THEN EXISTS_TAC `val (byte_len_w:int64) - 1` THEN
+  CONJ_TAC THENL [MESON_TAC[DIV_MUL_LE]; ARITH_TAC]);;
