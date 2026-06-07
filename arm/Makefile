@@ -531,6 +531,18 @@ p521/p521_jscalarmul_alt.native: p521/bignum_mod_n521_9.native
 sm2/sm2_montjscalarmul.native: sm2/sm2_montjadd.native sm2/sm2_montjdouble.native
 sm2/sm2_montjscalarmul_alt.native: sm2/sm2_montjadd_alt.native sm2/sm2_montjdouble_alt.native
 
+# AES-GCM AES-128 fork: the proof of aes-gcm/aes_gcm_enc_kernel_aes128.o lives in
+# the public wrapper file (which transitively loads aes_gcm_enc_kernel.ml and the
+# aes_gcm_spec.ml + aes_gcm_bridge.ml lemma files). The default %.native rule
+# expects proofs/aes_gcm_enc_kernel_aes128.ml; this explicit rule redirects to
+# the actual proof source.
+aes-gcm/aes_gcm_enc_kernel_aes128.native: proofs/aes_gcm_enc_kernel_public.ml \
+    proofs/aes_gcm_enc_kernel.ml \
+    proofs/utils/aes_gcm_bridge.ml \
+    proofs/utils/aes_gcm_spec.ml \
+    $(BASE_ML) aes-gcm/aes_gcm_enc_kernel_aes128.o ; \
+  ../tools/build-proof.sh proofs/aes_gcm_enc_kernel_public.ml "$(HOLLIGHT)" "$@"
+
 # Tutorial
 
 # safety tutorial does not have safety.o and uses existing ones
