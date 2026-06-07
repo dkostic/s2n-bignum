@@ -27532,11 +27532,18 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_BODY_FUNCTIONAL_CLOSED_CORRECT = prove
     REWRITE_TAC[INT_OF_NUM_LE] THEN ASM_REWRITE_TAC[];
     (* eventually subgoal: only q0_post existential remains; prev_tag is
        directly substituted via the q11_mid = word_bytereverse initial_tag
-       assumption from the strengthened PRELUDE_N0_BODY. *)
+       assumption from the strengthened PRELUDE_N0_BODY.  After EXISTS_TAC,
+       the goal contains `word_bytereverse initial_tag` while the propagated
+       TAIL_N1 hyp uses `q11_mid`; rewrite-back via the q11_mid abbreviation
+       equation to align them before MATCH_ACCEPT_TAC. *)
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(DEPTH_CONV let_CONV) THEN
     EXISTS_TAC `q0_mid:int128` THEN
+    SUBGOAL_THEN
+      `q11_mid:int128 = word_bytereverse (initial_tag:int128)`
+      (SUBST_ALL_TAC o SYM) THENL
+     [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
     FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
                   CONV_RULE(DEPTH_CONV let_CONV) o
                   check (fun th ->
