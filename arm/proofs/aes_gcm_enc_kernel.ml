@@ -23972,6 +23972,149 @@ let AES_GCM_LENC_TAIL_N1_FULL_KERNEL_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 1 (s137) — B3-N=1 FUNCTIONAL strengthening.               *)
+(*                                                                           *)
+(* Strengthens the AES_GCM_LENC_TAIL_N1_FULL_KERNEL_CORRECT POST with a      *)
+(* spec-level GHASH-tag conjunct: in addition to the kernel-form `read       *)
+(* (memory :> bytes128 xiptr) s = aes_gcm_rev64_int128(...complex pmull       *)
+(* chain...)`, this wrapper also asserts                                     *)
+(*                                                                           *)
+(*   read (memory :> bytes128 xiptr) s =                                     *)
+(*     word_bytereverse (nist_ghash h q11_in [word_bytereverse q5_pre])      *)
+(*                                                                           *)
+(* where q5_pre is the kernel-form ciphertext block (the same expression     *)
+(* the existing wrapper's POST exposes).                                     *)
+(*                                                                           *)
+(* New PRE conjuncts identify q12_in and q16_in with H-power values:         *)
+(*   q12_in = byteswap128(ghash_twist h)                                     *)
+(*   word_subword q16_in (0,64) :int64 = karatsuba_mid(ghash_twist h)        *)
+(*                                                                           *)
+(* These match what the kernel's H-table loads establish for the N=1 tail   *)
+(* (Q12 holds H^1 in byteswap form, Q16's low half holds the karatsuba_mid  *)
+(* of H^1 — see the htable_mem layout).                                      *)
+(*                                                                           *)
+(* Proof: invoke existing AES_GCM_LENC_TAIL_N1_FULL_KERNEL_CORRECT via       *)
+(* ENSURES_PREPOSTCONDITION_THM, dropping the new PRE conjuncts on the way    *)
+(* (the helper's hypotheses do not affect the kernel's symbolic execution),  *)
+(* then bridge the new POST conjunct via                                     *)
+(* KERNEL_N1_XIPTR_AS_NIST_GHASH from aes_gcm_bridge.ml.                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_LENC_TAIL_N1_FULL_KERNEL_FUNCTIONAL_CORRECT = prove
+ (`!pc h
+       (sx0:int64) (sx4:int64) (sx12:int32)
+       (sx13:int64) (sx14:int64) (sx15:int64) (sx16:int64)
+       (cptr:int64) (xiptr:int64)
+       (q0_in:int128) (q1_in:int128) (q2_in:int128)
+       (q11_in:int128) (q12_in:int128) (q16_in:int128)
+       (b0_lo:int64) (b0_hi:int64).
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (sx0, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (xiptr, 16) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc)
+                  (word_add sx16 (word 12), 4) /\
+   nonoverlapping (cptr, 16) (xiptr, 16) /\
+   nonoverlapping (cptr, 16) (word_add sx16 (word 12), 4) /\
+   nonoverlapping (xiptr, 16) (word_add sx16 (word 12), 4) /\
+   nonoverlapping (sx0, 16) (cptr, 16) /\
+   nonoverlapping (sx0, 16) (xiptr, 16) /\
+   nonoverlapping (sx0, 16) (word_add sx16 (word 12), 4) /\
+   q12_in = byteswap128 (ghash_twist h) /\
+   word_subword q16_in (0,64) :int64 = karatsuba_mid (ghash_twist h)
+   ==> ensures arm
+        (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+             read PC s = word (pc + 0x7c8) /\
+             read X0 s = sx0 /\
+             read X2 s = cptr /\
+             read X3 s = xiptr /\
+             read X4 s = sx4 /\
+             read X12 s = word_zx sx12 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read X15 s = sx15 /\
+             read X16 s = sx16 /\
+             read Q0 s = q0_in /\
+             read Q1 s = q1_in /\
+             read Q2 s = q2_in /\
+             read Q11 s = q11_in /\
+             read Q12 s = q12_in /\
+             read Q16 s = q16_in /\
+             read (memory :> bytes64 sx0) s = b0_lo /\
+             read (memory :> bytes64 (word_add sx0 (word 8))) s = b0_hi /\
+             ival (word_sub sx4 sx0) <= &16)
+        (\s. read PC s = word (pc + 0x970) /\
+             read X0 s = sx15 /\
+             read X9 s = word_zx (word_bytereverse (word_sub sx12 (word 3):int32)) /\
+             read X12 s = word_zx (word_sub sx12 (word 3):int32) /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             read X15 s = sx15 /\
+             read X16 s = sx16 /\
+             read X2 s = cptr /\
+             read X3 s = xiptr /\
+             read Q5 s = word_xor q0_in
+                          (word_insert
+                            (word_zx (word_xor b0_lo sx13):int128)
+                            (64,64)
+                            (word_xor b0_hi sx14)) /\
+             read (memory :> bytes32 (word_add sx16 (word 12))) s =
+                  word_subword (word_zx (word_bytereverse (word_sub sx12 (word 3):int32)):int64) (0,32):int32 /\
+             read (memory :> bytes128 cptr) s =
+                  word_xor q0_in
+                          (word_insert
+                            (word_zx (word_xor b0_lo sx13):int128)
+                            (64,64)
+                            (word_xor b0_hi sx14)) /\
+             (let q5_pre = word_xor q0_in
+                            (word_insert
+                              (word_zx (word_xor b0_lo sx13):int128)
+                              (64,64)
+                              (word_xor b0_hi sx14)) :int128 in
+              read (memory :> bytes128 xiptr) s =
+                   word_bytereverse
+                     (nist_ghash h q11_in [word_bytereverse q5_pre])))
+        (MAYCHANGE [PC; X0; X5; X6; X7; X9; X12] ,,
+         MAYCHANGE [Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11; Q20; Q21] ,,
+         MAYCHANGE [memory :> bytes128 cptr;
+                    memory :> bytes128 xiptr] ,,
+         MAYCHANGE [memory :> bytes32 (word_add sx16 (word 12))] ,,
+         MAYCHANGE SOME_FLAGS ,,
+         MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPECL[`pc:num`; `sx0:int64`; `sx4:int64`; `sx12:int32`;
+               `sx13:int64`; `sx14:int64`; `sx15:int64`; `sx16:int64`;
+               `cptr:int64`; `xiptr:int64`;
+               `q0_in:int128`; `q1_in:int128`; `q2_in:int128`;
+               `q11_in:int128`; `q12_in:int128`; `q16_in:int128`;
+               `b0_lo:int64`; `b0_hi:int64`]
+              AES_GCM_LENC_TAIL_N1_FULL_KERNEL_CORRECT) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  MATCH_MP_TAC(REWRITE_RULE[IMP_CONJ] ENSURES_POSTCONDITION_THM) THEN
+  GEN_TAC THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  STRIP_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  (* The new POST conjunct: bridge the kernel-form xiptr write to the spec
+     form via KERNEL_N1_XIPTR_AS_NIST_GHASH.  The PRE conjuncts on q12_in
+     and q16_in are already substituted by the preceding ASM_REWRITE_TAC,
+     so the kernel formula now uses byteswap128 (ghash_twist h) and
+     karatsuba_mid (ghash_twist h) — matching the helper's LHS exactly.
+     Note: the SPECL block-arg term must carry explicit `:int64`
+     annotations on b0_lo/sx13/b0_hi/sx14 so that the helper's polymorphic
+     widths match the goal's int64 widths (else type-vars `?N` mismatch). *)
+  MP_TAC(SPECL[`h:int128`; `q11_in:int128`;
+               `word_xor (q0_in:int128)
+                  (word_insert
+                    (word_zx (word_xor (b0_lo:int64) (sx13:int64)) :int128)
+                    (64,64)
+                    (word_xor (b0_hi:int64) (sx14:int64))) :int128`]
+              KERNEL_N1_XIPTR_AS_NIST_GHASH) THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  DISCH_THEN ACCEPT_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s084) — slice-to-kernel promotion of DISPATCH_N4_CORRECT.        *)
 (*                                                                           *)
 (* Promotes the slice-level DISPATCH_N4 (slice 129..138, slice offsets       *)
