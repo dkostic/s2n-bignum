@@ -1095,3 +1095,171 @@ let KERNEL_4BLOCK_NIST_BRIDGE_LASSOC = prove
 (* ========================================================================= *)
 (* End Phase 3b/c framework.                                                 *)
 (* ========================================================================= *)
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 1 (s137) — single-block kernel ↔ NIST GHASH bridge for    *)
+(* the N=1 tail.                                                             *)
+(*                                                                           *)
+(* The kernel's BLOCKS1_FINALIZATION_FULL_CLOSED tail (with q9_in = q10_in = *)
+(* q11_in = 0 and q8_pre = byteswap128(prev_tag)) writes the byte-reversed   *)
+(* form of `nist_ghash h prev_tag [word_bytereverse q5_pre]` to xiptr,       *)
+(* provided q12 = byteswap128(ghash_twist h) and the m-pmul scalar is        *)
+(* karatsuba_mid(ghash_twist h) (= q16_lo for the kernel's H-table layout).  *)
+(*                                                                           *)
+(* Proof: structurally fold the kernel's word_join + word_subword chain into *)
+(* `word_bytereverse(kernel_modulo q9d q11d q10d)`, then apply               *)
+(* KERNEL_PER_BLOCK_BRIDGE to identify with `polyval_dot block (ghash_twist  *)
+(* h)` for `block = byteswap128 q4`, then NIST_DOT_IS_POLYVAL_DOT and        *)
+(* the recursive nist_ghash unfolding to identify with                       *)
+(* `nist_ghash h prev_tag [word_bytereverse q5_pre]`.                        *)
+(* ------------------------------------------------------------------------- *)
+
+let KERNEL_N1_XIPTR_AS_NIST_GHASH = prove
+ (`!h prev_tag q5_pre:int128.
+     let q4 = word_xor (aes_gcm_rev64_int128 q5_pre)
+                       (byteswap128 prev_tag) :int128 in
+     let q12 = byteswap128 (ghash_twist h) :int128 in
+     let q9d = word_pmul (word_subword q4 (64,64) :int64)
+                         (word_subword q12 (64,64) :int64) :int128 in
+     let q10d = word_pmul (word_subword
+                            (word_zx (word_subword
+                                       (word_xor q4
+                                         (word_zx (word_subword q4 (64,64) :int64)
+                                          :int128))
+                                       (0,64) :int64)
+                             :int128)
+                            (0,64) :int64)
+                          (karatsuba_mid (ghash_twist h)) :int128 in
+     let q11d = word_pmul (word_subword q4 (0,64) :int64)
+                          (word_subword q12 (0,64) :int64) :int128 in
+     let m = word_xor (word_subword (word_join (q9d:int128) q9d :int256)
+                                    (64,128) :int128)
+                      (word_xor
+                        (word_pmul (word_subword q9d (0,64) :int64)
+                                   (word 13979173243358019584 :int64) :int128)
+                        (word_xor (word_xor q9d q11d) q10d)) in
+     let q9_post = word_pmul (word_subword m (0,64) :int64)
+                             (word 13979173243358019584 :int64) :int128 in
+     let q10_post = word_subword (word_join (m:int128) m :int256) (64,128) :int128 in
+     aes_gcm_rev64_int128
+        (word_join
+          (word_subword (word_xor (word_xor q11d q9_post) q10_post) (0,64) :int64)
+          (word_subword (word_xor (word_xor q11d q9_post) q10_post) (64,64) :int64)
+         :int128)
+     = word_bytereverse (nist_ghash h prev_tag [word_bytereverse q5_pre])`,
+  REPEAT GEN_TAC THEN
+  SUBGOAL_THEN
+   `!a b c:int128.
+       aes_gcm_rev64_int128
+        (word_join
+          (word_subword
+            (word_xor
+              (word_xor b
+                (word_pmul
+                  (word_subword
+                    (word_xor (word_subword (word_join (a:int128) a :int256)
+                                            (64,128) :int128)
+                              (word_xor
+                                (word_pmul (word_subword a (0,64) :int64)
+                                           (word 13979173243358019584 :int64)
+                                 :int128)
+                                (word_xor (word_xor a b) c)))
+                    (0,64) :int64)
+                  (word 13979173243358019584 :int64) :int128))
+              (word_subword
+                (word_join
+                  (word_xor (word_subword (word_join (a:int128) a :int256)
+                                          (64,128) :int128)
+                            (word_xor
+                              (word_pmul (word_subword a (0,64) :int64)
+                                         (word 13979173243358019584 :int64)
+                               :int128)
+                              (word_xor (word_xor a b) c)) :int128)
+                  (word_xor (word_subword (word_join (a:int128) a :int256)
+                                          (64,128) :int128)
+                            (word_xor
+                              (word_pmul (word_subword a (0,64) :int64)
+                                         (word 13979173243358019584 :int64)
+                               :int128)
+                              (word_xor (word_xor a b) c)) :int128) :int256)
+                (64,128) :int128))
+            (0,64) :int64)
+          (word_subword
+            (word_xor
+              (word_xor b
+                (word_pmul
+                  (word_subword
+                    (word_xor (word_subword (word_join (a:int128) a :int256)
+                                            (64,128) :int128)
+                              (word_xor
+                                (word_pmul (word_subword a (0,64) :int64)
+                                           (word 13979173243358019584 :int64)
+                                 :int128)
+                                (word_xor (word_xor a b) c)))
+                    (0,64) :int64)
+                  (word 13979173243358019584 :int64) :int128))
+              (word_subword
+                (word_join
+                  (word_xor (word_subword (word_join (a:int128) a :int256)
+                                          (64,128) :int128)
+                            (word_xor
+                              (word_pmul (word_subword a (0,64) :int64)
+                                         (word 13979173243358019584 :int64)
+                               :int128)
+                              (word_xor (word_xor a b) c)) :int128)
+                  (word_xor (word_subword (word_join (a:int128) a :int256)
+                                          (64,128) :int128)
+                            (word_xor
+                              (word_pmul (word_subword a (0,64) :int64)
+                                         (word 13979173243358019584 :int64)
+                               :int128)
+                              (word_xor (word_xor a b) c)) :int128) :int256)
+                (64,128) :int128))
+            (64,64) :int64) :int128)
+        = word_bytereverse (kernel_modulo a b c)`
+   (LABEL_TAC "MOD_FOLD")
+  THENL
+   [REPEAT GEN_TAC THEN
+    REWRITE_TAC[kernel_modulo; byteswap128; aes_gcm_rev64_int128;
+                LET_DEF; LET_END_DEF; PMUL_W_64_128] THEN
+    CONV_TAC(DEPTH_CONV let_CONV) THEN
+    CONV_TAC BITBLAST_RULE;
+    ALL_TAC] THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(LAND_CONV(DEPTH_CONV let_CONV)) THEN
+  ASM_REWRITE_TAC[] THEN
+  ABBREV_TAC `q4 = word_xor (aes_gcm_rev64_int128 q5_pre)
+                            (byteswap128 prev_tag) :int128` THEN
+  SUBGOAL_THEN `!x:int128. byteswap128 (byteswap128 x) = x`
+    (fun th -> ASSUME_TAC th) THENL
+   [GEN_TAC THEN REWRITE_TAC[byteswap128] THEN BITBLAST_TAC; ALL_TAC] THEN
+  MP_TAC(SPECL[`byteswap128 q4 :int128`; `ghash_twist h :int128`]
+              KERNEL_PER_BLOCK_BRIDGE) THEN
+  ASM_REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  SUBGOAL_THEN
+   `(word_subword
+      (word_zx
+        (word_subword
+          (word_xor q4 (word_zx (word_subword q4 (64,64) :int64) :int128))
+          (0,64) :int64)
+       :int128)
+      (0,64) :int64) =
+    word_xor (word_subword q4 (64,64) :int64) (word_subword q4 (0,64) :int64)`
+   SUBST1_TAC THENL [BITBLAST_TAC; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `karatsuba_mid (ghash_twist h) =
+    word_xor (word_subword (byteswap128 (ghash_twist h)) (64,64) :int64)
+             (word_subword (byteswap128 (ghash_twist h)) (0,64) :int64)`
+   SUBST1_TAC THENL
+   [REWRITE_TAC[karatsuba_mid; byteswap128] THEN BITBLAST_TAC;
+    ALL_TAC] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  AP_TERM_TAC THEN
+  POP_ASSUM(K ALL_TAC) THEN
+  POP_ASSUM(SUBST1_TAC o SYM) THEN
+  REWRITE_TAC[nist_ghash; NIST_DOT_IS_POLYVAL_DOT] THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN
+  REWRITE_TAC[byteswap128; aes_gcm_rev64_int128] THEN
+  BITBLAST_TAC);;
+
