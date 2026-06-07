@@ -106,35 +106,107 @@ let aes128_cipher_arm = new_definition
     let s10 = aes_arm_final_round s9 (EL 9 ks) in
     word_xor s10 (EL 10 ks)`;;
 
-(* TODO: prove the equivalence between `aes128_cipher_arm` and the spec's   *)
-(* `aes128_cipher` (which uses FIPS-order `fips197_round` from              *)
-(* common/fips197.ml).  Both compute the same byte-level cipher because     *)
-(* `joined_GF2` is constructed so SubBytes-via-joined_GF2 commutes with     *)
-(* ShiftRows.  The single fact that wraps it up is:                         *)
+(* The SR↔SB commutation lemma — workhorse for the                         *)
+(* `aes128_cipher_arm = aes128_cipher` equivalence (still pending).         *)
 (*                                                                           *)
-(*   `aes_sub_bytes joined_GF2 (aes_shift_rows x) =                         *)
-(*    aes_shift_rows (aes_sub_bytes joined_GF2 x)`                          *)
+(* The proof is byte-wise extensional: 16 separate equations of the form    *)
+(* `word_subword (aes_shift_rows op) (k*8, 8) = word_subword op (perm(k)*8, *)
+(*  8)` are each proved by `BITBLAST_RULE` (fast, ~25-30ms each).            *)
+(* These let us simplify the LHS of the commutation by ASM_REWRITE.  The   *)
+(* RHS unfolds via `WORD_SIMPLE_SUBWORD_CONV` (push word_subword through   *)
+(* word_join chain).  Both sides reduce to the same 16-fold word_join of   *)
+(* `aes_sub_byte joined_GF2 (word_subword op (n,8))` at matching offsets;   *)
+(* `REFL_TAC` closes.                                                        *)
 (*                                                                           *)
-(* (the SR↔SB commutation).  After this, `aes128_cipher_arm pt ks =          *)
-(* aes128_cipher pt ks` falls out by induction over the 10 rounds + final.  *)
+(* Why direct `BITBLAST_TAC` on the unprojected goal fails: `aes_sub_byte   *)
+(* joined_GF2 X` is opaque to the BDD engine (BDD treats it as              *)
+(* uninterpreted because it involves `val X` indexing into a 2048-bit       *)
+(* constant).  Without bridging the indexing, the LHS's                     *)
+(* `aes_sub_byte joined_GF2 (word_subword (aes_shift_rows op) (k,8))` does  *)
+(* not unify with the RHS's                                                  *)
+(* `aes_sub_byte joined_GF2 (word_subword op (perm(k)*8, 8))`.               *)
+let AES_SUB_BYTES_SHIFT_ROWS_COMM = prove
+ (`!op:128 word.
+     aes_sub_bytes joined_GF2 (aes_shift_rows op) =
+     aes_shift_rows (aes_sub_bytes joined_GF2 op)`,
+  GEN_TAC THEN
+  SUBGOAL_THEN
+   `(word_subword (aes_shift_rows op) (0,8) :8 word = word_subword op (0,8)) /\
+    (word_subword (aes_shift_rows op) (8,8) :8 word = word_subword op (40,8)) /\
+    (word_subword (aes_shift_rows op) (16,8) :8 word = word_subword op (80,8)) /\
+    (word_subword (aes_shift_rows op) (24,8) :8 word = word_subword op (120,8)) /\
+    (word_subword (aes_shift_rows op) (32,8) :8 word = word_subword op (32,8)) /\
+    (word_subword (aes_shift_rows op) (40,8) :8 word = word_subword op (72,8)) /\
+    (word_subword (aes_shift_rows op) (48,8) :8 word = word_subword op (112,8)) /\
+    (word_subword (aes_shift_rows op) (56,8) :8 word = word_subword op (24,8)) /\
+    (word_subword (aes_shift_rows op) (64,8) :8 word = word_subword op (64,8)) /\
+    (word_subword (aes_shift_rows op) (72,8) :8 word = word_subword op (104,8)) /\
+    (word_subword (aes_shift_rows op) (80,8) :8 word = word_subword op (16,8)) /\
+    (word_subword (aes_shift_rows op) (88,8) :8 word = word_subword op (56,8)) /\
+    (word_subword (aes_shift_rows op) (96,8) :8 word = word_subword op (96,8)) /\
+    (word_subword (aes_shift_rows op) (104,8) :8 word = word_subword op (8,8)) /\
+    (word_subword (aes_shift_rows op) (112,8) :8 word = word_subword op (48,8)) /\
+    (word_subword (aes_shift_rows op) (120,8) :8 word = word_subword op (88,8))`
+  MP_TAC THENL
+   [REWRITE_TAC[aes_shift_rows; word_join_list_16_8; LET_DEF; LET_END_DEF] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    REPEAT CONJ_TAC THEN CONV_TAC BITBLAST_RULE;
+    STRIP_TAC THEN
+    REWRITE_TAC[aes_sub_bytes; aes_sub_bytes_select; LET_DEF; LET_END_DEF] THEN
+    REWRITE_TAC[word_join_list_16_8] THEN
+    CONV_TAC(DEPTH_CONV EL_CONV) THEN
+    CONV_TAC(LAND_CONV(DEPTH_CONV NUM_RED_CONV)) THEN
+    ASM_REWRITE_TAC[] THEN
+    CONV_TAC(RAND_CONV(REWRITE_CONV[aes_shift_rows; word_join_list_16_8]) THENC
+             RAND_CONV(DEPTH_CONV EL_CONV) THENC
+             RAND_CONV(TOP_DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THENC
+             RAND_CONV(DEPTH_CONV NUM_RED_CONV)) THEN
+    REFL_TAC]);;
+
+(* TODO (Phase 11b A1, deferred): prove                                     *)
+(*   `forall pt ks. aes128_cipher_arm pt ks = aes128_cipher pt ks`          *)
+(* The above SR↔SB commutation is the workhorse, BUT it is not enough on   *)
+(* its own.  The two ciphers are expressed using DIFFERENT byte-position   *)
+(* assignments to the AES state matrix:                                     *)
 (*                                                                           *)
-(* This commutation is *NOT* directly closed by `BITBLAST_TAC` because       *)
-(* `aes_sub_byte joined_GF2` involves a 8-bit symbolic shift into a 2048-   *)
-(* bit constant `joined_GF2`, which makes the SAT instance combinatorially  *)
-(* expensive.  A workable proof is byte-wise extensional: split each side   *)
-(* into 16 byte projections via `WORD_SUBWORD_JOIN_LOWER`/`UPPER`, observe  *)
-(* both byte projections at position `i` reduce to                          *)
-(* `aes_sub_byte joined_GF2 (word_subword x (n_i, 8))` for the same `n_i`,  *)
-(* and conclude.  Single-byte projection of `aes_shift_rows` does close     *)
-(* under `WORD_BLAST` (fast); the obstacle is automating the                *)
-(* `WORD_SUBWORD_JOIN_*` push-throughs because the dimension-index          *)
-(* hypotheses must be discharged at non-power-of-2 widths (120, 112, 104,   *)
-(* …).  Punted to a follow-on session.                                      *)
+(*   - `aes_arm_round` uses ARM/AES-NI byte order (HOL byte 0 = state[0,0],*)
+(*     column-major: HOL byte k = state[k MOD 4, k DIV 4]).  This is what  *)
+(*     ARM AESE actually does; the KAT-validated bridge.                    *)
+(*   - `fips197_round` uses NIST-style byte order with byte 0 in HOL =     *)
+(*     state[3,3] of NIST (the bottom-right corner), since FIPS 197         *)
+(*     Section 5.1 numbers state bytes from the upper-left in row-major,   *)
+(*     and HOL `word 0xN..` puts byte 0 at LSB.  The KAT for               *)
+(*     `aes128_cipher` (FIPS Appendix B) confirms this.                    *)
 (*                                                                           *)
-(* Until the bridge is proved, downstream proofs should phrase their        *)
-(* algorithmic statements in terms of `aes128_cipher_arm` rather than        *)
-(* `aes128_cipher`; the public byte-level theorem (Phase 11) will discharge *)
-(* the equivalence once at the top level.                                   *)
+(* Concretely, `aes_shift_rows` and `fips197_shift_rows` are NOT equal as  *)
+(* functions — they differ by a byte permutation π that conjugates them:   *)
+(* `aes_shift_rows = π ∘ fips197_shift_rows ∘ π^{-1}`.  The same π          *)
+(* conjugates `aes_mix_columns` ↔ `fips197_mix_columns` (since both        *)
+(* implement standard AES MixColumns under their respective byte           *)
+(* orderings).  `aes_sub_bytes = fips197_sub_bytes` directly (SubBytes     *)
+(* commutes with any byte permutation since it's byte-wise).                *)
+(*                                                                           *)
+(* Thus `aes128_cipher_arm pt ks = aes128_cipher pt ks` (assuming the same  *)
+(* round-key list ks is interpreted under the same byte ordering on both   *)
+(* sides — which it is, since the kernel reads its keysched as int128's   *)
+(* and applies them via word_xor, and the AES-NI bridge `aes128_cipher_arm *)
+(* pt ks` matches the ARM hardware behavior on the same int128 inputs).    *)
+(*                                                                           *)
+(* The proof requires either:                                               *)
+(*   (a) Identifying π explicitly and proving                              *)
+(*         `aes_arm_round s rk = π(fips197_round (π^{-1} s) (π^{-1} rk))`  *)
+(*       then noting that π is involutive or cancels across the chain.    *)
+(*   (b) A direct byte-by-byte induction over the 10-round chain showing   *)
+(*       both sides equal a common normal form (e.g., the byte-level KAT   *)
+(*       result from FIPS Appendix B) — likely requires unfolding both    *)
+(*       through 10 rounds and using the SR↔SB commutation 9 times.        *)
+(*                                                                           *)
+(* Naïve `REWRITE_TAC[aes128_cipher_arm; aes128_cipher; ...]` hangs         *)
+(* (rewriter explosion on the 10-deep let-chain × 16 word_subword each).   *)
+(*                                                                           *)
+(* Until the equivalence is proved, downstream proofs phrase algorithmic   *)
+(* statements in terms of `aes128_cipher_arm`; the public byte-level       *)
+(* theorem (Phase 11) will discharge the equivalence once at the top.       *)
 
 (* ========================================================================= *)
 (* Phase 3c: NIST byte-order bridge.                                         *)
