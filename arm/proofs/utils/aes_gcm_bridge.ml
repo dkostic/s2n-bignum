@@ -378,48 +378,91 @@ let AES_MIX_COLUMNS_VS_FIPS = prove
   DISCH_THEN(SUBST1_TAC o SYM) THEN
   REFL_TAC);;
 
-(* TODO (Phase 11b A1, deferred — corrected target): the kernel-vs-FIPS    *)
-(* cipher relationship is                                                    *)
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b A1 — `aes128_cipher_arm` ↔ `aes128_cipher` bridge.              *)
+(*                                                                           *)
+(* Proves                                                                    *)
 (*                                                                           *)
 (*   aes128_cipher_arm pt ks =                                               *)
 (*     word_bytereverse (aes128_cipher (word_bytereverse pt)                 *)
 (*                                     (MAP word_bytereverse ks))            *)
 (*                                                                           *)
-(* (NOT `aes128_cipher_arm pt ks = aes128_cipher pt ks` — confirmed FALSE   *)
-(* by direct evaluation in s136: `aes_arm_round` on the FIPS Appendix B     *)
-(* round-1 inputs gives `0xd4b42de533b1a833b711b95b016f84ec` but FIPS        *)
-(* round 1 yields `0xa49c7ff2689f352b6b5bea43026a5049`.)                    *)
+(* (NOT `aes128_cipher_arm pt ks = aes128_cipher pt ks` — that stronger     *)
+(* equality is FALSE.  Verified by direct evaluation: `aes_arm_round` on    *)
+(* the FIPS 197 Appendix B round-1 inputs produces                           *)
+(* `0xd4b42de533b1a833b711b95b016f84ec`, but FIPS round 1 produces           *)
+(* `0xa49c7ff2689f352b6b5bea43026a5049` — different bit patterns.)          *)
 (*                                                                           *)
-(* Proof sketch (induction on round count using the conjugations above):    *)
-(*   • Define τ_i = byterev (s_arm_i).  Show by induction that under         *)
-(*     ks_fips := MAP byterev ks_arm and pt_fips := byterev pt_arm,         *)
-(*     `s_arm_i ⊕ ks_arm_i = byterev (s_fips_i)` for i = 1..9.              *)
-(*   • Final round: ARM final = SR_arm(SB(s_arm_9 ⊕ k9)) ⊕ k10 reduces      *)
-(*     via the conjugations to `byterev(SR_fips(SB(s_fips_9))) ⊕ k10`,      *)
-(*     while FIPS output = SR_fips(SB(s_fips_9)) ⊕ byterev(k10).            *)
-(*     Then ARM output = byterev(FIPS output ⊕ byterev(k10)) ⊕ k10          *)
-(*                     = byterev(FIPS output) ⊕ k10 ⊕ k10                  *)
-(*                     = byterev(FIPS output).                              *)
+(* Proof strategy (NO induction needed — direct rewrite chain):              *)
+(*   1. Strip universal quantifier; use `LENGTH ks = 11` to discharge        *)
+(*      `EL k (MAP byterev ks) = byterev (EL k ks)` for k = 0..10.           *)
+(*   2. Unfold both `aes128_cipher_arm` and `aes128_cipher` to expose the    *)
+(*      raw MC/SR/SB/XOR chain on each side (10 layers + final).            *)
+(*   3. Rewrite RHS's FIPS functions to ARM functions via the inverse        *)
+(*      conjugations:                                                        *)
+(*        `fips197_shift_rows op = byterev(aes_shift_rows(byterev op))`     *)
+(*        `fips197_mix_columns op = byterev(aes_mix_columns(byterev op))`   *)
+(*      and use `GSYM AES_SUB_BYTES_BYTEREVERSE_COMM` to pull SB through    *)
+(*      a byterev.                                                           *)
+(*   4. Cancel `byterev (byterev x) = x`, push byterev through XOR via       *)
+(*      `byterev(a ⊕ b) = byterev a ⊕ byterev b`, and use ARM's              *)
+(*      SR-SB commutation `AES_SUB_BYTES_SHIFT_ROWS_COMM` to align both      *)
+(*      sides.  After two passes, both sides are syntactically identical.   *)
 (*                                                                           *)
-(* Open question for human direction: the right phrasing for the Phase 11   *)
-(* public theorem.  Two options:                                             *)
-(*   (i) keep the spec wrapper as `aes128_cipher` (FIPS-form) and            *)
-(*       discharge the byterev-of-keys relation in the public theorem       *)
-(*       (caller-obligation: keys-in-memory are byterev of FIPS-form keys), *)
-(*  (ii) redefine `aes_gcm_encrypt_bytes` to use `aes128_cipher_arm`        *)
-(*       directly — this matches what the kernel actually computes from    *)
-(*       in-memory bytes, but diverges from the FIPS-197-flavoured spec    *)
-(*       layer.                                                              *)
-(*                                                                           *)
-(* Option (ii) is closer to the kernel's actual behavior and avoids needing *)
-(* a global byterev fixup at the public-theorem boundary.  Option (i) keeps *)
-(* the spec textually faithful to FIPS 197 but the public theorem has to    *)
-(* state both pt-byterev and key-byterev hypotheses.                        *)
-(*                                                                           *)
-(* Until the cipher equivalence is proved with the corrected RHS, downstream *)
-(* proofs phrase algorithmic statements in terms of `aes128_cipher_arm`;    *)
-(* the public byte-level theorem (Phase 11) will discharge the equivalence  *)
-(* once at the top.                                                          *)
+(* Open question for human direction (DEFERRED to Phase 11 spec layer):     *)
+(* should `aes_gcm_encrypt_bytes` use `aes128_cipher` (FIPS-form, requiring  *)
+(* byterev-of-keys at the public theorem boundary) or `aes128_cipher_arm`   *)
+(* (matches kernel behavior on in-memory bytes directly)?  Both are now     *)
+(* equally valid: A1 below provides the bridge in either direction.          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES128_CIPHER_ARM_AS_FIPS = prove
+ (`!pt ks:int128 list.
+     LENGTH ks = 11
+     ==> aes128_cipher_arm pt ks =
+         word_bytereverse
+           (aes128_cipher (word_bytereverse pt) (MAP word_bytereverse ks))`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[aes128_cipher_arm; aes128_cipher; LET_DEF; LET_END_DEF] THEN
+  SUBGOAL_THEN
+   `(EL 0 (MAP word_bytereverse (ks:int128 list)) =
+       word_bytereverse (EL 0 ks)) /\
+    (EL 1 (MAP word_bytereverse ks) = word_bytereverse (EL 1 ks)) /\
+    (EL 2 (MAP word_bytereverse ks) = word_bytereverse (EL 2 ks)) /\
+    (EL 3 (MAP word_bytereverse ks) = word_bytereverse (EL 3 ks)) /\
+    (EL 4 (MAP word_bytereverse ks) = word_bytereverse (EL 4 ks)) /\
+    (EL 5 (MAP word_bytereverse ks) = word_bytereverse (EL 5 ks)) /\
+    (EL 6 (MAP word_bytereverse ks) = word_bytereverse (EL 6 ks)) /\
+    (EL 7 (MAP word_bytereverse ks) = word_bytereverse (EL 7 ks)) /\
+    (EL 8 (MAP word_bytereverse ks) = word_bytereverse (EL 8 ks)) /\
+    (EL 9 (MAP word_bytereverse ks) = word_bytereverse (EL 9 ks)) /\
+    (EL 10 (MAP word_bytereverse ks) = word_bytereverse (EL 10 ks))`
+  STRIP_ASSUME_TAC THENL
+   [REPEAT CONJ_TAC THEN MATCH_MP_TAC EL_MAP THEN
+    ASM_REWRITE_TAC[] THEN ARITH_TAC;
+    ASM_REWRITE_TAC[]] THEN
+  REWRITE_TAC[aes_arm_round; aes_arm_final_round;
+              fips197_round; fips197_final_round; fips197_sub_bytes] THEN
+  REWRITE_TAC[
+    prove(`!op:128 word.
+             fips197_shift_rows op =
+             word_bytereverse (aes_shift_rows (word_bytereverse op))`,
+          GEN_TAC THEN REWRITE_TAC[AES_SHIFT_ROWS_VS_FIPS] THEN
+          REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE]);
+    prove(`!op:128 word.
+             fips197_mix_columns op =
+             word_bytereverse (aes_mix_columns (word_bytereverse op))`,
+          GEN_TAC THEN REWRITE_TAC[AES_MIX_COLUMNS_VS_FIPS] THEN
+          REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE]);
+    GSYM AES_SUB_BYTES_BYTEREVERSE_COMM] THEN
+  REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE] THEN
+  REWRITE_TAC[
+    prove(`!a b:128 word. word_xor (word_bytereverse a) (word_bytereverse b) =
+                          word_bytereverse (word_xor a b)`,
+          REPEAT GEN_TAC THEN BITBLAST_TAC);
+    WORD_BYTEREVERSE_BYTEREVERSE; AES_SUB_BYTES_SHIFT_ROWS_COMM] THEN
+  REWRITE_TAC[GSYM AES_SUB_BYTES_BYTEREVERSE_COMM;
+              WORD_BYTEREVERSE_BYTEREVERSE]);;
 
 (* ========================================================================= *)
 (* Phase 3c: NIST byte-order bridge.                                         *)
