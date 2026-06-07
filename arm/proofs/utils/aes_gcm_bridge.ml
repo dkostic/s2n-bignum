@@ -214,6 +214,119 @@ let AES_GCM_REV64_OF_EMIT_FORM = prove
   REWRITE_TAC[aes_gcm_rev64_int128] THEN
   BITBLAST_TAC);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 8/11 helper (A2 — emit-form ↔ ciphertext bridge).                   *)
+(*                                                                           *)
+(* Two lemmas connect the kernel's main-loop-body Q4..Q7 emit form (the      *)
+(* shape produced by the first half of `Lenc_main_loop` after the v-block-   *)
+(* level `eor` of plaintext-XOR'd-rk10 with the AESE-of-9-round output) to   *)
+(* the spec-level ciphertext expression `pt XOR aes128_cipher_arm ctr ks`.   *)
+(*                                                                           *)
+(* Concretely, the kernel emits (e.g. for Q4) the term                       *)
+(*                                                                           *)
+(*    word_xor (aese s9 rk9)                                                 *)
+(*             (word_insert (word_zx (pt_lo XOR rk10_lo)) (64,64)            *)
+(*                          (pt_hi XOR rk10_hi))                             *)
+(*                                                                           *)
+(* where:                                                                    *)
+(*   - `s9 = aes_arm_round^9 ctr [rk0..rk8]` is the 9-round AES output       *)
+(*     (held in V0..V3 just before `aese vi, v31` for round 9),              *)
+(*   - `rk10_lo` = `word_subword rk10 (0,64) :int64`,                        *)
+(*     `rk10_hi` = `word_subword rk10 (64,64) :int64` are the halves of the  *)
+(*     AES-128 last round key (held in scalar regs X13/X14 for the body),    *)
+(*   - `pt_lo`, `pt_hi` are the 64-bit halves of the plaintext block (just   *)
+(*     loaded via `ldp` from `[X0]`).                                        *)
+(*                                                                           *)
+(* The first lemma (KERNEL_PT_RK10_INSERT_AS_XOR) is purely structural: the  *)
+(* kernel's split-half XOR-then-insert assembly equals the natural "build a  *)
+(* full int128 plaintext block, then XOR with rk10".                         *)
+(*                                                                           *)
+(* The second lemma (AES_GCM_EMIT_FORM_AS_PT_XOR_CIPHER) chains in the AES   *)
+(* round structure: when `s9` is the result of 9 `aes_arm_round`s applied to *)
+(* a counter `ctr` with round keys `rk0..rk8`, the kernel emit form is       *)
+(* `pt XOR aes128_cipher_arm ctr [rk0..rk10]` where `pt` is the assembled    *)
+(* full plaintext block.                                                     *)
+(*                                                                           *)
+(* These bridges are required by Stage 1 / Stage 2 of the functional uplift  *)
+(* plan: the per-N tail wrappers (B3) and the main-loop wrapper (B1) need    *)
+(* to identify their byte-level memory POSTs against `pt XOR aes-cipher`     *)
+(* spec terms.                                                               *)
+(* ------------------------------------------------------------------------- *)
+
+(* Structural identity: the kernel's split-half rk10 absorption.             *)
+(* Equivalent forms:                                                         *)
+(*   LHS — "XOR rk10 in scalar half-by-half before inserting into v-reg":    *)
+(*     word_insert (word_zx (pt_lo XOR rk10_lo)) (64,64) (pt_hi XOR rk10_hi) *)
+(*   RHS — "build the full plaintext int128, then XOR rk10":                 *)
+(*     word_xor (word_insert (word_zx pt_lo) (64,64) pt_hi) rk10              *)
+let KERNEL_PT_RK10_INSERT_AS_XOR = prove
+ (`!pt_lo pt_hi rk10:int128.
+     word_insert
+        (word_zx (word_xor pt_lo (word_subword rk10 (0,64) :64 word))
+         :int128)
+        (64,64)
+        (word_xor pt_hi (word_subword rk10 (64,64) :64 word))
+     = word_xor (word_insert (word_zx pt_lo :int128) (64,64) pt_hi) rk10`,
+  REPEAT GEN_TAC THEN BITBLAST_TAC);;
+
+(* The full emit-form ↔ "pt XOR aes128_cipher_arm" bridge.                   *)
+(*                                                                           *)
+(* When `s9` is the result of 9 `aes_arm_round`s over a counter `ctr`        *)
+(* (with round keys rk0..rk8), the kernel's body-exit emit form for one of  *)
+(* Q4..Q7 equals `pt XOR aes128_cipher_arm ctr [rk0..rk10]` where            *)
+(* `pt = word_insert (word_zx pt_lo) (64,64) pt_hi`.                         *)
+(*                                                                           *)
+(* Proof: unfold `aes128_cipher_arm` to expose `aes_arm_final_round s9 rk9   *)
+(* XOR rk10` on the RHS; rewrite `aese` to `aes_arm_final_round` via         *)
+(* AESE_AS_ARM_FINAL_ROUND; close the residual word-arithmetic identity      *)
+(* via BITBLAST.                                                             *)
+let AES_GCM_EMIT_FORM_AS_PT_XOR_CIPHER = prove
+ (`!ctr (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9 rk10
+        pt_lo pt_hi.
+     let s1 = aes_arm_round ctr rk0 in
+     let s2 = aes_arm_round s1 rk1 in
+     let s3 = aes_arm_round s2 rk2 in
+     let s4 = aes_arm_round s3 rk3 in
+     let s5 = aes_arm_round s4 rk4 in
+     let s6 = aes_arm_round s5 rk5 in
+     let s7 = aes_arm_round s6 rk6 in
+     let s8 = aes_arm_round s7 rk7 in
+     let s9 = aes_arm_round s8 rk8 in
+     word_xor (aese s9 rk9)
+              (word_insert
+                 (word_zx (word_xor pt_lo (word_subword rk10 (0,64) :64 word))
+                  :int128)
+                 (64,64)
+                 (word_xor pt_hi (word_subword rk10 (64,64) :64 word)))
+     = word_xor (word_insert (word_zx pt_lo :int128) (64,64) pt_hi)
+                (aes128_cipher_arm ctr
+                   [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;rk10])`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[aes128_cipher_arm; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND] THEN
+  BITBLAST_TAC);;
+
+(* A "thin" form of the emit bridge that does not bind the 9-round state    *)
+(* schedule: parametric in an opaque `s9`, identifying the kernel's emit    *)
+(* form with `pt XOR (aes_arm_final_round s9 rk9 XOR rk10)`.  Useful when   *)
+(* the upstream caller wants to discharge the s9 ↔ ctr correspondence       *)
+(* separately (e.g. from a slice-exit ARM_STEPS chain that already has the  *)
+(* 9-round expanded form in scope).                                         *)
+let AES_GCM_EMIT_FORM_THIN = prove
+ (`!s9 rk9 rk10 pt_lo pt_hi.
+     word_xor (aese s9 rk9)
+              (word_insert
+                 (word_zx (word_xor pt_lo (word_subword rk10 (0,64) :64 word))
+                  :int128)
+                 (64,64)
+                 (word_xor pt_hi (word_subword rk10 (64,64) :64 word)))
+     = word_xor (word_insert (word_zx pt_lo :int128) (64,64) pt_hi)
+                (word_xor (aes_arm_final_round s9 rk9) rk10)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND] THEN
+  BITBLAST_TAC);;
+
 (* ========================================================================= *)
 (* Phase 3b/c: GHASH 4-block Karatsuba bridge — framework + sub-lemmas.      *)
 (*                                                                           *)

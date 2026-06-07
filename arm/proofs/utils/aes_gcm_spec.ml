@@ -205,6 +205,71 @@ let aes_gcm_ctr_encrypt_bytes = new_definition
                    (APPEND bs (REPLICATE (16 * n - LENGTH bs) (word 0)))
                    ks_bytes)`;;
 
+(* ------------------------------------------------------------------------- *)
+(* Partial-block / per-block spec helpers (Phase 11b functional uplift, A4). *)
+(*                                                                           *)
+(* The kernel works at the 16-byte block level even for a partial last       *)
+(* block: the tail (`Lenc_blocks_{1,2,3,4}_remaining`) reads 16 bytes from   *)
+(* the input buffer (caller-supplied; trailing bytes beyond `byte_len` are   *)
+(* assumed valid memory), runs one full AES-128 cipher, XORs, and stores 16 *)
+(* bytes of ciphertext.  Only the first `byte_len mod 16` (or 16 if exactly  *)
+(* aligned) bytes of the last block are "real" ciphertext; the remainder is *)
+(* unspecified-but-deterministically-derived junk.                           *)
+(*                                                                           *)
+(* GHASH consumes the full 16-byte ciphertext block (the kernel doesn't      *)
+(* zero the tail bytes in v5 before `rev64`-ing), but the public spec        *)
+(* truncates to `byte_len` bytes via SUB_LIST.                                *)
+(*                                                                           *)
+(* These helpers expose the per-block keystream and ciphertext cleanly so    *)
+(* per-N tail wrappers (B3) can identify their POSTs against simple block-   *)
+(* level expressions instead of unfolding the full byte-list machinery.      *)
+(* ------------------------------------------------------------------------- *)
+
+(* The i-th counter value: i increments of `aes_gcm_ctr_increment` from      *)
+(* `ctr0`.                                                                   *)
+let aes_gcm_ctr_at = new_definition
+ `aes_gcm_ctr_at (ctr0:int128) (i:num) : int128 =
+    ITER i aes_gcm_ctr_increment ctr0`;;
+
+(* The i-th keystream block: AES-128 cipher applied to the i-th counter.    *)
+let aes_gcm_ks_block_at = new_definition
+ `aes_gcm_ks_block_at (ctr0:int128) (keysched:int128 list) (i:num) : int128 =
+    aes128_cipher (aes_gcm_ctr_at ctr0 i) keysched`;;
+
+(* The i-th ciphertext block as an int128, given block-list plaintext       *)
+(* (treats trailing bytes beyond LENGTH bs as zero — matches the kernel     *)
+(* reading 16 bytes per block into v4, after `eor v4, v4, v0` produces the  *)
+(* corresponding ciphertext block).                                          *)
+(*                                                                           *)
+(* For block i fully within [0, LENGTH bs / 16) (i.e. all 16 bytes of input *)
+(* present), this is exactly the spec ciphertext for that block.            *)
+(* For the partial-final-block case, this is the FULL 16-byte stored block *)
+(* (junk-padded with zero-XOR'd keystream tail bytes).                       *)
+let aes_gcm_ct_block_at = new_definition
+ `aes_gcm_ct_block_at (pt_bytes:byte list) (ctr0:int128)
+                       (keysched:int128 list) (i:num) : int128 =
+    word_xor (aes_gcm_block_at pt_bytes i)
+             (aes_gcm_ks_block_at ctr0 keysched i)`;;
+
+(* Number of bytes belonging to the last block of `byte_len` total bytes.    *)
+(* Convention: `byte_len = 0` → 0; `byte_len > 0 ∧ 16 | byte_len` → 16;     *)
+(* otherwise → `byte_len mod 16`.  Matches the kernel's "tail processes at  *)
+(* least 1 byte" convention from `byte_len - 1; AND 0xFFC0; +X0` (line 64). *)
+let aes_gcm_last_block_bytes = new_definition
+ `aes_gcm_last_block_bytes (byte_len:num) : num =
+    if byte_len = 0 then 0
+    else (let r = byte_len MOD 16 in if r = 0 then 16 else r)`;;
+
+(* "Padded plaintext byte list" for spec consumption: the input bytes plus  *)
+(* enough zero padding to reach a multiple of 16.  The kernel reads from    *)
+(* the actual plaintext buffer (caller-supplied) but the spec treats those  *)
+(* trailing bytes as zero, since GHASH on the kernel side mixes in the     *)
+(* keystream-XOR'd junk bytes; the public spec then truncates to byte_len.  *)
+let aes_gcm_zero_padded_pt = new_definition
+ `aes_gcm_zero_padded_pt (bs:byte list) : byte list =
+    APPEND bs (REPLICATE (16 * aes_gcm_num_blocks (LENGTH bs) - LENGTH bs)
+                          (word 0))`;;
+
 (* H = AES_E(K, 0^128); the "raw" GHASH key value used by the NIST spec.    *)
 let aes_gcm_h_raw = new_definition
  `aes_gcm_h_raw (keysched:int128 list) : int128 =
