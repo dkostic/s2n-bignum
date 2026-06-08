@@ -20507,6 +20507,115 @@ let AES_GCM_PREPRETAIL_R6R7_BLOCK0123_Q9_BLOCK3HIGH_PLUS_Q10_CORRECT = prove
   TRY (CONV_TAC WORD_BLAST));;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s146) — chain extension OPEN_R1R2R3_PLUS_Q10:          *)
+(* compose OPEN_R0_R1R2_R0R1G + R1R2R3_PLUS_Q10 (slice 1..36) preserving Q10 *)
+(* spec form `word_zx (word_subword q17 (64,64))` from R0R1's setup at      *)
+(* instr 22.                                                                 *)
+(*                                                                           *)
+(* This is the first link in the Q10-tracking chain: Q10 enters POST as      *)
+(* the dup'd high-half of q17 (the karatsuba_mid layout for h^2/h^3 packed  *)
+(* in q17), and is preserved through R1R2R3 since that cut doesn't touch Q10*)
+(* (Q10 is not in its MAYCHANGE — automatic preservation per                *)
+(* [[arm_bigstep_propagates_preserved]]).                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_PLUS_Q10_CORRECT = prove
+ (`!pc (q0_pre:int128) (q1_pre:int128) (q2_pre:int128)
+       (q4_pre:int128) (q5_pre:int128) (q6_pre:int128) (q11_pre:int128)
+       (q15:int128) (q17:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+       (sx9:int64) (sx10:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q2 s = q2_pre /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q11 s = q11_pre /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0x90) /\
+          read Q0 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round q0_pre rk0) rk1) rk2 /\
+          read Q1 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round q1_pre rk0) rk1) rk2 /\
+          read Q2 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round (aes_arm_round q2_pre rk0)
+                                                     rk1)
+                                      rk2)
+                       rk3 /\
+          read Q3 s = aes_arm_round
+                       (aes_arm_round
+                         (word_insert (word_zx (sx10:int64):int128)
+                                      (64,64) sx9 :int128)
+                         rk0)
+                       rk1 /\
+          read Q4 s = word_xor (aes_gcm_rev64_int128 q4_pre)
+                               (byteswap128 q11_pre) /\
+          read Q5 s = aes_gcm_rev64_int128 q5_pre /\
+          read Q6 s = aes_gcm_rev64_int128 q6_pre /\
+          read Q9 s = (word_pmul
+                        (word_subword
+                          (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                    (byteswap128 q11_pre)) (64,64):int64)
+                        (word_subword q15 (64,64):int64) :int128) /\
+          read Q10 s = (word_zx (word_subword q17 (64,64):int64):int128) /\
+          read Q11 s = (word_pmul
+                         (word_subword
+                           (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                     (byteswap128 q11_pre)) (0,64):int64)
+                         (word_subword q15 (0,64):int64) :int128) /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL[`pc:num`; `q0_pre:int128`; `q1_pre:int128`; `q2_pre:int128`;
+               `q4_pre:int128`; `q5_pre:int128`; `q6_pre:int128`;
+               `q11_pre:int128`; `q15:int128`; `q17:int128`;
+               `rk0:int128`; `rk1:int128`; `rk2:int128`;
+               `sx9:int64`; `sx10:int64`]
+              AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s27" THEN
+  MP_TAC(SPECL[`pc:num`;
+               `aes_arm_round (aes_arm_round (q0_pre:int128) (rk0:int128)) (rk1:int128) :int128`;
+               `aes_arm_round (aes_arm_round (q1_pre:int128) (rk0:int128)) (rk1:int128) :int128`;
+               `aes_arm_round (aes_arm_round (aes_arm_round (q2_pre:int128) (rk0:int128)) (rk1:int128)) (rk2:int128) :int128`;
+               `aes_arm_round (word_insert (word_zx (sx10:int64):int128)
+                                           (64,64) (sx9:int64) :int128)
+                              (rk0:int128) :int128`;
+               `word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                         (byteswap128 (q11_pre:int128)) :int128`;
+               `(word_zx
+                  (word_subword
+                    (word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                              (byteswap128 (q11_pre:int128))) (64,64):int64)
+                 :int128)`;
+               `(word_zx (word_subword (q17:int128) (64,64):int64):int128)`;
+               `rk1:int128`; `rk2:int128`; `rk3:int128`]
+              AES_GCM_PREPRETAIL_R1R2R3_BLOCK0123_Q8EOR_PLUS_Q10_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s36" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
 (* AES_GCM_PREPRETAIL_FULL_CORRECT.                                          *)
 (*                                                                           *)
