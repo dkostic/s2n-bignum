@@ -20051,6 +20051,97 @@ let AES_GCM_PREPRETAIL_Q8_AT_1B8_CORRECT = prove
   CONV_TAC WORD_BLAST);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s144) — leaf cuts strengthened with Q8.                *)
+(*                                                                           *)
+(* R67_PLUS_Q8: same as R67 (instr 91..100) but POST adds                    *)
+(*   `read Q8 s = word 0xc2c2c2c2c2c2c2c2:int128`                            *)
+(* (the post-MOVI form).  Instr 91 is `arm_MOVI D8 (word                     *)
+(* 14033993530586874562)` which writes Q8.lo := 0xc2c2c2c2c2c2c2c2 and       *)
+(* zero-extends Q8.hi.  Instructions 92..100 do not touch Q8.                *)
+(*                                                                           *)
+(* R8_PLUS_Q8: same as R8_BLOCK013 (instr 101..110) but PRE adds Q8 = MOVI   *)
+(* form, and POST adds Q8 = poly_const (post-USHL).  Instr 101 is            *)
+(* `arm_USHL_VEC_FIXED Q8 64 56` which shifts the bottom 64-bit lane left    *)
+(* by 56, yielding 0xc200000000000000 as the low 64.                          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R6R7_BLOCK0123_Q9_BLOCK3HIGH_PLUS_Q8_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q3_in:int128) (q5_in:int128) (q9_in:int128)
+       (rk6:int128) (rk7:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x168) /\
+          read Q0 s = q0_in /\
+          read Q1 s = q1_in /\
+          read Q3 s = q3_in /\
+          read Q5 s = q5_in /\
+          read Q9 s = q9_in /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7)
+     (\s. read PC s = word (pc + 0x190) /\
+          read Q0 s = aes_arm_round q0_in rk7 /\
+          read Q1 s = aes_arm_round q1_in rk7 /\
+          read Q3 s = aes_arm_round (aes_arm_round q3_in rk6) rk7 /\
+          read Q5 s = q5_in /\
+          read Q8 s = (word 0xc2c2c2c2c2c2c2c2:int128) /\
+          read Q9 s = word_xor q9_in q5_in /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q3; Q8; Q9] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (91--100) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+let AES_GCM_PREPRETAIL_R8_BLOCK013_GHASH_BLOCK3LOW_PLUS_Q8_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q3_in:int128) (q4_in:int128)
+       (q7:int128) (q10_in:int128) (q11_in:int128) (q12:int128) (rk8:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x190) /\
+          read Q0 s = q0_in /\
+          read Q1 s = q1_in /\
+          read Q3 s = q3_in /\
+          read Q4 s = q4_in /\
+          read Q7 s = q7 /\
+          read Q8 s = (word 0xc2c2c2c2c2c2c2c2:int128) /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in /\
+          read Q12 s = q12 /\
+          read Q26 s = rk8)
+     (\s. read PC s = word (pc + 0x1b8) /\
+          read Q0 s = aes_arm_round q0_in rk8 /\
+          read Q1 s = aes_arm_round q1_in rk8 /\
+          read Q3 s = aes_arm_round q3_in rk8 /\
+          read Q6 s = (word_pmul (word_subword q7 (0,64):int64)
+                                 (word_subword q12 (0,64):int64) :int128) /\
+          read Q7 s = q7 /\
+          read Q8 s = word_zx (word 0xc200000000000000:int64) :int128 /\
+          read Q10 s = word_xor q10_in q4_in /\
+          read Q11 s = word_xor q11_in
+                       (word_pmul (word_subword q7 (0,64):int64)
+                                  (word_subword q12 (0,64):int64) :int128) /\
+          read Q12 s = q12 /\
+          read Q26 s = rk8)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q3; Q6; Q8; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (101--110) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
 (* AES_GCM_PREPRETAIL_FULL_CORRECT.                                          *)
 (*                                                                           *)
