@@ -20009,6 +20009,48 @@ let AES_GCM_PREPRETAIL_MODULO_COMPOSED_CORRECT = prove
   MATCH_ACCEPT_TAC PREPRETAIL_FF_AS_KERNEL_MODULO);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s143) — standalone Q8 invariant at offset 0x1b8.       *)
+(*                                                                           *)
+(* Proves that at slice offset 0x1b8 (= slice instr 110 exit, kernel offset  *)
+(* 0x780), Q8 holds the GHASH polynomial reduction constant                   *)
+(* `word_zx (word 0xc200000000000000:int64) :int128` regardless of input    *)
+(* state.  Q8 is set up by:                                                  *)
+(*   * slice 91 (offset 0x168): `arm_MOVI D8 (word 0xc2c2c2c2c2c2c2c2)` —    *)
+(*     writes Q8.lo := 0xc2c2c2c2c2c2c2c2 and zero-extends Q8.hi.             *)
+(*   * slice 101 (offset 0x190): `arm_USHL_VEC_FIXED Q8 64 56` — shifts the  *)
+(*     bottom 64-bit lane left by 56 bits, yielding 0xc200000000000000.     *)
+(* Slices 92..100 and 102..110 do not touch Q8.                              *)
+(*                                                                           *)
+(* This invariant lets downstream proofs inject `Q8 = poly const` at offset *)
+(* 0x1b8 without strengthening the OPEN_..._R8 chain's POST.  Used by the    *)
+(* Phase 11b Stage 2 wrapper that composes the AES + GHASH chain with        *)
+(* AES_GCM_PREPRETAIL_MODULO_COMPOSED_CORRECT (which requires Q8 = poly      *)
+(* const in PRE).                                                             *)
+(*                                                                           *)
+(* Proof: ARM_STEPS_TAC (1--110) over the tail slice — symbolic execution    *)
+(* of 110 instructions completes in ~1.3s; the simulator's emit form for    *)
+(* Q8 at s110 reduces to `word 0xc200000000000000:int128`, equal to         *)
+(* `word_zx (word 0xc200000000000000:int64) :int128` by WORD_BLAST.          *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_Q8_AT_1B8_CORRECT = prove
+ (`!pc.
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc)
+     (\s. read PC s = word (pc + 0x1b8) /\
+          read Q8 s = word_zx (word 0xc200000000000000:int64) :int128)
+     (MAYCHANGE [PC; X12] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (1--110) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONV_TAC WORD_BLAST);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
 (* AES_GCM_PREPRETAIL_FULL_CORRECT.                                          *)
 (*                                                                           *)
