@@ -20616,6 +20616,316 @@ let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_PLUS_Q10_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s147) — Q8 emit-form propagation chain.                *)
+(*                                                                           *)
+(* The s146 chain ends at instr 36 with Q10 in spec form `word_zx (high q17)`*)
+(* and Q8 dropped to MAYCHANGE.  But the next leaf, GHASH_BLOCK1_LOWHIGH_    *)
+(* BLOCK0_MID (instr 37..44), produces Q10 := pmull(low(q8_in), low(q10_in))*)
+(* — Q8's value at s36 enters the Q10 PMULL spec form.                       *)
+(*                                                                           *)
+(* Strengthen R1R2R3 to expose Q8's emit form (= word_zx (low (word_xor q4_in*)
+(* q8_in))) at s36, then propagate through the OPEN composition.  This is the*)
+(* "Option A" approach (chain strengthening with explicit emit form) per     *)
+(* s146 reviewer guidance.                                                    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R1R2R3_BLOCK0123_Q8EOR_PLUS_Q10_PLUS_Q8_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q2_in:int128) (q3_in:int128)
+       (q4_in:int128) (q8_in:int128) (q10_in:int128)
+       (rk1:int128) (rk2:int128) (rk3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x6c) /\
+          read Q0 s = q0_in /\
+          read Q1 s = q1_in /\
+          read Q2 s = q2_in /\
+          read Q3 s = q3_in /\
+          read Q4 s = q4_in /\
+          read Q8 s = q8_in /\
+          read Q10 s = q10_in /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3)
+     (\s. read PC s = word (pc + 0x90) /\
+          read Q0 s = aes_arm_round q0_in rk2 /\
+          read Q1 s = aes_arm_round q1_in rk2 /\
+          read Q2 s = aes_arm_round q2_in rk3 /\
+          read Q3 s = aes_arm_round q3_in rk1 /\
+          read Q4 s = q4_in /\
+          read Q8 s = (word_zx
+                       (word_subword (word_xor q4_in q8_in) (0,64):int64)
+                       :int128) /\
+          read Q10 s = q10_in /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q8] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (28--36) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* OPEN chain composition: instr 1..36, threading Q8's emit form. *)
+
+let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_PLUS_Q10_PLUS_Q8_CORRECT = prove
+ (`!pc (q0_pre:int128) (q1_pre:int128) (q2_pre:int128)
+       (q4_pre:int128) (q5_pre:int128) (q6_pre:int128) (q11_pre:int128)
+       (q15:int128) (q17:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+       (sx9:int64) (sx10:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q2 s = q2_pre /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q11 s = q11_pre /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0x90) /\
+          read Q0 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round q0_pre rk0) rk1) rk2 /\
+          read Q1 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round q1_pre rk0) rk1) rk2 /\
+          read Q2 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round (aes_arm_round q2_pre rk0)
+                                                     rk1)
+                                      rk2)
+                       rk3 /\
+          read Q3 s = aes_arm_round
+                       (aes_arm_round
+                         (word_insert (word_zx (sx10:int64):int128)
+                                      (64,64) sx9 :int128)
+                         rk0)
+                       rk1 /\
+          read Q4 s = word_xor (aes_gcm_rev64_int128 q4_pre)
+                               (byteswap128 q11_pre) /\
+          read Q5 s = aes_gcm_rev64_int128 q5_pre /\
+          read Q6 s = aes_gcm_rev64_int128 q6_pre /\
+          read Q8 s = (word_zx
+                       (word_subword
+                         (word_xor
+                            (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                      (byteswap128 q11_pre))
+                            (word_zx
+                              (word_subword
+                                (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                          (byteswap128 q11_pre)) (64,64):int64)
+                             :int128))
+                         (0,64):int64)
+                       :int128) /\
+          read Q9 s = (word_pmul
+                        (word_subword
+                          (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                    (byteswap128 q11_pre)) (64,64):int64)
+                        (word_subword q15 (64,64):int64) :int128) /\
+          read Q10 s = (word_zx (word_subword q17 (64,64):int64):int128) /\
+          read Q11 s = (word_pmul
+                         (word_subword
+                           (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                     (byteswap128 q11_pre)) (0,64):int64)
+                         (word_subword q15 (0,64):int64) :int128) /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL[`pc:num`; `q0_pre:int128`; `q1_pre:int128`; `q2_pre:int128`;
+               `q4_pre:int128`; `q5_pre:int128`; `q6_pre:int128`;
+               `q11_pre:int128`; `q15:int128`; `q17:int128`;
+               `rk0:int128`; `rk1:int128`; `rk2:int128`;
+               `sx9:int64`; `sx10:int64`]
+              AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s27" THEN
+  MP_TAC(SPECL[`pc:num`;
+               `aes_arm_round (aes_arm_round (q0_pre:int128) (rk0:int128)) (rk1:int128) :int128`;
+               `aes_arm_round (aes_arm_round (q1_pre:int128) (rk0:int128)) (rk1:int128) :int128`;
+               `aes_arm_round (aes_arm_round (aes_arm_round (q2_pre:int128) (rk0:int128)) (rk1:int128)) (rk2:int128) :int128`;
+               `aes_arm_round (word_insert (word_zx (sx10:int64):int128)
+                                           (64,64) (sx9:int64) :int128)
+                              (rk0:int128) :int128`;
+               `word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                         (byteswap128 (q11_pre:int128)) :int128`;
+               `(word_zx
+                  (word_subword
+                    (word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                              (byteswap128 (q11_pre:int128))) (64,64):int64)
+                 :int128)`;
+               `(word_zx (word_subword (q17:int128) (64,64):int64):int128)`;
+               `rk1:int128`; `rk2:int128`; `rk3:int128`]
+              AES_GCM_PREPRETAIL_R1R2R3_BLOCK0123_Q8EOR_PLUS_Q10_PLUS_Q8_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s36" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
+(* GHASH_BLOCK1 chain (instr 1..44): now also exposes Q10 in PMULL spec form,*)
+(* as pmull(low(Q8_at_s36), low(Q10_at_s36)) which simplifies via WORD_      *)
+(* SUBWORD_ZX/SUBWORD chains.                                                 *)
+
+let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_GHASH1_PLUS_Q10_CORRECT = prove
+ (`!pc (q0_pre:int128) (q1_pre:int128) (q2_pre:int128)
+       (q4_pre:int128) (q5_pre:int128) (q6_pre:int128) (q11_pre:int128)
+       (q14:int128) (q15:int128) (q17:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128)
+       (sx9:int64) (sx10:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word pc /\
+          read Q0 s = q0_pre /\
+          read Q1 s = q1_pre /\
+          read Q2 s = q2_pre /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q11 s = q11_pre /\
+          read Q14 s = q14 /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (\s. read PC s = word (pc + 0xb0) /\
+          read Q0 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round q0_pre rk0) rk1) rk2 /\
+          read Q1 s = aes_arm_round
+                       (aes_arm_round
+                          (aes_arm_round (aes_arm_round q1_pre rk0) rk1) rk2)
+                       rk3 /\
+          read Q2 s = aes_arm_round
+                       (aes_arm_round (aes_arm_round (aes_arm_round q2_pre rk0)
+                                                     rk1)
+                                      rk2)
+                       rk3 /\
+          read Q3 s = aes_arm_round
+                       (aes_arm_round
+                         (aes_arm_round
+                           (word_insert (word_zx (sx10:int64):int128)
+                                        (64,64) sx9 :int128)
+                           rk0)
+                         rk1)
+                       rk2 /\
+          read Q4 s = (word_pmul (word_subword (aes_gcm_rev64_int128 q5_pre)
+                                               (64,64):int64)
+                                 (word_subword q14 (64,64):int64) :int128) /\
+          read Q5 s = aes_gcm_rev64_int128 q5_pre /\
+          read Q6 s = aes_gcm_rev64_int128 q6_pre /\
+          read Q8 s = (word_pmul (word_subword (aes_gcm_rev64_int128 q5_pre)
+                                               (0,64):int64)
+                                 (word_subword q14 (0,64):int64) :int128) /\
+          read Q9 s = word_xor
+                       (word_pmul
+                          (word_subword
+                            (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                      (byteswap128 q11_pre)) (64,64):int64)
+                          (word_subword q15 (64,64):int64) :int128)
+                       (word_pmul (word_subword (aes_gcm_rev64_int128 q5_pre)
+                                                (64,64):int64)
+                                  (word_subword q14 (64,64):int64) :int128) /\
+          read Q10 s = (word_pmul
+                         (word_subword
+                           (word_zx
+                             (word_subword
+                               (word_xor
+                                 (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                           (byteswap128 q11_pre))
+                                 (word_zx
+                                   (word_subword
+                                     (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                               (byteswap128 q11_pre)) (64,64):int64)
+                                  :int128))
+                               (0,64):int64)
+                            :int128)
+                           (0,64):int64)
+                         (word_subword q17 (64,64):int64) :int128) /\
+          read Q11 s = (word_pmul
+                         (word_subword
+                           (word_xor (aes_gcm_rev64_int128 q4_pre)
+                                     (byteswap128 q11_pre)) (0,64):int64)
+                         (word_subword q15 (0,64):int64) :int128) /\
+          read Q14 s = q14 /\
+          read Q15 s = q15 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL[`pc:num`; `q0_pre:int128`; `q1_pre:int128`; `q2_pre:int128`;
+               `q4_pre:int128`; `q5_pre:int128`; `q6_pre:int128`;
+               `q11_pre:int128`; `q15:int128`; `q17:int128`;
+               `rk0:int128`; `rk1:int128`; `rk2:int128`; `rk3:int128`;
+               `sx9:int64`; `sx10:int64`]
+              AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_PLUS_Q10_PLUS_Q8_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s36" THEN
+  MP_TAC(SPECL[`pc:num`;
+               `aes_arm_round (aes_arm_round (aes_arm_round (q0_pre:int128) (rk0:int128)) (rk1:int128)) (rk2:int128) :int128`;
+               `aes_arm_round (aes_arm_round (aes_arm_round (q1_pre:int128) (rk0:int128)) (rk1:int128)) (rk2:int128) :int128`;
+               `aes_arm_round (aes_arm_round (word_insert (word_zx (sx10:int64):int128)
+                                                          (64,64) (sx9:int64) :int128)
+                                             (rk0:int128))
+                              (rk1:int128) :int128`;
+               `aes_gcm_rev64_int128 (q5_pre:int128) :int128`;
+               `(word_zx
+                  (word_subword
+                    (word_xor
+                      (word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                                (byteswap128 (q11_pre:int128)))
+                      (word_zx
+                        (word_subword
+                          (word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                                    (byteswap128 (q11_pre:int128))) (64,64):int64)
+                       :int128))
+                    (0,64):int64)
+                 :int128)`;
+               `(word_pmul (word_subword
+                             (word_xor (aes_gcm_rev64_int128 (q4_pre:int128))
+                                       (byteswap128 (q11_pre:int128))) (64,64):int64)
+                           (word_subword (q15:int128) (64,64):int64) :int128)`;
+               `(word_zx (word_subword (q17:int128) (64,64):int64):int128)`;
+               `q14:int128`;
+               `rk2:int128`; `rk3:int128`]
+              AES_GCM_PREPRETAIL_GHASH_BLOCK1_LOWHIGH_BLOCK0_MID_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s44" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  IMP_REWRITE_TAC[WORD_SUBWORD_ZX] THEN
+  IMP_REWRITE_TAC[WORD_SUBWORD_SUBWORD] THEN
+  REWRITE_TAC[DIMINDEX_64; DIMINDEX_128; ARITH; LE_REFL;
+              ADD_CLAUSES; MIN]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
 (* AES_GCM_PREPRETAIL_FULL_CORRECT.                                          *)
 (*                                                                           *)
