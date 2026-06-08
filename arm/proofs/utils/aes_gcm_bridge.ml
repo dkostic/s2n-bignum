@@ -840,6 +840,57 @@ let KERNEL_MODULO_CORRECT = prove
   REWRITE_TAC[PMUL_W_64_128] THEN
   CONV_TAC BITBLAST_RULE);;
 
+(* Algebraic identity bridging the prepretail's FINAL_FOLD form to          *)
+(* `kernel_modulo`.  The kernel's prepretail tail-slice does NOT compute    *)
+(* `kernel_modulo` directly the way the body slice does (which sets up Q8  *)
+(* freshly via MOVI/SHL right before the modulo); instead, by the time we  *)
+(* reach FINAL_FOLD the simulator has already folded `byteswap128(h)` into *)
+(* the Q9 register (via the EXT instruction at offset 0x798) and folded     *)
+(* `pmull(h_lo, c64)` into the Q4 register (via the PMULL at 0x794), with  *)
+(* Q10 holding `m XOR h` (XOR via the EOR at 0x788).                        *)
+(*                                                                           *)
+(* This lemma states: with `q9_FF = byteswap128 h`, `q4_FF = pmull(h_lo, c64)`,*)
+(* `q10_FF = m XOR h`, `q11_FF = l`, the FINAL_FOLD's output Q11             *)
+(* `byteswap128(S) XOR pmull(S_lo, c64) XOR q11_FF`                         *)
+(* (where `S = q9_FF XOR q4_FF XOR q11_FF XOR q10_FF`) equals exactly      *)
+(* `kernel_modulo h l m`.                                                    *)
+(*                                                                           *)
+(* Proof: pure word-level arithmetic; XOR re-association via WORD_RULE     *)
+(* after one structural SUBGOAL_THEN.                                        *)
+(* ------------------------------------------------------------------------- *)
+let PREPRETAIL_FF_AS_KERNEL_MODULO = prove
+ (`!h l m:int128.
+    word_xor (byteswap128
+                (word_xor (byteswap128 h)
+                          (word_xor
+                             (word_pmul (word_subword h (0,64) :int64)
+                                        (word 0xc200000000000000:int64) :int128)
+                             (word_xor l (word_xor m h)))))
+             (word_xor
+                (word_pmul
+                   (word_subword
+                      (word_xor (byteswap128 h)
+                                (word_xor
+                                   (word_pmul (word_subword h (0,64) :int64)
+                                              (word 0xc200000000000000:int64)
+                                    :int128)
+                                   (word_xor l (word_xor m h))))
+                      (0,64) :int64)
+                   (word 0xc200000000000000:int64) :int128)
+                l) =
+    kernel_modulo h l m`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[kernel_modulo; LET_DEF; LET_END_DEF] THEN
+  ABBREV_TAC `c64:int64 = word 13979173243358019584` THEN
+  ABBREV_TAC `t0:int128 = word_pmul (word_subword (h:int128) (0,64) :int64)
+                                    (c64:int64)` THEN
+  SUBGOAL_THEN
+   `word_xor (byteswap128 (h:int128))
+             (word_xor (t0:int128) (word_xor (l:int128) (word_xor m h))) =
+    word_xor (word_xor m (word_xor l h)) (word_xor (byteswap128 h) t0)`
+    SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+  CONV_TAC WORD_RULE);;
+
 (* Per-block bridge: composing KARATSUBA_COMPONENTS_BYTESWAP +              *)
 (* KARATSUBA_PMUL_NATURAL + KERNEL_MODULO_CORRECT shows that the kernel's   *)
 (* full per-block "Karatsuba + reduction" sequence (applied to one block    *)
