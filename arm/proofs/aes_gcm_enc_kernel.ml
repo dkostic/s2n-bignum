@@ -23515,6 +23515,79 @@ let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_GHASH1_R3_03_R45_03MID_R45_2_GH
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s151) — strengthened R4R5_BLOCK1 leaf with Q4 spec     *)
+(* form (block-3 mid PMULL) tracked in POST.                                 *)
+(*                                                                           *)
+(* At slice instr 80 (kernel offset 0x708), the kernel computes              *)
+(*   Q4 := pmul(Q4_lo_after_dup_eor, Q16_lo)                                  *)
+(* where Q4_lo_after_dup_eor = (q7_hi XOR q7_lo) due to the preceding        *)
+(* DUP_GEN (instr 73, Q4 := word_join(q7_hi, q7_hi)) and EOR_VEC 8B (instr   *)
+(* 76, Q4_lo := Q4_lo XOR q7_lo).                                            *)
+(*                                                                           *)
+(* The simulator's Q4 form at s81 is:                                        *)
+(*   pmul((word_xor q7 (word_zx (word_subword q7 (64,64))))_lo extracted via*)
+(*        word_zx and word_subword (0,64), q16_lo)                          *)
+(* This is the block-3 mid PMULL component (m3 in karatsuba_components       *)
+(* terms) when q7 = aes_gcm_rev64_int128 q7_pre = byteswap128 ct3 and       *)
+(* q16_lo = karatsuba_mid (h_power (ghash_twist h) 0).                       *)
+(*                                                                           *)
+(* Q4 is preserved through R5R6_BLOCK0123_Q10_BLOCK0MID2 (slice 82..90),    *)
+(* R6R7_BLOCK0123_Q9_BLOCK3HIGH_PLUS_Q10_PLUS_Q8 (slice 91..100), and is    *)
+(* consumed by R8_BLOCK013_GHASH_BLOCK3LOW_PLUS_Q8 (slice 101..110) which    *)
+(* does Q10 := Q10 XOR Q4 to assemble the 4-block mid PMULL sum.             *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R4R5_BLOCK1_GHASH_BLOCK3HIGH_PLUS_Q4_CORRECT = prove
+ (`!pc (q1_in:int128) (q4_in:int128) (q7:int128) (q8_in:int128) (q9_in:int128)
+       (q10_in:int128) (q12:int128) (q16:int128) (rk4:int128) (rk5:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0x11c) /\
+          read Q1 s = q1_in /\
+          read Q4 s = q4_in /\
+          read Q7 s = q7 /\
+          read Q8 s = q8_in /\
+          read Q9 s = q9_in /\
+          read Q10 s = q10_in /\
+          read Q12 s = q12 /\
+          read Q16 s = q16 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (\s. read PC s = word (pc + 0x144) /\
+          read Q1 s = aes_arm_round (aes_arm_round q1_in rk4) rk5 /\
+          read Q4 s = (word_pmul
+                        (word_subword
+                          (word_zx
+                            (word_subword
+                              (word_xor q7
+                                (word_zx (word_subword q7 (64,64):int64) :int128))
+                              (0,64):int64) :int128)
+                          (0,64):int64)
+                        (word_subword q16 (0,64):int64) :int128) /\
+          read Q5 s = (word_pmul (word_subword q7 (64,64):int64)
+                                 (word_subword q12 (64,64):int64) :int128) /\
+          read Q7 s = q7 /\
+          read Q8 s = (word_pmul (word_subword q8_in (64,64):int64)
+                                 (word_subword q16 (64,64):int64) :int128) /\
+          read Q9 s = word_xor q4_in q9_in /\
+          read Q10 s = q10_in /\
+          read Q12 s = q12 /\
+          read Q16 s = q16 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q1; Q4; Q5; Q8; Q9] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (72--81) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
 
 (* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
