@@ -21078,7 +21078,7 @@ let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_GHASH1_R3_03_PLUS_Q10_CORRECT =
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
 
-(* Chain extension to s63: composes through R45_03MID (= R4R5_BLOCK03_*).    *)
+(* Chain extension to s63: composes through R45_03MID (= R4R5_BLOCK03_etc).  *)
 (* The leaf preserves Q10; we just thread the spec form through opaquely.    *)
 
 let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_GHASH1_R3_03_R45_03MID_PLUS_Q10_CORRECT = prove
