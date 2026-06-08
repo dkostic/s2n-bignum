@@ -19934,6 +19934,80 @@ let AES_GCM_PREPRETAIL_FULL_CORRECT = prove
   ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s128" THEN
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s142) — prepretail MODULO+FOLD over offsets 0x1b8..    *)
+(* 0x200 (slice instr 111..128, 18 instructions) parameterized in            *)
+(* (h, l, m) Karatsuba accumulators.  POST gives                             *)
+(* `read Q11 s = kernel_modulo h l m`.                                       *)
+(*                                                                           *)
+(* Composes AES_GCM_PREPRETAIL_R7R8_BLOCK2_MODULO_PMULL_Q9EXT_CORRECT (line  *)
+(* 9541, instr 111..117) with AES_GCM_PREPRETAIL_FINAL_FOLD_R9_AESE_CORRECT  *)
+(* (line 9619, instr 118..128); after the second BIGSTEP, applies the        *)
+(* purely algebraic identity PREPRETAIL_FF_AS_KERNEL_MODULO (added in        *)
+(* aes_gcm_bridge.ml during s142) to identify the simulator's emit form     *)
+(* with `kernel_modulo h l m`.                                               *)
+(*                                                                           *)
+(* This is the tail-slice analogue of                                        *)
+(* AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_COMPOSED_CORRECT (line 4358)   *)
+(* on the body slice — the first step of B2 in Phase 11b Stage 2.            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_MODULO_COMPOSED_CORRECT = prove
+ (`!pc (q0_in:int128) (q1_in:int128) (q2_in:int128) (q3_in:int128)
+       (h:int128) (l:int128) (m:int128) (rk7:int128) (rk8:int128) (rk9:int128).
+   ensures arm
+    (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+         read PC s = word (pc + 0x1b8) /\
+         read Q0 s = q0_in /\
+         read Q1 s = q1_in /\
+         read Q2 s = q2_in /\
+         read Q3 s = q3_in /\
+         read Q8 s = word_zx (word 0xc200000000000000:int64) :int128 /\
+         read Q9 s = h /\
+         read Q10 s = m /\
+         read Q11 s = l /\
+         read Q25 s = rk7 /\
+         read Q26 s = rk8 /\
+         read Q31 s = rk9)
+    (\s. read PC s = word (pc + 0x200) /\
+         read Q11 s = kernel_modulo h l m)
+    (MAYCHANGE [PC] ,,
+     MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q8; Q9; Q10; Q11] ,,
+     MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  MP_TAC(SPECL[`pc:num`; `q2_in:int128`;
+               `word_zx (word 0xc200000000000000:int64) :int128`;
+               `h:int128`; `m:int128`;
+               `rk7:int128`; `rk8:int128`]
+              AES_GCM_PREPRETAIL_R7R8_BLOCK2_MODULO_PMULL_Q9EXT_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s7" THEN
+  MP_TAC(SPECL[`pc:num`;
+               `q0_in:int128`; `q1_in:int128`;
+               `aes_arm_round (aes_arm_round (q2_in:int128) (rk7:int128))
+                              (rk8:int128) :int128`;
+               `q3_in:int128`;
+               `word_pmul (word_subword (h:int128) (0,64) :int64)
+                          (word_subword
+                             (word_zx (word 0xc200000000000000:int64) :int128)
+                             (0,64) :int64) :int128`;
+               `word_zx (word 0xc200000000000000:int64) :int128`;
+               `byteswap128 (h:int128)`;
+               `word_xor (m:int128) (h:int128)`;
+               `l:int128`; `rk9:int128`]
+              AES_GCM_PREPRETAIL_FINAL_FOLD_R9_AESE_CORRECT) THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC "s18" THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  CONJ_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  SUBGOAL_THEN
+   `word_subword (word_zx (word 0xc200000000000000:int64) :int128) (0,64)
+       :int64 =
+    (word 0xc200000000000000:int64)`
+   ASSUME_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  MATCH_ACCEPT_TAC PREPRETAIL_FF_AS_KERNEL_MODULO);;
+
 (* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
 (* AES_GCM_PREPRETAIL_FULL_CORRECT.                                          *)
