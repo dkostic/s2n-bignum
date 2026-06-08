@@ -21252,6 +21252,62 @@ let AES_GCM_PREPRETAIL_OPEN_R0_R1R2_R0R1G_R1R2R3_GHASH1_R3_03_R45_03MID_PLUS_Q10
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s147) — R3_BLOCK03 strengthened with Q4/Q8 emit forms. *)
+(*                                                                           *)
+(* Building block for s148+ chain extension to s71 (R45_2_GH2H, where Q10 is *)
+(* modified by `word_xor q10_in q4_in`).  Without Q4 in spec form, the       *)
+(* downstream chain would need to thread `read Q4 s52` opaquely through.    *)
+(*                                                                           *)
+(* Q4 at s52 = word_zx (low (Q5 XOR word_zx (high Q5))) — produced by         *)
+(*   instr 49 (DUP_GEN Q4 Q5 64 1: Q4 := word_zx (high Q5))                  *)
+(*   then instr 52 (EOR_VEC Q4 Q4 Q5 64: Q4 := word_zx (low (Q4 XOR Q5)))    *)
+(*                                                                           *)
+(* Q8 at s52 = word_zx (high Q6) — produced by instr 51 (DUP_GEN Q8 Q6 64 1).*)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PREPRETAIL_R3_BLOCK03_Q11_BLOCK1LOW_PLUS_Q10_PLUS_Q4Q8_CORRECT = prove
+ (`!pc (q0_in:int128) (q3_in:int128) (q4_in:int128) (q5:int128) (q6:int128)
+       (q8_in:int128) (q10_in:int128) (q11_in:int128) (rk3:int128).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_tail_slice_mc /\
+          read PC s = word (pc + 0xb0) /\
+          read Q0 s = q0_in /\
+          read Q3 s = q3_in /\
+          read Q4 s = q4_in /\
+          read Q5 s = q5 /\
+          read Q6 s = q6 /\
+          read Q8 s = q8_in /\
+          read Q10 s = q10_in /\
+          read Q11 s = q11_in /\
+          read Q21 s = rk3)
+     (\s. read PC s = word (pc + 0xd0) /\
+          read Q0 s = aes_arm_round q0_in rk3 /\
+          read Q3 s = aes_arm_round q3_in rk3 /\
+          read Q4 s = (word_zx
+                       (word_subword
+                          (word_xor q5
+                             (word_zx (word_subword q5 (64,64):int64):int128))
+                          (0,64):int64)
+                       :int128) /\
+          read Q5 s = q5 /\
+          read Q6 s = q6 /\
+          read Q8 s = (word_zx (word_subword q6 (64,64):int64):int128) /\
+          read Q10 s = q10_in /\
+          read Q11 s = word_xor q11_in q8_in /\
+          read Q21 s = rk3)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q3; Q4; Q8; Q11] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_TAIL_SLICE_EXEC (45--52) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REPEAT CONJ_TAC THEN
+  TRY (ASM_REWRITE_TAC[]) THEN
+  TRY (CONV_TAC WORD_BLAST));;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9b (s076) — slice-to-kernel promotion of                            *)
 (* AES_GCM_PREPRETAIL_FULL_CORRECT.                                          *)
 (*                                                                           *)
