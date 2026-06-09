@@ -6446,6 +6446,95 @@ let AES_GCM_MAIN_LOOP_BODY_MEM_KERNEL_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s157, B1) — ensures_n sibling of the memory cut above.  *)
+(*                                                                           *)
+(* Identical statement and proof script to                                  *)
+(* AES_GCM_MAIN_LOOP_BODY_MEM_KERNEL_CORRECT, but stated as `ensures_n` with *)
+(* the concrete step-count function `\s. 175` (the body is straight-line     *)
+(* from pc+0x308 to pc+0x5c4 — exactly 175 instructions, no internal         *)
+(* branches).  ENSURES_INIT_TAC dispatches on the goal head via              *)
+(* ENSURES_OR_ENSURES_N_TAC, so the ENSURES_INIT_TAC + ARM_STEPS_TAC +       *)
+(* ENSURES_FINAL_STATE_TAC script carries over unchanged (the step literal   *)
+(* 175 must equal the number of ARM_STEPS taken).                            *)
+(*                                                                           *)
+(* This is the first operand of an ENSURES_N_CONJ that merges the memory     *)
+(* facts with the spec-Q11 facts (FULL_LOADED) over the same body range.     *)
+(* Plain `ensures` cannot be conjoined this way — `arm` is not provably      *)
+(* deterministic (the `events` state component), so no plain ENSURES_CONJ    *)
+(* exists; ENSURES_N_CONJ (relational_n.ml) needs both operands as ensures_n *)
+(* with a shared step count, and ENSURES_N_ENSURES converts back to plain    *)
+(* `ensures` with NO determinism hypothesis.                                 *)
+(*                                                                           *)
+(* ROUTE NOTE (s157): the ENSURES_N_CONJ route needs the spec-Q11 cut ALSO   *)
+(* in ensures_n form, which requires ensures_n siblings of the (very deep)   *)
+(* Phase-7 GHASH discharge chain — NOT viable.  The recommended route for    *)
+(* the combined spec+memory body cut is instead a NEW plain-`ensures`        *)
+(* MEM-extended copy of the FLAG sub-chain (KERNEL_MODULO_PLUS_Q567_FLAG ->  *)
+(* SPEC_FORM -> FULL_PLUS -> FULL_KERNEL -> FULL_LOADED), threading the four  *)
+(* `read(memory:>bytes128 cptr+16k)=ck` facts via the store-ABBREV technique *)
+(* at the KERNEL_MODULO leaf (its ARM_STEPS steps 45/50/55/61).  This        *)
+(* `ensures_n` cut is retained as a validated demonstration that the         *)
+(* straight-line body is exactly 175 steps and that ensures_n closes via the *)
+(* standard ENSURES_INIT/ARM_STEPS/ENSURES_FINAL script; it is not on that   *)
+(* recommended critical path.                                                 *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_MEM_N_KERNEL_CORRECT = prove
+ (`!pc cptr x0_init x5_init.
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64)
+    ==> ensures_n arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x308) /\
+              read X0 s = x0_init /\
+              read X2 s = cptr /\
+              read X5 s = x5_init)
+         (\s. read PC s = word (pc + 0x5c4) /\
+              read X0 s = word_add x0_init (word 64) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = x5_init /\
+              (read NF s <=>
+               ival (word_sub (word_add x0_init (word 64)) x5_init) < &0) /\
+              (read VF s <=>
+               ~(ival (word_add x0_init (word 64)) - ival x5_init =
+                 ival (word_sub (word_add x0_init (word 64)) x5_init))) /\
+              (?(c4:int128) (c5:int128) (c6:int128) (c7:int128).
+                 read Q4 s = c4 /\ read Q5 s = c5 /\
+                 read Q6 s = c6 /\ read Q7 s = c7 /\
+                 read (memory :> bytes128 cptr) s = c4 /\
+                 read (memory :> bytes128 (word_add cptr (word 16))) s = c5 /\
+                 read (memory :> bytes128 (word_add cptr (word 32))) s = c6 /\
+                 read (memory :> bytes128 (word_add cptr (word 48))) s = c7))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16));
+                     memory :> bytes128 (word_add cptr (word 32));
+                     memory :> bytes128 (word_add cptr (word 48))] ,,
+          MAYCHANGE [events])
+         (\s. 175)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (1--148) THEN
+  ABBREV_TAC `c4:int128 = read Q4 s148` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (149--153) THEN
+  ABBREV_TAC `c5:int128 = read Q5 s153` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (154--167) THEN
+  ABBREV_TAC `c6:int128 = read Q6 s167` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (168--174) THEN
+  ABBREV_TAC `c7:int128 = read Q7 s174` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (175--175) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC) THEN
+  TRY (MAP_EVERY EXISTS_TAC
+        [`c4:int128`;`c5:int128`;`c6:int128`;`c7:int128`]) THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 8 — back-edge cut for ENSURES_WHILE_PUP_TAC.                        *)
 (*                                                                           *)
 (* The b.lt at offset 0x5c4 is a 1-instruction back-edge that jumps to       *)
