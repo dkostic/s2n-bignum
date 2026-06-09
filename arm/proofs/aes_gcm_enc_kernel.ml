@@ -6371,6 +6371,81 @@ let AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_LOADED_KERNEL_CORRECT = prove
   MONOTONE_MAYCHANGE_TAC);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b Stage 2 (s156, B1) — standalone memory cut for the main-loop    *)
+(* body.  Exposes the four ciphertext blocks the body STORES at              *)
+(* cptr+{0,16,32,48} (= the post-body Q4..Q7) as an existential in the POST, *)
+(* alongside the X0/X2/X5 advance + raw NF/VF flag facts (mirroring          *)
+(* AES_GCM_MAIN_LOOP_BODY_X0_X5_FLAG_KERNEL_CORRECT above).                   *)
+(*                                                                           *)
+(* The body's four `st1 {v4..v7},[x2],#16` stores (kernel offsets 0x580,     *)
+(* 0x594, 0x5a8, 0x5c0) write the FINAL Q4..Q7 values.  ARM_STEPS would      *)
+(* discard the memory-write facts (they reference the pre-store state on the *)
+(* RHS — see DISCARD_OLDSTATE_TAC), so we ABBREV each stored register one    *)
+(* step before its store; the write fact then survives discard and the four  *)
+(* memory=register equalities close.                                         *)
+(*                                                                           *)
+(* This is the B1 foundational leaf: a later wrapper threads the per-        *)
+(* iteration stored blocks (= the next iteration's GHASH inputs Q4..Q7, with *)
+(* a one-iteration lag) into the loop invariant as a byte-memory ghost.      *)
+(* MAYCHANGE uses the 4x bytes128 chunked form (the slice emits 4 separate   *)
+(* bytes128 writes that MONOTONE_MAYCHANGE_TAC cannot merge to bytes(.,64)). *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_BODY_MEM_KERNEL_CORRECT = prove
+ (`!pc cptr x0_init x5_init.
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x308) /\
+              read X0 s = x0_init /\
+              read X2 s = cptr /\
+              read X5 s = x5_init)
+         (\s. read PC s = word (pc + 0x5c4) /\
+              read X0 s = word_add x0_init (word 64) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = x5_init /\
+              (read NF s <=>
+               ival (word_sub (word_add x0_init (word 64)) x5_init) < &0) /\
+              (read VF s <=>
+               ~(ival (word_add x0_init (word 64)) - ival x5_init =
+                 ival (word_sub (word_add x0_init (word 64)) x5_init))) /\
+              (?(c4:int128) (c5:int128) (c6:int128) (c7:int128).
+                 read Q4 s = c4 /\ read Q5 s = c5 /\
+                 read Q6 s = c6 /\ read Q7 s = c7 /\
+                 read (memory :> bytes128 cptr) s = c4 /\
+                 read (memory :> bytes128 (word_add cptr (word 16))) s = c5 /\
+                 read (memory :> bytes128 (word_add cptr (word 32))) s = c6 /\
+                 read (memory :> bytes128 (word_add cptr (word 48))) s = c7))
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes128 cptr;
+                     memory :> bytes128 (word_add cptr (word 16));
+                     memory :> bytes128 (word_add cptr (word 32));
+                     memory :> bytes128 (word_add cptr (word 48))] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_ENC_KERNEL_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (1--148) THEN
+  ABBREV_TAC `c4:int128 = read Q4 s148` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (149--153) THEN
+  ABBREV_TAC `c5:int128 = read Q5 s153` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (154--167) THEN
+  ABBREV_TAC `c6:int128 = read Q6 s167` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (168--174) THEN
+  ABBREV_TAC `c7:int128 = read Q7 s174` THEN
+  ARM_STEPS_TAC AES_GCM_ENC_KERNEL_EXEC (175--175) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  REPEAT CONJ_TAC THEN
+  TRY (REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC) THEN
+  TRY (MAP_EVERY EXISTS_TAC
+        [`c4:int128`;`c5:int128`;`c6:int128`;`c7:int128`]) THEN
+  ASM_REWRITE_TAC[]);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 8 — back-edge cut for ENSURES_WHILE_PUP_TAC.                        *)
 (*                                                                           *)
 (* The b.lt at offset 0x5c4 is a 1-instruction back-edge that jumps to       *)
