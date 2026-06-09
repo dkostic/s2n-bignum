@@ -1652,3 +1652,223 @@ let XIPTR_2BLOCK_AS_NIST_GHASH = prove
   DISCH_THEN(SUBST1_TAC o SYM) THEN
   REWRITE_TAC[XIPTR_2BLOCK_R1; XIPTR_2BLOCK_R2; XIPTR_2BLOCK_R3] THEN
   REWRITE_TAC[GSYM XIPTR_2BLOCK_R4]);;
+
+
+(* ========================================================================= *)
+(* Phase 11b Stage 3 (s163) — 3-block kernel <-> NIST GHASH bridge family.   *)
+(*                                                                           *)
+(* Mirrors the 2-block family (s160) and 4-block family, reduced/extended to *)
+(* 3 blocks.  The N=3 tail processes exactly three ciphertext blocks: block  *)
+(* 0 (with prev_tag XORed in) against H^3, block 1 against H^2, block 2       *)
+(* against H^1 -- i.e. the kernel's highest H-power pairs with the first     *)
+(* block, lowest with the last.                                              *)
+(*                                                                           *)
+(* In the spec's `ghash_polyval_acc h a [b0;b1;b2]` Horner fold, b0 pairs    *)
+(* with `h_power h 2`, b1 with `h_power h 1`, b2 with `h_power h 0` (see      *)
+(* GHASH_POLYVAL_ACC_BATCHED with bs = [b1;b2]).  These feed the B3-N=3       *)
+(* tail-wrapper xiptr strengthening (XIPTR_3BLOCK_AS_NIST_GHASH).            *)
+(* ========================================================================= *)
+
+(* `ghash_polyval_acc h a [b0; b1; b2]` as the XOR of three `polyval_dot`     *)
+(* terms.  Direct unfolding of GHASH_POLYVAL_ACC_BATCHED (bs = [b1;b2]) +     *)
+(* prop3-linearity.  The 3-block analogue of GHASH_POLYVAL_ACC_2DOT.        *)
+let GHASH_POLYVAL_ACC_3DOT = prove
+ (`!h a b0 b1 b2:int128.
+    ghash_polyval_acc h a [b0;b1;b2] =
+    word_xor (word_xor (polyval_dot (word_xor a b0) (h_power h 2))
+                       (polyval_dot b1 (h_power h 1)))
+             (polyval_dot b2 (h_power h 0))`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(SPECL [`h:int128`; `[b1:int128; b2]`; `a:int128`; `b0:int128`]
+    GHASH_POLYVAL_ACC_BATCHED) THEN
+  REWRITE_TAC[LENGTH; ghash_wide; ARITH] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[polyval_dot; WORD_XOR_0] THEN
+  REWRITE_TAC[POLYVAL_REDUCE_PROP3_XOR; WORD_XOR_ASSOC]);;
+
+(* The 3-block bridge.  The kernel decomposes 3 ciphertext blocks against     *)
+(* H^3, H^2, H^1 (in byteswap128'd form), XOR-accumulates the three          *)
+(* Karatsuba triples componentwise (left-associated), then runs              *)
+(* kernel_modulo once on the summed triple.  By KERNEL_MODULO_XOR +          *)
+(* KERNEL_PER_BLOCK_BRIDGE per block, the result is the XOR of three         *)
+(* polyval_dots.  The 3-block analogue of KERNEL_2BLOCK_BRIDGE.              *)
+let KERNEL_3BLOCK_BRIDGE = prove
+ (`!c0 c1 c2 H0 H1 H2:int128.
+    (let h0,l0,m0 = karatsuba_components (byteswap128 c0) (byteswap128 H0) in
+     let h1,l1,m1 = karatsuba_components (byteswap128 c1) (byteswap128 H1) in
+     let h2,l2,m2 = karatsuba_components (byteswap128 c2) (byteswap128 H2) in
+     kernel_modulo (word_xor (word_xor h0 h1) h2)
+                   (word_xor (word_xor l0 l1) l2)
+                   (word_xor (word_xor m0 m1) m2)) =
+    word_xor (word_xor (polyval_dot c0 H0) (polyval_dot c1 H1))
+             (polyval_dot c2 H2)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_MODULO_XOR] THEN
+  MP_TAC(SPECL [`c0:int128`; `H0:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  MP_TAC(SPECL [`c1:int128`; `H1:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  MP_TAC(SPECL [`c2:int128`; `H2:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
+  REPEAT(DISCH_THEN SUBST1_TAC) THEN
+  REFL_TAC);;
+
+(* End-to-end 3-block kernel <-> GHASH bridge.  The 3-block analogue of       *)
+(* KERNEL_2BLOCK_GHASH_BRIDGE.  Block 0 carries the prev_tag XOR; H-powers    *)
+(* are H^3 (block 0), H^2 (block 1), H^1 (block 2).                           *)
+let KERNEL_3BLOCK_GHASH_BRIDGE = prove
+ (`!h prev_tag ct0 ct1 ct2:int128.
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power h 2)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1) (byteswap128 (h_power h 1)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2) (byteswap128 (h_power h 0)) in
+     kernel_modulo (word_xor (word_xor h0 h1) h2)
+                   (word_xor (word_xor l0 l1) l2)
+                   (word_xor (word_xor m0 m1) m2)) =
+    ghash_polyval_acc h prev_tag [ct0; ct1; ct2]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_3BLOCK_BRIDGE; GHASH_POLYVAL_ACC_3DOT]);;
+
+(* End-to-end NIST 3-block bridge.  The 3-block analogue of                  *)
+(* KERNEL_2BLOCK_NIST_BRIDGE: KERNEL_3BLOCK_GHASH_BRIDGE with                 *)
+(* h |-> ghash_twist h, combined with NIST_GHASH_IS_POLYVAL.                 *)
+let KERNEL_3BLOCK_NIST_BRIDGE = prove
+ (`!h prev_tag ct0 ct1 ct2:int128.
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power (ghash_twist h) 2)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1)
+                            (byteswap128 (h_power (ghash_twist h) 1)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2)
+                            (byteswap128 (h_power (ghash_twist h) 0)) in
+     kernel_modulo (word_xor (word_xor h0 h1) h2)
+                   (word_xor (word_xor l0 l1) l2)
+                   (word_xor (word_xor m0 m1) m2)) =
+    nist_ghash h prev_tag [ct0; ct1; ct2]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[NIST_GHASH_IS_POLYVAL; KERNEL_3BLOCK_GHASH_BRIDGE]);;
+
+
+(* ========================================================================= *)
+(* Phase 11b Stage 3 (s163) — 3-block kernel xiptr <-> NIST GHASH bridge.    *)
+(*                                                                           *)
+(* XIPTR_3BLOCK_AS_NIST_GHASH: the N=3 analogue of                           *)
+(* XIPTR_2BLOCK_AS_NIST_GHASH (s162).  Identifies the kernel's fully-closed  *)
+(* 3-block finalization xiptr formula (3-term accumulators) with the         *)
+(* byte-reversed spec GHASH of the three ciphertext blocks:                  *)
+(*   word_bytereverse (nist_ghash h prev_tag [word_bytereverse q5_pre;       *)
+(*                                            word_bytereverse ct1blk;       *)
+(*                                            word_bytereverse ct2blk])      *)
+(* provided the kernel's H-power registers match the htable_mem layout:      *)
+(*   q14 = byteswap128 (h_power (ghash_twist h) 2)    [H^3, byteswapped]      *)
+(*   q13 = byteswap128 (h_power (ghash_twist h) 1)    [H^2, byteswapped]      *)
+(*   q12 = byteswap128 (h_power (ghash_twist h) 0)    [H^1, byteswapped]      *)
+(*   block-0 MID = karatsuba_mid (h_power (ghash_twist h) 2)                  *)
+(*   block-1 MID = karatsuba_mid (h_power (ghash_twist h) 1)                  *)
+(*   block-2 MID = karatsuba_mid (h_power (ghash_twist h) 0)                  *)
+(*                                                                           *)
+(* The accumulators q9'/q11'/q10' are the kernel's three-block XOR sums       *)
+(* (left-associated, matching the kernel's block-0,1,2 accumulation order):  *)
+(*   q9'  = pmull(c0.hi,q14.hi) ^ pmull(c1.hi,q13.hi) ^ pmull(c2.hi,q12.hi)   *)
+(*   q11' = pmull(c0.lo,q14.lo) ^ pmull(c1.lo,q13.lo) ^ pmull(c2.lo,q12.lo)   *)
+(*   q10' = pmull(kmid-dup c0,MID0)^pmull(kmid-dup c1,MID1)^pmull(kmid c2,MID2)*)
+(* with c0 = rev64 q5_pre ^ byteswap128 prev_tag, c1 = rev64 ct1blk,          *)
+(* c2 = rev64 ct2blk.                                                         *)
+(*                                                                           *)
+(* Proof: identical shape to the N=2 bridge but with a 3rd block term.        *)
+(* (1) fold the join/subword/modulo chain into                                *)
+(* word_bytereverse(kernel_modulo q9' q11' q10') via the generic              *)
+(* MOD_FOLD_2BLOCK sublemma (N-independent, parametric in a,b,c); (2)         *)
+(* AP_TERM_TAC; (3) rewrite the RHS via KERNEL_3BLOCK_NIST_BRIDGE; (4) align  *)
+(* the two kernel_modulo arguments via the reusable bit-permutation           *)
+(* identities R1..R4 (R2 fires on both ct1blk and ct2blk).                    *)
+(* ------------------------------------------------------------------------- *)
+
+let XIPTR_3BLOCK_AS_NIST_GHASH = prove
+ (`!h prev_tag q5_pre ct1blk ct2blk:int128.
+     let c0 = word_xor (aes_gcm_rev64_int128 q5_pre)
+                       (byteswap128 prev_tag) :int128 in
+     let c1 = aes_gcm_rev64_int128 ct1blk :int128 in
+     let c2 = aes_gcm_rev64_int128 ct2blk :int128 in
+     let q14 = byteswap128 (h_power (ghash_twist h) 2) :int128 in
+     let q13 = byteswap128 (h_power (ghash_twist h) 1) :int128 in
+     let q12 = byteswap128 (h_power (ghash_twist h) 0) :int128 in
+     let q9' = word_xor
+                 (word_xor
+                   (word_pmul (word_subword c0 (64,64):int64)
+                              (word_subword q14 (64,64):int64) :int128)
+                   (word_pmul (word_subword c1 (64,64):int64)
+                              (word_subword q13 (64,64):int64) :int128))
+                 (word_pmul (word_subword c2 (64,64):int64)
+                            (word_subword q12 (64,64):int64) :int128) in
+     let q11' = word_xor
+                  (word_xor
+                    (word_pmul (word_subword c0 (0,64):int64)
+                               (word_subword q14 (0,64):int64) :int128)
+                    (word_pmul (word_subword c1 (0,64):int64)
+                               (word_subword q13 (0,64):int64) :int128))
+                  (word_pmul (word_subword c2 (0,64):int64)
+                             (word_subword q12 (0,64):int64) :int128) in
+     let q10' = word_xor
+                  (word_xor
+                    (word_pmul
+                      (word_subword
+                        (word_zx (word_subword
+                                   (word_xor c0
+                                     (word_zx (word_subword c0 (64,64):int64) :int128))
+                                   (0,64):int64) :int128)
+                        (0,64):int64)
+                      (karatsuba_mid (h_power (ghash_twist h) 2)) :int128)
+                    (word_pmul
+                      (word_subword
+                        (word_zx (word_subword
+                                   (word_xor c1
+                                     (word_zx (word_subword c1 (64,64):int64) :int128))
+                                   (0,64):int64) :int128)
+                        (0,64):int64)
+                      (karatsuba_mid (h_power (ghash_twist h) 1)) :int128))
+                  (word_pmul
+                    (word_subword
+                      (word_zx (word_subword
+                                 (word_xor c2
+                                   (word_zx (word_subword c2 (64,64):int64) :int128))
+                                 (0,64):int64) :int128)
+                      (0,64):int64)
+                    (karatsuba_mid (h_power (ghash_twist h) 0)) :int128) in
+     let m = word_xor (word_subword (word_join (q9':int128) q9' :int256)
+                                    (64,128) :int128)
+                      (word_xor
+                        (word_pmul (word_subword q9' (0,64):int64)
+                                   (word 13979173243358019584:int64) :int128)
+                        (word_xor (word_xor q9' q11') q10')) in
+     let q9_post = word_pmul (word_subword m (0,64):int64)
+                             (word 13979173243358019584:int64) :int128 in
+     let q10_post = word_subword (word_join (m:int128) m :int256) (64,128) :int128 in
+     aes_gcm_rev64_int128
+       (word_join (word_subword (word_xor (word_xor q11' q9_post) q10_post)
+                                (0,64):int64)
+                  (word_subword (word_xor (word_xor q11' q9_post) q10_post)
+                                (64,64):int64) :int128)
+     = word_bytereverse
+         (nist_ghash h prev_tag
+            [word_bytereverse q5_pre; word_bytereverse ct1blk;
+             word_bytereverse ct2blk])`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(LAND_CONV(DEPTH_CONV let_CONV)) THEN
+  REWRITE_TAC[MOD_FOLD_2BLOCK] THEN
+  AP_TERM_TAC THEN
+  MP_TAC(SPECL[`h:int128`; `prev_tag:int128`;
+               `word_bytereverse q5_pre :int128`;
+               `word_bytereverse ct1blk :int128`;
+               `word_bytereverse ct2blk :int128`]
+              KERNEL_3BLOCK_NIST_BRIDGE) THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV let_CONV) THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  REWRITE_TAC[XIPTR_2BLOCK_R1; XIPTR_2BLOCK_R2; XIPTR_2BLOCK_R3] THEN
+  REWRITE_TAC[GSYM XIPTR_2BLOCK_R4]);;
