@@ -1314,3 +1314,91 @@ let KERNEL_N1_XIPTR_AS_NIST_GHASH = prove
   REWRITE_TAC[byteswap128; aes_gcm_rev64_int128] THEN
   BITBLAST_TAC);;
 
+(* ========================================================================= *)
+(* Phase 11b Stage 3 (s160) — 2-block kernel <-> NIST GHASH bridge family.   *)
+(*                                                                           *)
+(* Mirrors the 4-block family (KERNEL_4BLOCK_BRIDGE / _GHASH_BRIDGE /        *)
+(* _NIST_BRIDGE + GHASH_POLYVAL_ACC_4DOT), reduced to 2 blocks.  The N=2     *)
+(* tail processes exactly two ciphertext blocks: block 0 (with prev_tag      *)
+(* XORed in) against H^2, block 1 against H^1 -- i.e. the kernel's highest   *)
+(* H-power pairs with the first block, lowest with the last.                 *)
+(*                                                                           *)
+(* In the spec's `ghash_polyval_acc h a [b0;b1]` Horner fold, b0 pairs with  *)
+(* `h_power h 1` and b1 with `h_power h 0` (see GHASH_POLYVAL_ACC_BATCHED     *)
+(* with bs = [b1]).  These feed the B3-N=2 tail-wrapper xiptr strengthening  *)
+(* (the 2-block analogue of KERNEL_N1_XIPTR_AS_NIST_GHASH).                  *)
+(* ========================================================================= *)
+
+(* `ghash_polyval_acc h a [b0; b1]` as the XOR of two `polyval_dot` terms.   *)
+(* Direct unfolding of GHASH_POLYVAL_ACC_BATCHED (bs = [b1]) + prop3-        *)
+(* linearity.  The 2-block analogue of GHASH_POLYVAL_ACC_4DOT.              *)
+let GHASH_POLYVAL_ACC_2DOT = prove
+ (`!h a b0 b1:int128.
+    ghash_polyval_acc h a [b0;b1] =
+    word_xor (polyval_dot (word_xor a b0) (h_power h 1))
+             (polyval_dot b1 (h_power h 0))`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(SPECL [`h:int128`; `[b1:int128]`; `a:int128`; `b0:int128`]
+    GHASH_POLYVAL_ACC_BATCHED) THEN
+  REWRITE_TAC[LENGTH; ghash_wide; ARITH] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[polyval_dot; WORD_XOR_0] THEN
+  REWRITE_TAC[POLYVAL_REDUCE_PROP3_XOR; WORD_XOR_ASSOC]);;
+
+(* The 2-block bridge.  The kernel decomposes 2 ciphertext blocks against    *)
+(* H^2, H^1 (in byteswap128'd form), XOR-accumulates the two Karatsuba       *)
+(* triples componentwise, then runs kernel_modulo once on the summed triple. *)
+(* By KERNEL_MODULO_XOR + KERNEL_PER_BLOCK_BRIDGE per block, the result is    *)
+(* the XOR of two polyval_dots.  The 2-block analogue of KERNEL_4BLOCK_BRIDGE.*)
+let KERNEL_2BLOCK_BRIDGE = prove
+ (`!c0 c1 H0 H1:int128.
+    (let h0,l0,m0 = karatsuba_components (byteswap128 c0) (byteswap128 H0) in
+     let h1,l1,m1 = karatsuba_components (byteswap128 c1) (byteswap128 H1) in
+     kernel_modulo (word_xor h0 h1)
+                   (word_xor l0 l1)
+                   (word_xor m0 m1)) =
+    word_xor (polyval_dot c0 H0) (polyval_dot c1 H1)`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_MODULO_XOR] THEN
+  MP_TAC(SPECL [`c0:int128`; `H0:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  MP_TAC(SPECL [`c1:int128`; `H1:int128`] KERNEL_PER_BLOCK_BRIDGE) THEN
+  REWRITE_TAC[karatsuba_components; LET_DEF; LET_END_DEF] THEN
+  CONV_TAC(DEPTH_CONV GEN_BETA_CONV) THEN
+  REPEAT(DISCH_THEN SUBST1_TAC) THEN
+  REFL_TAC);;
+
+(* End-to-end 2-block kernel <-> GHASH bridge.  The 2-block analogue of      *)
+(* KERNEL_4BLOCK_GHASH_BRIDGE.  Block 0 carries the prev_tag XOR; H-powers   *)
+(* are H^1 (block 0) and H^0 (block 1).                                      *)
+let KERNEL_2BLOCK_GHASH_BRIDGE = prove
+ (`!h prev_tag ct0 ct1:int128.
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power h 1)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1) (byteswap128 (h_power h 0)) in
+     kernel_modulo (word_xor h0 h1)
+                   (word_xor l0 l1)
+                   (word_xor m0 m1)) =
+    ghash_polyval_acc h prev_tag [ct0; ct1]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[KERNEL_2BLOCK_BRIDGE; GHASH_POLYVAL_ACC_2DOT]);;
+
+(* End-to-end NIST 2-block bridge.  The 2-block analogue of                  *)
+(* KERNEL_4BLOCK_NIST_BRIDGE: KERNEL_2BLOCK_GHASH_BRIDGE with                 *)
+(* h |-> ghash_twist h, combined with NIST_GHASH_IS_POLYVAL.                 *)
+let KERNEL_2BLOCK_NIST_BRIDGE = prove
+ (`!h prev_tag ct0 ct1:int128.
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power (ghash_twist h) 1)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1)
+                            (byteswap128 (h_power (ghash_twist h) 0)) in
+     kernel_modulo (word_xor h0 h1)
+                   (word_xor l0 l1)
+                   (word_xor m0 m1)) =
+    nist_ghash h prev_tag [ct0; ct1]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[NIST_GHASH_IS_POLYVAL; KERNEL_2BLOCK_GHASH_BRIDGE]);;
+
