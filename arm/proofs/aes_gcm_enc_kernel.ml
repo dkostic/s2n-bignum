@@ -15475,6 +15475,186 @@ let AES_GCM_PRELUDE_BLOCK0123_AES_FORM_CORRECT = prove
     REPEAT(AP_THM_TAC THEN AP_TERM_TAC) THEN
     POP_ASSUM_LIST(K ALL_TAC) THEN BITBLAST_TAC]);;
 
+(* ========================================================================= *)
+(* Phase 11b G1 (s183) — combined cut over slice instr 22..145 (0x54..0x244) *)
+(* asserting the UNION of the three same-range cuts:                          *)
+(*   - BLOCK0123 (Q0..Q3 = the AES cipher of the BE-incremented counters),    *)
+(*   - ROUND_KEYS (Q18..Q25 = rk0..rk3, rk5..rk7),                            *)
+(*   - HTABLE_KMID_FLAG_X12_INV (Q12..Q17 H-table/karatsuba_mid, NF/VF flags  *)
+(*     from the cmp at 0x224, X5 = ((sx5 AND ~63) + sx0), and the X12 self-   *)
+(*     reference invariant).                                                  *)
+(*                                                                            *)
+(* WHY a single combined cut (not composition of the three): the four AES    *)
+(* rounds on Q0..Q3 run at kernel offsets 0x78..0x238, straddling the 0xf0    *)
+(* ROUND_KEYS/HTABLE boundary, so Q0..Q3 can only be tracked from the clean   *)
+(* counter state at 0x54.  The three cuts cover the IDENTICAL symbolic        *)
+(* execution but each asserts a DISJOINT subset of the output state; they     *)
+(* therefore cannot be sequentially composed (same range) nor conjoined       *)
+(* (arm is not provably deterministic — the `events` component), and          *)
+(* ENSURES_ADD_FACT_TO_POST cannot lift Q0..Q3 (they are in the MAYCHANGE     *)
+(* frame, see [[ensures_add_fact_x_in_maychange]]).  The single               *)
+(* ARM_STEPS (22--145) proves all of it at once (it is literally the union    *)
+(* of BLOCK0123's and HTABLE_KMID_FLAG_X12_INV's own proofs over the same     *)
+(* step range), so the combined POST closes with the union of the two close   *)
+(* tactics dispatched order-independently by a FIRST chain.                   *)
+(*                                                                            *)
+(* This is the foundational G1 building block: it is a drop-in replacement    *)
+(* for the inline ARM_STEPS(22--60) + HTABLE_KMID_FLAG_X12_INV cut inside     *)
+(* AES_GCM_MAIN_LOOP_PRELUDE_PRE_FIRSTBLOCKS_FLAG_X5_X12_PT_CORRECT, adding   *)
+(* the Q0..Q3 AES-form conjuncts that the existing prelude chain DROPS.       *)
+(* ========================================================================= *)
+
+let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_X12_BLOCK0123_CORRECT = prove
+ (`!pc (b:int64) (ctr0:int128) (rk9:int128) (ctr_lo:int64) (ctr_hi:int64)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+       (sx0:int64) (sx5:int64) (sx12:int32)
+       (htable_ptr:int64) (h:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (b, 256) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (htable_ptr, 96)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x54) /\
+              read X0 s = sx0 /\
+              read X5 s = sx5 /\
+              read X6 s = htable_ptr /\
+              read X8 s = b /\
+              read X10 s = ctr_lo /\
+              read X11 s = ctr_hi /\
+              read X12 s = word_zx sx12 /\
+              read Q0 s = ctr0 /\
+              ctr0 = word_join ctr_hi ctr_lo /\
+              read Q31 s = rk9 /\
+              read (memory :> bytes128 b) s = rk0 /\
+              read (memory :> bytes128 (word_add b (word 16))) s = rk1 /\
+              read (memory :> bytes128 (word_add b (word 32))) s = rk2 /\
+              read (memory :> bytes128 (word_add b (word 48))) s = rk3 /\
+              read (memory :> bytes128 (word_add b (word 64))) s = rk4 /\
+              read (memory :> bytes128 (word_add b (word 80))) s = rk5 /\
+              read (memory :> bytes128 (word_add b (word 96))) s = rk6 /\
+              read (memory :> bytes128 (word_add b (word 112))) s = rk7 /\
+              read (memory :> bytes128 (word_add b (word 128))) s = rk8 /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3))
+         (\s. read PC s = word (pc + 0x244) /\
+              read X0 s = sx0 /\
+              read X5 s = word_add (word_and sx5 (word 18446744073709551552:int64))
+                                   sx0 /\
+              read X6 s = htable_ptr /\
+              read X12 s = word_zx (word_subword (read X12 s) (0,32):int32) /\
+              (read NF s <=>
+               ival (word_sub sx0
+                      (word_add (word_and sx5 (word 18446744073709551552:int64))
+                                sx0)) < &0) /\
+              (read VF s <=>
+               ~(ival sx0 -
+                 ival (word_add (word_and sx5 (word 18446744073709551552:int64))
+                                sx0) =
+                 ival (word_sub sx0
+                        (word_add (word_and sx5
+                                    (word 18446744073709551552:int64)) sx0)))) /\
+              read Q0 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (word_bytereverse
+                              (aes_gcm_ctr_at (word_bytereverse ctr0) 0))
+                           rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+              read Q1 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (word_bytereverse
+                              (aes_gcm_ctr_at (word_bytereverse ctr0) 1))
+                           rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+              read Q2 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (word_bytereverse
+                              (aes_gcm_ctr_at (word_bytereverse ctr0) 2))
+                           rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+              read Q3 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (word_bytereverse
+                              (aes_gcm_ctr_at (word_bytereverse ctr0) 3))
+                           rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+              read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+              read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+              read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+              read Q16 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+                 :int128) /\
+              read Q17 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+                 :int128))
+         (MAYCHANGE [PC; X5; X9; X11; X12] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q18; Q19; Q20; Q21; Q22; Q23; Q24; Q25; Q26;
+                     Q27; Q28; Q29; Q30] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (22--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  SUBGOAL_THEN
+   `aes_gcm_ctr_at (word_bytereverse (word_join (ctr_hi:int64) (ctr_lo:int64)))
+      0 = word_bytereverse (word_join ctr_hi ctr_lo) /\
+    aes_gcm_ctr_at (word_bytereverse (word_join (ctr_hi:int64) (ctr_lo:int64)))
+      1 = aes_gcm_ctr_increment (word_bytereverse (word_join ctr_hi ctr_lo)) /\
+    aes_gcm_ctr_at (word_bytereverse (word_join (ctr_hi:int64) (ctr_lo:int64)))
+      2 = aes_gcm_ctr_increment
+            (aes_gcm_ctr_increment (word_bytereverse (word_join ctr_hi ctr_lo))) /\
+    aes_gcm_ctr_at (word_bytereverse (word_join (ctr_hi:int64) (ctr_lo:int64)))
+      3 = aes_gcm_ctr_increment (aes_gcm_ctr_increment
+            (aes_gcm_ctr_increment (word_bytereverse (word_join ctr_hi ctr_lo))))`
+   (fun th -> REWRITE_TAC[th]) THENL
+   [REWRITE_TAC[aes_gcm_ctr_at] THEN
+    CONV_TAC(TOP_DEPTH_CONV num_CONV) THEN REWRITE_TAC[ITER];
+    ALL_TAC] THEN
+  (* REPEAT CONJ_TAC splits the POST into the X5/flag/X12/AES/karatsuba       *)
+  (* equalities plus the trailing MAYCHANGE frame; the FIRST chain dispatches *)
+  (* each goal to the right closer order-independently: the X5/flag conjuncts *)
+  (* are literal simulator-emit assumptions (FIRST_ASSUM ACCEPT_TAC); the X12 *)
+  (* self-ref collapses via WORD_ZX_ZX + a helper; Q16/Q17 via byteswap128/   *)
+  (* karatsuba_mid + WORD_BLAST; the AES rounds are peeled opaque via         *)
+  (* AP_THM/AP_TERM down to the bare counter-input byte-order identity        *)
+  (* (BITBLAST after clearing the assumptions — EQT_ELIM otherwise).          *)
+  REPEAT CONJ_TAC THEN
+  FIRST
+   [REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC;
+    FIRST_ASSUM ACCEPT_TAC;
+    (IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+     CONV_TAC SYM_CONV THEN
+     MATCH_ACCEPT_TAC
+      (WORD_BLAST `!x:int32. word_zx (word_subword (word_zx x:int64) (0,32):int32) =
+                   (word_zx x:int64)`));
+    REWRITE_TAC[byteswap128; karatsuba_mid] THEN CONV_TAC WORD_BLAST;
+    REWRITE_TAC[aes_gcm_ctr_increment] THEN
+    REPEAT(AP_THM_TAC THEN AP_TERM_TAC) THEN
+    POP_ASSUM_LIST(K ALL_TAC) THEN BITBLAST_TAC]);;
+
 (* ------------------------------------------------------------------------- *)
 (* Phase 9 (s063) — H-table cut variant exposing raw NF/VF facts produced   *)
 (* by the cmp at offset 0x224.                                               *)
