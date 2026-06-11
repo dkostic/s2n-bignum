@@ -682,6 +682,94 @@ let AES_GCM_EMIT_FORM_THIN = prove
   REWRITE_TAC[AESE_AS_ARM_FINAL_ROUND] THEN
   BITBLAST_TAC);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G1 (s182): emit-form -> SPEC ciphertext composite bridge.       *)
+(*                                                                           *)
+(* The kernel firstblocks/main-loop body emits, for block i, the ciphertext  *)
+(* int128 in the AES-NI shape                                                *)
+(*                                                                           *)
+(*    word_xor (aese s9 rk9)                                                 *)
+(*             (word_insert (word_zx (pt_lo XOR rk10_lo)) (64,64)            *)
+(*                          (pt_hi XOR rk10_hi))                             *)
+(*                                                                           *)
+(* where s9 = aes_arm_round^9 of the kernel's V0..V3 counter input.  Once    *)
+(* G1 step 3 threads AES_GCM_PRELUDE_BLOCK0123_AES_FORM_CORRECT into the     *)
+(* firstblocks chain, that counter input is exactly                         *)
+(*   ctr_in = word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) i)    *)
+(* (see [[g1_counter_construction_bridge]]).  The two lemmas below collapse  *)
+(* the whole emit form to the SPEC ciphertext expression                     *)
+(*   word_xor pt (word_bytereverse (aes128_cipher spec_ctr ks_fips))         *)
+(* with spec_ctr = aes_gcm_ctr_at (word_bytereverse ctr0) i, ks_fips =       *)
+(* MAP word_bytereverse [rk0..rk10] the FIPS-order key schedule, and         *)
+(* pt = word_insert (word_zx pt_lo) (64,64) pt_hi the assembled plaintext    *)
+(* block — i.e. plaintext XOR the byte-reversed FIPS AES cipher of the spec  *)
+(* counter.  This is the G1 "ciphertext = pt XOR AES-cipher(counter)" target.*)
+(* ------------------------------------------------------------------------- *)
+
+(* Reusable corollary of AES128_CIPHER_AS_ARM (read right-to-left): the      *)
+(* ARM-form cipher of a byte-reversed plaintext is the byte-reverse of the   *)
+(* FIPS cipher (with byte-reversed keys).  Specialise AES128_CIPHER_AS_ARM   *)
+(* at the byte-reversed plaintext, then cancel the double byte-reverse on    *)
+(* the plaintext (WORD_BYTEREVERSE_BYTEREVERSE) and on the doubly-mapped     *)
+(* keys (MAP_o / o_DEF / MAP_ID).  No fresh BITBLAST.                         *)
+let AES128_CIPHER_ARM_OF_BYTEREV = prove
+ (`!x ks:int128 list.
+     LENGTH ks = 11
+     ==> aes128_cipher_arm (word_bytereverse x) ks =
+         word_bytereverse (aes128_cipher x (MAP word_bytereverse ks))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(SPECL [`x:int128`; `MAP word_bytereverse (ks:int128 list)`]
+               AES128_CIPHER_AS_ARM) THEN
+  ASM_REWRITE_TAC[LENGTH_MAP; GSYM MAP_o; o_DEF;
+                  WORD_BYTEREVERSE_BYTEREVERSE; MAP_ID] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th; WORD_BYTEREVERSE_BYTEREVERSE]));;
+
+(* The full emit-form -> spec ciphertext bridge.  When the kernel's 9-round  *)
+(* AES state s9 is aes_arm_round^9 of word_bytereverse(spec_ctr) with round  *)
+(* keys rk0..rk8, the block-i emit form equals                               *)
+(*   word_xor pt (word_bytereverse (aes128_cipher spec_ctr ks_fips))         *)
+(* with ks_fips = MAP word_bytereverse [rk0..rk10] and                       *)
+(* pt = word_insert (word_zx pt_lo) (64,64) pt_hi.  Proof: rewrite to the    *)
+(* ARM-form cipher via AES_GCM_EMIT_FORM_AS_PT_XOR_CIPHER (the existing A2    *)
+(* emit bridge), then convert that ARM-form cipher of the byte-reversed      *)
+(* counter to the byte-reversed FIPS cipher via AES128_CIPHER_ARM_OF_BYTEREV.*)
+let AES_GCM_EMIT_FORM_AS_SPEC_CIPHER = prove
+ (`!spec_ctr (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9 rk10
+        pt_lo pt_hi.
+     let s1 = aes_arm_round (word_bytereverse spec_ctr) rk0 in
+     let s2 = aes_arm_round s1 rk1 in
+     let s3 = aes_arm_round s2 rk2 in
+     let s4 = aes_arm_round s3 rk3 in
+     let s5 = aes_arm_round s4 rk4 in
+     let s6 = aes_arm_round s5 rk5 in
+     let s7 = aes_arm_round s6 rk6 in
+     let s8 = aes_arm_round s7 rk7 in
+     let s9 = aes_arm_round s8 rk8 in
+     word_xor (aese s9 rk9)
+              (word_insert
+                 (word_zx (word_xor pt_lo (word_subword rk10 (0,64) :64 word))
+                  :int128)
+                 (64,64)
+                 (word_xor pt_hi (word_subword rk10 (64,64) :64 word)))
+     = word_xor (word_insert (word_zx pt_lo :int128) (64,64) pt_hi)
+                (word_bytereverse
+                  (aes128_cipher spec_ctr
+                     (MAP word_bytereverse
+                        [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;rk10])))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  MP_TAC(SPECL
+    [`word_bytereverse (spec_ctr:int128)`;
+     `rk0:int128`;`rk1:int128`;`rk2:int128`;`rk3:int128`;`rk4:int128`;
+     `rk5:int128`;`rk6:int128`;`rk7:int128`;`rk8:int128`;`rk9:int128`;
+     `rk10:int128`; `pt_lo:int64`; `pt_hi:int64`]
+    AES_GCM_EMIT_FORM_AS_PT_XOR_CIPHER) THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]) THEN
+  AP_TERM_TAC THEN
+  MATCH_MP_TAC AES128_CIPHER_ARM_OF_BYTEREV THEN
+  REWRITE_TAC[LENGTH] THEN ARITH_TAC);;
+
 (* ========================================================================= *)
 (* Phase 3b/c: GHASH 4-block Karatsuba bridge — framework + sub-lemmas.      *)
 (*                                                                           *)
