@@ -15265,6 +15265,82 @@ let AES_GCM_PRELUDE_HTABLE_KMID_CORRECT = prove
     REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
 
 (* ------------------------------------------------------------------------- *)
+(* Phase 11b G1 (s180) — prelude-slice block-0 AES-form cut.                 *)
+(*                                                                           *)
+(* G1 (the ciphertext spec bridge) requires the composed full-kernel chain   *)
+(* to assert that the firstblocks ciphertext factor `q0_pre` (a free param   *)
+(* in AES_GCM_PRELUDE_FIRSTBLOCKS_FULL_CORRECT @17065) is actually the       *)
+(* AES-NI emit form `aese (aes_arm_round^9 ctr0 [rk0..rk8]) rk9`, which the   *)
+(* emit-form bridge AES_GCM_EMIT_FORM_AS_PT_XOR_CIPHER (aes_gcm_bridge.ml)    *)
+(* consumes to produce the spec ciphertext `pt XOR aes128_cipher_arm ctr0 ks`.*)
+(* Per [[g1_ciphertext_q0_free_param]], the existing prelude cuts (ROUND_KEYS,*)
+(* HTABLE_KMID) simulate the 0x78..0x238 AES rounds on Q0..Q3 but discard the *)
+(* result into MAYCHANGE; their POSTs are silent on Q0..Q3.                   *)
+(*                                                                           *)
+(* This cut covers the prelude AES region (kernel offsets 0x54..0x244, slice *)
+(* instr indices 22..145 — the SAME range as ROUND_KEYS ∘ HTABLE_KMID) and   *)
+(* exposes the block-0 AES form in its POST.  Block 0 (V0) is the natural     *)
+(* first building block: its AES INPUT is the loaded initial counter `ctr0`  *)
+(* (`ld1 {v0.16b},[x16]` at 0x4c, established as `read Q0 = ctr0` here),      *)
+(* so it needs NO counter-construction bridge.  Blocks 1..3 (V1..V3) build    *)
+(* their AES inputs from the scalar counter registers X9/X10/X11 via          *)
+(* `fmov d_i,x10; fmov v_i.d[1],x9` interleaved with the `add w12,#1; rev w9; *)
+(* orr x9,x11,x9,lsl#32` BE-counter-increment chain — those require a         *)
+(* separate counter-construction bridge (aes_gcm_ctr_at) deferred to a        *)
+(* follow-on step.                                                            *)
+(*                                                                           *)
+(* Round-key inputs are the AES-128 schedule words at `[x8,#16*i]`:          *)
+(* rk0..rk8 from offsets 0..128, rk9 pre-loaded into Q31 by the prologue      *)
+(* (`ldur q31,[x19,#-16]` at 0x38).  The raw simulator emit form             *)
+(* `aese(aesmc(aese ... ctr0 rk0))...)` refolds to the spec                  *)
+(* `aese (aes_arm_round^9 ctr0 [rk0..rk8]) rk9` via AESMC_AESE_AS_ARM_ROUND.  *)
+(* The trailing `aese ... rk9` (round 9, no aesmc) stays as `aese`, matching  *)
+(* the emit bridge's `aese s9 rk9` factor exactly.                            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_BLOCK0_AES_FORM_CORRECT = prove
+ (`!pc (b:int64) (ctr0:int128) (rk9:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (b, 256)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x54) /\
+              read X8 s = b /\
+              read Q0 s = ctr0 /\
+              read Q31 s = rk9 /\
+              read (memory :> bytes128 b) s = rk0 /\
+              read (memory :> bytes128 (word_add b (word 16))) s = rk1 /\
+              read (memory :> bytes128 (word_add b (word 32))) s = rk2 /\
+              read (memory :> bytes128 (word_add b (word 48))) s = rk3 /\
+              read (memory :> bytes128 (word_add b (word 64))) s = rk4 /\
+              read (memory :> bytes128 (word_add b (word 80))) s = rk5 /\
+              read (memory :> bytes128 (word_add b (word 96))) s = rk6 /\
+              read (memory :> bytes128 (word_add b (word 112))) s = rk7 /\
+              read (memory :> bytes128 (word_add b (word 128))) s = rk8)
+         (\s. read PC s = word (pc + 0x244) /\
+              read Q0 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round
+                           (aes_arm_round (aes_arm_round (aes_arm_round ctr0
+                           rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9)
+         (MAYCHANGE [PC; X5; X9; X11; X12] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q18; Q19; Q20; Q21; Q22; Q23; Q24; Q25; Q26;
+                     Q27; Q28; Q29; Q30] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (22--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[AESMC_AESE_AS_ARM_ROUND] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC);;
+
+(* ------------------------------------------------------------------------- *)
 (* Phase 9 (s063) — H-table cut variant exposing raw NF/VF facts produced   *)
 (* by the cmp at offset 0x224.                                               *)
 (*                                                                           *)
