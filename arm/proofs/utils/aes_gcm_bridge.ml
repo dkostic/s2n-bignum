@@ -464,6 +464,33 @@ let AES128_CIPHER_ARM_AS_FIPS = prove
   REWRITE_TAC[GSYM AES_SUB_BYTES_BYTEREVERSE_COMM;
               WORD_BYTEREVERSE_BYTEREVERSE]);;
 
+(* The inverse direction of A1: express the FIPS-form `aes128_cipher` in      *)
+(* terms of the ARM-form `aes128_cipher_arm`.  The public AES-GCM spec        *)
+(* (`aes_gcm_spec.ml`) is built on FIPS `aes128_cipher`, whereas the kernel   *)
+(* proof produces `aes128_cipher_arm` (the AES-NI emit shape).  At the        *)
+(* public-theorem boundary (Phase 11b G1, ciphertext bytes equality) we need  *)
+(* to rewrite a spec `aes128_cipher` occurrence into the kernel's ARM form,   *)
+(* so the inverse direction is the convenient one to apply there.             *)
+(*                                                                            *)
+(* Derived purely from `AES128_CIPHER_ARM_AS_FIPS` (A1) by specialising it    *)
+(* at the byte-reversed plaintext/keys and cancelling the involutive          *)
+(* `word_bytereverse` (and `MAP word_bytereverse o MAP word_bytereverse =     *)
+(* I`).  No fresh BITBLAST — it is a corollary of A1.                          *)
+let AES128_CIPHER_AS_ARM = prove
+ (`!pt ks:int128 list.
+     LENGTH ks = 11
+     ==> aes128_cipher pt ks =
+         word_bytereverse
+           (aes128_cipher_arm (word_bytereverse pt) (MAP word_bytereverse ks))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC(SPECL [`word_bytereverse pt:int128`;
+                `MAP word_bytereverse (ks:int128 list)`]
+               AES128_CIPHER_ARM_AS_FIPS) THEN
+  ASM_REWRITE_TAC[LENGTH_MAP; GSYM MAP_o; o_DEF;
+                  WORD_BYTEREVERSE_BYTEREVERSE; MAP_ID] THEN
+  DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE]);;
+
 (* ========================================================================= *)
 (* Phase 3c: NIST byte-order bridge.                                         *)
 (*                                                                           *)
