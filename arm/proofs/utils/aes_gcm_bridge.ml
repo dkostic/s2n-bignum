@@ -812,6 +812,47 @@ let EMIT_FORM_HALVES_AS_SPEC_CIPHER = prove
   ASM_REWRITE_TAC[] THEN
   DISCH_THEN(fun th -> REWRITE_TAC[th]));;
 
+(* The "swapped-operand" sibling of EMIT_FORM_HALVES_AS_SPEC_CIPHER.          *)
+(*                                                                           *)
+(* The kernel emits block 0 of a tail as                                     *)
+(*   word_xor (aese s9 rk9) (word_insert (word_zx (pt_lo XOR rk10_lo)) ...)   *)
+(* but blocks 1/2/3 of a tail are emitted in the operand-flipped, half-      *)
+(* joined shape                                                              *)
+(*   word_xor (word_join (pt_hi XOR rk10_hi) (pt_lo XOR rk10_lo))            *)
+(*            (aese s9 rk9)                                                  *)
+(* (see e.g. AES_GCM_LENC_TAIL_N{2,3,4}_FULL_KERNEL_FUNCTIONAL_CORRECT, the  *)
+(* block-1/2/3 cptr conjuncts).  This lemma collapses that swapped form to   *)
+(* the same SPEC ciphertext expression                                       *)
+(*   word_xor pt (word_bytereverse (aes128_cipher spec_ctr ks_fips)).         *)
+(* Proof: rewrite word_join hi lo = word_insert (word_zx lo) (64,64) hi      *)
+(* (BITBLAST), commute the outer XOR (WORD_RULE), then it is verbatim        *)
+(* EMIT_FORM_HALVES_AS_SPEC_CIPHER.                                          *)
+let EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED = prove
+ (`!spec_ctr (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9
+        (rk10_lo:int64) (rk10_hi:int64) (pt_lo:int64) (pt_hi:int64).
+     word_xor
+       (word_join (word_xor pt_hi rk10_hi :int64)
+                  (word_xor pt_lo rk10_lo :int64) :int128)
+       (aese (aes_arm_round (aes_arm_round (aes_arm_round
+             (aes_arm_round (aes_arm_round (aes_arm_round
+             (aes_arm_round (aes_arm_round (aes_arm_round
+                (word_bytereverse spec_ctr)
+             rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9)
+     = word_xor (word_insert (word_zx pt_lo :int128) (64,64) pt_hi)
+                (word_bytereverse
+                  (aes128_cipher spec_ctr
+                     (MAP word_bytereverse
+                        [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                         word_join rk10_hi rk10_lo])))`,
+  REPEAT GEN_TAC THEN
+  GEN_REWRITE_TAC (LAND_CONV o LAND_CONV)
+    [BITBLAST_RULE
+      `word_join (hi:int64) (lo:int64) :int128 =
+       word_insert (word_zx lo :int128) (64,64) hi`] THEN
+  GEN_REWRITE_TAC LAND_CONV
+    [WORD_RULE `word_xor (a:int128) b = word_xor b a`] THEN
+  MATCH_ACCEPT_TAC EMIT_FORM_HALVES_AS_SPEC_CIPHER);;
+
 (* ========================================================================= *)
 (* Phase 3b/c: GHASH 4-block Karatsuba bridge — framework + sub-lemmas.      *)
 (*                                                                           *)
