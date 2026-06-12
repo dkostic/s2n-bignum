@@ -770,6 +770,48 @@ let AES_GCM_EMIT_FORM_AS_SPEC_CIPHER = prove
   MATCH_MP_TAC AES128_CIPHER_ARM_OF_BYTEREV THEN
   REWRITE_TAC[LENGTH] THEN ARITH_TAC);;
 
+(* The same emit-form -> spec ciphertext bridge but with the last round key   *)
+(* presented as two int64 halves rk10_lo/rk10_hi (the form the kernel's       *)
+(* firstblocks ciphertext store actually produces: `eor` of the scalar        *)
+(* plaintext halves against the rk10 halves before the `word_insert`).  This  *)
+(* is the directly-applicable rewrite for FIRSTBLOCKS_FULL's POST, where the  *)
+(* X13/X14 last-round halves (lk_lo/lk_hi) play the rk10 role and assemble as  *)
+(* `word_join rk10_hi rk10_lo` in the FIPS key schedule.  Reduces to          *)
+(* AES_GCM_EMIT_FORM_AS_SPEC_CIPHER after recombining the halves via BITBLAST. *)
+let EMIT_FORM_HALVES_AS_SPEC_CIPHER = prove
+ (`!spec_ctr (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9
+        (rk10_lo:int64) (rk10_hi:int64) (pt_lo:int64) (pt_hi:int64).
+     word_xor
+       (aese (aes_arm_round (aes_arm_round (aes_arm_round
+             (aes_arm_round (aes_arm_round (aes_arm_round
+             (aes_arm_round (aes_arm_round (aes_arm_round
+                (word_bytereverse spec_ctr)
+             rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9)
+       (word_insert (word_zx (word_xor pt_lo rk10_lo) :int128)
+                    (64,64) (word_xor pt_hi rk10_hi))
+     = word_xor (word_insert (word_zx pt_lo :int128) (64,64) pt_hi)
+                (word_bytereverse
+                  (aes128_cipher spec_ctr
+                     (MAP word_bytereverse
+                        [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                         word_join rk10_hi rk10_lo])))`,
+  REPEAT GEN_TAC THEN
+  SUBGOAL_THEN
+    `word_subword (word_join (rk10_hi:int64) (rk10_lo:int64) :int128) (0,64) = (rk10_lo:int64) /\
+     word_subword (word_join (rk10_hi:int64) (rk10_lo:int64) :int128) (64,64) = (rk10_hi:int64)`
+    STRIP_ASSUME_TAC THENL
+   [CONJ_TAC THEN BITBLAST_TAC; ALL_TAC] THEN
+  MP_TAC(SPECL
+    [`spec_ctr:int128`;
+     `rk0:int128`;`rk1:int128`;`rk2:int128`;`rk3:int128`;`rk4:int128`;
+     `rk5:int128`;`rk6:int128`;`rk7:int128`;`rk8:int128`;`rk9:int128`;
+     `word_join (rk10_hi:int64) (rk10_lo:int64) :int128`;
+     `pt_lo:int64`; `pt_hi:int64`]
+    AES_GCM_EMIT_FORM_AS_SPEC_CIPHER) THEN
+  REWRITE_TAC[LET_DEF; LET_END_DEF] THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[th]));;
+
 (* ========================================================================= *)
 (* Phase 3b/c: GHASH 4-block Karatsuba bridge — framework + sub-lemmas.      *)
 (*                                                                           *)

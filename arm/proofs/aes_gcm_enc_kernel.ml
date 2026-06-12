@@ -20301,6 +20301,441 @@ let AES_GCM_MAIN_LOOP_PRELUDE_BODY_SLICE_FULL_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
 
+
+(* ========================================================================= *)
+(* Phase 11b G1 Step 3.2 (s185) — FIRSTBLOCKS_FULL with AES spec ciphertext. *)
+(*                                                                           *)
+(* Composes PT_BODY_AES (slice instr 12..145, offsets 0x2c..0x244, Q0..Q3   *)
+(* exposed in AES spec form) with FIRSTBLOCKS_FULL (instr 146..194,         *)
+(* 0x244..0x308, the four-block ciphertext stores) into one ensures over    *)
+(* the slice region 0x2c..0x308.  The four ciphertext memory cells in the   *)
+(* POST are stated in SPEC-CIPHER form                                       *)
+(*   word_xor pt_i (word_bytereverse (aes128_cipher spec_ctr_i ks_fips))     *)
+(* with spec_ctr_i = aes_gcm_ctr_at (word_bytereverse ctr0) i,               *)
+(*      ks_fips    = MAP word_bytereverse [rk0..rk9; word_join lk_hi lk_lo], *)
+(*      pt_i       = word_insert (word_zx b{i}_lo) (64,64) b{i}_hi.          *)
+(*                                                                           *)
+(* This is the G1 "ciphertext = pt XOR byterev(AES-cipher(counter))" target  *)
+(* for the first four blocks.  Built by instantiating FIRSTBLOCKS_FULL's     *)
+(* free q{i}_pre to the AES form from PT_BODY_AES's POST (Option B: keeps    *)
+(* the ciphertext POST self-contained, no s145 read survives the bigstep),   *)
+(* then collapsing the emit form to spec via EMIT_FORM_HALVES_AS_SPEC_CIPHER *)
+(* (aes_gcm_bridge.ml).  Mirrors the non-AES BODY_SLICE_FULL @ ~20117.       *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_PRELUDE_BODY_SLICE_FULL_AES_CORRECT = prove
+ (`!pc (ptr0:int64) (bit_len:int64) (cptr:int64) (tag_ptr:int64)
+       (ivec_ptr:int64) (key_ptr:int64) (htable_ptr:int64)
+       (stackpointer:int64)
+       (lk_lo:int64) (lk_hi:int64) (rk9:int128)
+       (ctr_lo:int64) (ctr_hi:int64) (ctr0:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+       (h:int128) (q6_pre:int128) (q7_pre:int128)
+       (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+       (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (htable_ptr, 96) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (key_ptr, 256) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (cptr, 64) /\
+    val ptr0 + 64 < 2 EXP 63 /\
+    val ptr0 + 16 <
+      val (word_add ptr0
+            (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                      (word 18446744073709551552:int64))) /\
+    ival (word_add ptr0 (word 64)) <
+      ival (word_add ptr0
+             (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                       (word 18446744073709551552:int64)))
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0x2c) /\
+              read SP s = word_sub stackpointer (word 128) /\
+              read X0 s = ptr0 /\
+              read X1 s = bit_len /\
+              read X2 s = cptr /\
+              read X3 s = tag_ptr /\
+              read X4 s = ivec_ptr /\
+              read X5 s = key_ptr /\
+              read X6 s = htable_ptr /\
+              read X16 s = ivec_ptr /\
+              read X8 s = key_ptr /\
+              read Q6 s = q6_pre /\
+              read Q7 s = q7_pre /\
+              read (memory :> bytes32 (word_add key_ptr (word 240))) s = (word 10:32 word) /\
+              read (memory :> bytes64 (word_add key_ptr (word 160))) s = lk_lo /\
+              read (memory :> bytes64 (word_add key_ptr (word 168))) s = lk_hi /\
+              read (memory :> bytes128 (word_add key_ptr (word 144))) s = rk9 /\
+              read (memory :> bytes64 ivec_ptr) s = ctr_lo /\
+              read (memory :> bytes64 (word_add ivec_ptr (word 8))) s = ctr_hi /\
+              read (memory :> bytes128 ivec_ptr) s = ctr0 /\
+              read (memory :> bytes128 key_ptr) s = rk0 /\
+              read (memory :> bytes128 (word_add key_ptr (word 16))) s = rk1 /\
+              read (memory :> bytes128 (word_add key_ptr (word 32))) s = rk2 /\
+              read (memory :> bytes128 (word_add key_ptr (word 48))) s = rk3 /\
+              read (memory :> bytes128 (word_add key_ptr (word 64))) s = rk4 /\
+              read (memory :> bytes128 (word_add key_ptr (word 80))) s = rk5 /\
+              read (memory :> bytes128 (word_add key_ptr (word 96))) s = rk6 /\
+              read (memory :> bytes128 (word_add key_ptr (word 112))) s = rk7 /\
+              read (memory :> bytes128 (word_add key_ptr (word 128))) s = rk8 /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3) /\
+              read (memory :> bytes64 ptr0) s = b0_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 8))) s = b0_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 16))) s = b1_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 24))) s = b1_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 32))) s = b2_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 40))) s = b2_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 48))) s = b3_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 56))) s = b3_hi)
+         (\s. read PC s = word (pc + 0x308) /\
+              read SP s = word_sub stackpointer (word 128) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = word_add ptr0
+                (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                          (word 18446744073709551552:int64)) /\
+              read X10 s = ctr_lo /\
+              read X13 s = lk_lo /\
+              read X14 s = lk_hi /\
+              read Q31 s = rk9 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+              read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+              read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+              read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+              read Q16 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+                 :int128) /\
+              read Q17 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+                 :int128) /\
+              read (memory :> bytes128 cptr) s =
+                word_xor (word_insert (word_zx (b0_lo:int64) :int128) (64,64) b0_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))) /\
+              read (memory :> bytes128 (word_add cptr (word 16))) s =
+                word_xor (word_insert (word_zx (b1_lo:int64) :int128) (64,64) b1_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 1)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))) /\
+              read (memory :> bytes128 (word_add cptr (word 32))) s =
+                word_xor (word_insert (word_zx (b2_lo:int64) :int128) (64,64) b2_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 2)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))) /\
+              read (memory :> bytes128 (word_add cptr (word 48))) s =
+                word_xor (word_insert (word_zx (b3_lo:int64) :int128) (64,64) b3_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 3)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))))
+         (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12;
+                     X13; X14; X15; X17; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q18; Q19; Q20; Q21; Q22; Q23; Q24; Q25;
+                     Q26; Q27; Q28; Q29; Q30; Q31] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  (* Cut 1: PT_BODY_AES (instr 12..145, offsets 0x2c..0x244). *)
+  MP_TAC(REWRITE_RULE[SOME_FLAGS]
+    (SPECL[`pc:num`; `ptr0:int64`; `bit_len:int64`; `cptr:int64`;
+           `tag_ptr:int64`; `ivec_ptr:int64`; `key_ptr:int64`;
+           `htable_ptr:int64`; `stackpointer:int64`;
+           `lk_lo:int64`; `lk_hi:int64`; `rk9:int128`;
+           `ctr_lo:int64`; `ctr_hi:int64`; `ctr0:int128`;
+           `rk0:int128`; `rk1:int128`; `rk2:int128`; `rk3:int128`; `rk4:int128`;
+           `rk5:int128`; `rk6:int128`; `rk7:int128`; `rk8:int128`;
+           `h:int128`; `q6_pre:int128`; `q7_pre:int128`;
+           `b0_lo:int64`; `b0_hi:int64`; `b1_lo:int64`; `b1_hi:int64`;
+           `b2_lo:int64`; `b2_hi:int64`; `b3_lo:int64`; `b3_hi:int64`]
+          AES_GCM_MAIN_LOOP_PRELUDE_PRE_FIRSTBLOCKS_FLAG_X5_X12_PT_BODY_AES_CORRECT)) THEN
+  ANTS_TAC THENL
+   [ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                    fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC];
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC "s145" THEN
+  (* Cut 2: FIRSTBLOCKS_FULL (instr 146..194, 0x244..0x308).  q{i}_pre bound to
+     the explicit AES spec form from PT_BODY_AES's POST (Option B): keeps the
+     ciphertext POST self-contained so it survives DISCARD_OLDSTATE. *)
+  MP_TAC(REWRITE_RULE[SOME_FLAGS]
+    (SPECL[`pc:num`; `ptr0:int64`;
+           `word_add ptr0 (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                                    (word 18446744073709551552:int64)) :int64`;
+           `cptr:int64`;
+           `aese (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                    (word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) 0))
+                 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 :int128`;
+           `aese (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                    (word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) 1))
+                 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 :int128`;
+           `ctr_lo:int64`;
+           `read X9 (s145:armstate):int64`;
+           `read X11 (s145:armstate):int64`;
+           `word_subword (read X12 (s145:armstate):int64) (0,32) :int32`;
+           `aese (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                    (word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) 2))
+                 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 :int128`;
+           `aese (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                 (aes_arm_round (aes_arm_round (aes_arm_round
+                    (word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) 3))
+                 rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 :int128`;
+           `q6_pre:int128`; `q7_pre:int128`;
+           `lk_lo:int64`; `lk_hi:int64`;
+           `b0_lo:int64`; `b0_hi:int64`; `b1_lo:int64`; `b1_hi:int64`;
+           `b2_lo:int64`; `b2_hi:int64`; `b3_lo:int64`; `b3_hi:int64`]
+          AES_GCM_PRELUDE_FIRSTBLOCKS_FULL_CORRECT)) THEN
+  ANTS_TAC THENL
+   [ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES;
+                    fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC];
+    ALL_TAC] THEN
+  ARM_BIGSTEP_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC "s194" THENL
+   [(* X12 INV residual + flag-bridge residual at FIRSTBLOCKS_FULL pre. *)
+    CONJ_TAC THENL
+     [FIRST_X_ASSUM ACCEPT_TAC;
+      REWRITE_TAC[IVAL_WORD_SUB_NFVF_TO_LT] THEN
+      MATCH_MP_TAC INT_LT_TRANS THEN
+      EXISTS_TAC `ival (word_add (ptr0:int64) (word 64)):int` THEN
+      ASM_REWRITE_TAC[] THEN
+      SUBGOAL_THEN `ival (ptr0:int64) = &(val (ptr0:int64))` SUBST1_TAC THENL
+       [MATCH_MP_TAC IVAL_EQ_VAL THEN
+        REWRITE_TAC[DIMINDEX_64] THEN
+        MP_TAC(ASSUME `val (ptr0:int64) + 64 < 2 EXP 63`) THEN ARITH_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `val (word_add (ptr0:int64) (word 64)) = val (ptr0:int64) + 64`
+        ASSUME_TAC THENL
+       [REWRITE_TAC[VAL_WORD_ADD_CASES; DIMINDEX_64; VAL_WORD;
+                    ARITH_RULE `64 MOD 2 EXP 64 = 64`] THEN
+        MP_TAC(ASSUME `val (ptr0:int64) + 64 < 2 EXP 63`) THEN ARITH_TAC;
+        ALL_TAC] THEN
+      SUBGOAL_THEN
+        `ival (word_add (ptr0:int64) (word 64)) =
+         &(val (ptr0:int64) + 64)`
+        SUBST1_TAC THENL
+       [REWRITE_TAC[GSYM (ASSUME `val (word_add (ptr0:int64) (word 64)) =
+                                  val (ptr0:int64) + 64`)] THEN
+        MATCH_MP_TAC IVAL_EQ_VAL THEN
+        REWRITE_TAC[DIMINDEX_64] THEN ASM_REWRITE_TAC[];
+        ALL_TAC] THEN
+      MP_TAC(ASSUME `val (ptr0:int64) + 64 < 2 EXP 63`) THEN ARITH_TAC];
+    ALL_TAC] THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER]);;
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G1 Step 3.2 (s185) — kernel promotion of BODY_SLICE_FULL_AES.   *)
+(*                                                                           *)
+(* Mechanically promotes AES_GCM_MAIN_LOOP_PRELUDE_BODY_SLICE_FULL_AES_      *)
+(* CORRECT from the prelude slice mc to the full kernel mc context per       *)
+(* [[slice_to_kernel_ensures_promotion]] (offset 0).  Mirrors the non-AES   *)
+(* AES_GCM_MAIN_LOOP_PRELUDE_BODY_FULL_KERNEL_CORRECT promotion shape.        *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_MAIN_LOOP_PRELUDE_BODY_FULL_AES_KERNEL_CORRECT = prove
+ (`!pc (ptr0:int64) (bit_len:int64) (cptr:int64) (tag_ptr:int64)
+       (ivec_ptr:int64) (key_ptr:int64) (htable_ptr:int64)
+       (stackpointer:int64)
+       (lk_lo:int64) (lk_hi:int64) (rk9:int128)
+       (ctr_lo:int64) (ctr_hi:int64) (ctr0:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+       (h:int128) (q6_pre:int128) (q7_pre:int128)
+       (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+       (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64).
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc)
+                   (htable_ptr, 96) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc)
+                   (key_ptr, 256) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc)
+                   (cptr, 64) /\
+    val ptr0 + 64 < 2 EXP 63 /\
+    val ptr0 + 16 <
+      val (word_add ptr0
+            (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                      (word 18446744073709551552:int64))) /\
+    ival (word_add ptr0 (word 64)) <
+      ival (word_add ptr0
+             (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                       (word 18446744073709551552:int64)))
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word (pc + 0x2c) /\
+              read SP s = word_sub stackpointer (word 128) /\
+              read X0 s = ptr0 /\
+              read X1 s = bit_len /\
+              read X2 s = cptr /\
+              read X3 s = tag_ptr /\
+              read X4 s = ivec_ptr /\
+              read X5 s = key_ptr /\
+              read X6 s = htable_ptr /\
+              read X16 s = ivec_ptr /\
+              read X8 s = key_ptr /\
+              read Q6 s = q6_pre /\
+              read Q7 s = q7_pre /\
+              read (memory :> bytes32 (word_add key_ptr (word 240))) s = (word 10:32 word) /\
+              read (memory :> bytes64 (word_add key_ptr (word 160))) s = lk_lo /\
+              read (memory :> bytes64 (word_add key_ptr (word 168))) s = lk_hi /\
+              read (memory :> bytes128 (word_add key_ptr (word 144))) s = rk9 /\
+              read (memory :> bytes64 ivec_ptr) s = ctr_lo /\
+              read (memory :> bytes64 (word_add ivec_ptr (word 8))) s = ctr_hi /\
+              read (memory :> bytes128 ivec_ptr) s = ctr0 /\
+              read (memory :> bytes128 key_ptr) s = rk0 /\
+              read (memory :> bytes128 (word_add key_ptr (word 16))) s = rk1 /\
+              read (memory :> bytes128 (word_add key_ptr (word 32))) s = rk2 /\
+              read (memory :> bytes128 (word_add key_ptr (word 48))) s = rk3 /\
+              read (memory :> bytes128 (word_add key_ptr (word 64))) s = rk4 /\
+              read (memory :> bytes128 (word_add key_ptr (word 80))) s = rk5 /\
+              read (memory :> bytes128 (word_add key_ptr (word 96))) s = rk6 /\
+              read (memory :> bytes128 (word_add key_ptr (word 112))) s = rk7 /\
+              read (memory :> bytes128 (word_add key_ptr (word 128))) s = rk8 /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3) /\
+              read (memory :> bytes64 ptr0) s = b0_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 8))) s = b0_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 16))) s = b1_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 24))) s = b1_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 32))) s = b2_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 40))) s = b2_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 48))) s = b3_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 56))) s = b3_hi)
+         (\s. read PC s = word (pc + 0x308) /\
+              read SP s = word_sub stackpointer (word 128) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = word_add ptr0
+                (word_and (word_sub (word_ushr bit_len 3) (word 1))
+                          (word 18446744073709551552:int64)) /\
+              read X10 s = ctr_lo /\
+              read X13 s = lk_lo /\
+              read X14 s = lk_hi /\
+              read Q31 s = rk9 /\
+              read Q18 s = rk0 /\
+              read Q19 s = rk1 /\
+              read Q20 s = rk2 /\
+              read Q21 s = rk3 /\
+              read Q23 s = rk5 /\
+              read Q24 s = rk6 /\
+              read Q25 s = rk7 /\
+              read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+              read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+              read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+              read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+              read Q16 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+                 :int128) /\
+              read Q17 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+                 :int128) /\
+              read (memory :> bytes128 cptr) s =
+                word_xor (word_insert (word_zx (b0_lo:int64) :int128) (64,64) b0_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))) /\
+              read (memory :> bytes128 (word_add cptr (word 16))) s =
+                word_xor (word_insert (word_zx (b1_lo:int64) :int128) (64,64) b1_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 1)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))) /\
+              read (memory :> bytes128 (word_add cptr (word 32))) s =
+                word_xor (word_insert (word_zx (b2_lo:int64) :int128) (64,64) b2_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 2)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))) /\
+              read (memory :> bytes128 (word_add cptr (word 48))) s =
+                word_xor (word_insert (word_zx (b3_lo:int64) :int128) (64,64) b3_hi)
+                         (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 3)
+                              (MAP word_bytereverse
+                                 [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                                  word_join lk_hi lk_lo]))))
+         (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12;
+                     X13; X14; X15; X17; X19; X20; X21; X22; X23; X24] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q18; Q19; Q20; Q21; Q22; Q23; Q24; Q25;
+                     Q26; Q27; Q28; Q29; Q30; Q31] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC (SPECL[`pc + 0x0:num`; `ptr0:int64`; `bit_len:int64`; `cptr:int64`;
+                `tag_ptr:int64`; `ivec_ptr:int64`; `key_ptr:int64`;
+                `htable_ptr:int64`; `stackpointer:int64`;
+                `lk_lo:int64`; `lk_hi:int64`; `rk9:int128`;
+                `ctr_lo:int64`; `ctr_hi:int64`; `ctr0:int128`;
+                `rk0:int128`; `rk1:int128`; `rk2:int128`; `rk3:int128`; `rk4:int128`;
+                `rk5:int128`; `rk6:int128`; `rk7:int128`; `rk8:int128`;
+                `h:int128`; `q6_pre:int128`; `q7_pre:int128`;
+                `b0_lo:int64`; `b0_hi:int64`; `b1_lo:int64`; `b1_hi:int64`;
+                `b2_lo:int64`; `b2_hi:int64`; `b3_lo:int64`; `b3_hi:int64`]
+               AES_GCM_MAIN_LOOP_PRELUDE_BODY_SLICE_FULL_AES_CORRECT) THEN
+  ANTS_TAC THENL
+   [ASM_REWRITE_TAC[NONOVERLAPPING_CLAUSES; ARITH_RULE `pc + 0 = pc`] THEN
+    REWRITE_TAC[fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC;
+                fst AES_GCM_ENC_KERNEL_EXEC] THEN
+    RULE_ASSUM_TAC(REWRITE_RULE[fst AES_GCM_ENC_KERNEL_EXEC;
+                                NONOVERLAPPING_CLAUSES]) THEN
+    NONOVERLAPPING_TAC;
+    REWRITE_TAC[ARITH_RULE `(pc + 0x0) + 0x308 = pc + 0x308`;
+                ARITH_RULE `(pc + 0x0) + 0x2c = pc + 0x2c`;
+                ARITH_RULE `pc + 0x0 = pc`] THEN
+    MATCH_MP_TAC (REWRITE_RULE[IMP_CONJ] ENSURES_PRECONDITION_THM) THEN
+    GEN_TAC THEN STRIP_TAC THEN
+    POP_ASSUM(STRIP_ASSUME_TAC o BETA_RULE) THEN
+    ASM_REWRITE_TAC[] THEN
+    MP_TAC(SPECL[`x:armstate`; `pc:num`] SLICE_TO_KERNEL_PRELUDE_LOAD) THEN
+    ASM_REWRITE_TAC[ARITH_RULE `pc + 0 = pc`]]);;
+
 (* ------------------------------------------------------------------------- *)
 (* Phase 10 (s126) — Path (c) Step 3b: kernel-mc promotion of                *)
 (* `BODY_SLICE_FULL`.                                                        *)
