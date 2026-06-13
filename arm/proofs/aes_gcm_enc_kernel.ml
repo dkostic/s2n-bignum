@@ -23760,6 +23760,7 @@ let FIRSTBLOCKS_FULL_X0_LIFT_TAKEN_CTR = prove
        (q0_pre:int128) (q1_pre:int128)
        (sx10:int64) (sx9:int64) (sx11:int64) (sx12:int32)
        (q2_pre:int128) (q3_pre:int128) (q6_pre:int128) (q7_pre:int128)
+       (rk4:int128) (rk8:int128)
        (rk10_lo:int64) (rk10_hi:int64)
        (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
        (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64).
@@ -23794,9 +23795,13 @@ let FIRSTBLOCKS_FULL_X0_LIFT_TAKEN_CTR = prove
               read Q2 s = q2_pre /\
               read Q3 s = q3_pre /\
               read Q6 s = q6_pre /\
-              read Q7 s = q7_pre)
+              read Q7 s = q7_pre /\
+              read Q22 s = rk4 /\
+              read Q26 s = rk8)
          (\s. read PC s = word (pc + 0x5c8) /\
               read X0 s = word_add a (word 64) /\
+              read Q22 s = rk4 /\
+              read Q26 s = rk8 /\
               read X2 s = word_add cptr (word 64) /\
               read X9 s = word_or sx11
                 (word_shl (word_zx (word_bytereverse (word_zx (word_zx
@@ -64708,9 +64713,11 @@ let SLICE_FULL_X0_LIFT_BODY_TAKEN_AES_WITH_Q11_CTR = prove
               read Q19 s = rk1 /\
               read Q20 s = rk2 /\
               read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
               read Q23 s = rk5 /\
               read Q24 s = rk6 /\
               read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
               read Q11 s = word_bytereverse initial_tag /\
               read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
               read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
@@ -64842,6 +64849,7 @@ let SLICE_FULL_X0_LIFT_BODY_TAKEN_AES_WITH_Q11_CTR = prove
                     (word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) 3))
                  rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9 :int128`;
            `q6_pre:int128`; `q7_pre:int128`;
+           `rk4:int128`; `rk8:int128`;
            `lk_lo:int64`; `lk_hi:int64`;
            `b0_lo:int64`; `b0_hi:int64`; `b1_lo:int64`; `b1_hi:int64`;
            `b2_lo:int64`; `b2_hi:int64`; `b3_lo:int64`; `b3_hi:int64`]
@@ -65169,9 +65177,11 @@ let KERNEL_PRELUDE_X0_LIFT_BODY_TAKEN_AES_WITH_Q11_CTR = prove
               read Q19 s = rk1 /\
               read Q20 s = rk2 /\
               read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
               read Q23 s = rk5 /\
               read Q24 s = rk6 /\
               read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
               read Q11 s = word_bytereverse initial_tag /\
               read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
               read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
