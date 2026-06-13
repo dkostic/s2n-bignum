@@ -15922,9 +15922,11 @@ let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_BLOCK0123_WITH_Q11_NOX12_CORRECT = prove
               read Q19 s = rk1 /\
               read Q20 s = rk2 /\
               read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
               read Q23 s = rk5 /\
               read Q24 s = rk6 /\
               read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
               read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
               read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
               read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
@@ -19618,9 +19620,11 @@ let AES_GCM_MAIN_LOOP_PRELUDE_PRE_FIRSTBLOCKS_FLAG_X5_X12_PT_BODY_AES_WITH_Q11_C
               read Q19 s = rk1 /\
               read Q20 s = rk2 /\
               read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
               read Q23 s = rk5 /\
               read Q24 s = rk6 /\
               read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
               read Q0 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
                            (aes_arm_round (aes_arm_round (aes_arm_round
                            (aes_arm_round (aes_arm_round (aes_arm_round
@@ -20818,9 +20822,11 @@ let AES_GCM_MAIN_LOOP_PRELUDE_PRE_FIRSTBLOCKS_FLAG_X5_X12_PT_BODY_AES_WITH_Q11_K
               read Q19 s = rk1 /\
               read Q20 s = rk2 /\
               read Q21 s = rk3 /\
+              read Q22 s = rk4 /\
               read Q23 s = rk5 /\
               read Q24 s = rk6 /\
               read Q25 s = rk7 /\
+              read Q26 s = rk8 /\
               read Q0 s = aese (aes_arm_round (aes_arm_round (aes_arm_round
                            (aes_arm_round (aes_arm_round (aes_arm_round
                            (aes_arm_round (aes_arm_round (aes_arm_round
