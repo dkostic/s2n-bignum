@@ -48253,6 +48253,179 @@ let MAIN_LOOP_WRAPPER_FULL_NOEXISTS_CORRECT = prove
   ASM_REWRITE_TAC[]);;
 
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G1 (s199, GT_128 ciphertext threading) — foundational leaf.     *)
+(*                                                                           *)
+(* The GT_128 (byte_len > 128) path threads the 4 firstblocks ciphertext     *)
+(* cells (written at the original cptr, offsets 0/16/32/48) THROUGH the      *)
+(* multi-iteration main loop.  The main loop runs with X2 = cptr+64 (after   *)
+(* firstblocks advanced it), so the loop's write region [cptr+64, +64*N) is  *)
+(* DISJOINT from the firstblocks cells [cptr, +64).  This is the loop-level  *)
+(* analogue of the s195 `_CPTR` tail (distinct-pointer cell passthrough), but *)
+(* the (64,128] band had no main loop so this capability is new for GT_128.  *)
+(*                                                                           *)
+(* Two lemmas:                                                               *)
+(*   WRAPPER_FRAME_PRESERVES_DISTINCT_CELLS — the NOEXISTS loop frame         *)
+(*     (which writes memory:>bytes(cptr,n)) preserves bytes128(prev_cptr+16j) *)
+(*     for j<4, given nonoverlapping (prev_cptr,64) (cptr,n).  Closes via     *)
+(*     the MAYCHANGE→ASSIGNS→READ_OVER_WRITE_ORTHOGONAL chain (SOME_FLAGS     *)
+(*     unfolded so the seq reduces to a bare write-chain, per s195).          *)
+(*   AES_GCM_MAIN_LOOP_WRAPPER_FULL_NOEXISTS_PREVCELLS_CORRECT — strengthens   *)
+(*     MAIN_LOOP_WRAPPER_FULL_NOEXISTS_CORRECT with the 4 generic-valued cells *)
+(*     g 0..g 3 carried in both PRE and POST, via ENSURES_THREAD_PRIOR_CELLS  *)
+(*     (the s159 B1 loop-threading helper) discharging the frame premise with *)
+(*     the lemma above (n := 64*N).  The cell values g j stay generic here;   *)
+(*     a later compose step pins them to the firstblocks AES-spec ciphertext. *)
+(* ------------------------------------------------------------------------- *)
+
+let WRAPPER_FRAME_PRESERVES_DISTINCT_CELLS = prove
+ (`!(prev_cptr:int64) (cptr:int64) (n:num).
+      nonoverlapping (prev_cptr,64) (cptr,n)
+      ==> (!s s2.
+            (MAYCHANGE [PC] ,,
+             MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+             MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+             MAYCHANGE SOME_FLAGS ,,
+             MAYCHANGE [memory :> bytes(cptr:int64, n)] ,,
+             MAYCHANGE [events]) s s2
+            ==> (!j. j < 4
+                     ==> read (memory :> bytes128 (word_add prev_cptr (word(16*j)))) s2 =
+                         read (memory :> bytes128 (word_add prev_cptr (word(16*j)))) s))`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID; GSYM SEQ_ASSOC] THEN
+  PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN
+  CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[ASSIGNS_THM] THEN
+  REWRITE_TAC[LEFT_IMP_EXISTS_THM] THEN
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES]) THEN
+  READ_OVER_WRITE_ORTHOGONAL_TAC);;
+
+let AES_GCM_MAIN_LOOP_WRAPPER_FULL_NOEXISTS_PREVCELLS_CORRECT = prove
+ (`!pc (prev_cptr:int64) (cptr:int64) (x0_init:int64) (x5_init:int64) (N:num)
+       (h:int128) (initial_tag:int128)
+       (q12:int128) (q13:int128) (q14:int128) (q15:int128)
+       (q16:int128) (q17:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+       (sx10:int64) (sx13:int64) (sx14:int64)
+       (q4:int128) (q5:int128) (q6:int128) (q7:int128)
+       (b0:int128) (b1:int128) (b2:int128)
+       (ct0:int128) (ct1:int128) (ct2:int128) (ct3:int128)
+       (g:num->int128).
+   ~(N = 0) /\
+   nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64*N) /\
+   nonoverlapping (prev_cptr,64) (cptr,64*N) /\
+   word_add x0_init (word(64*N)) = x5_init /\
+   val x0_init + 64 * N < 2 EXP 63 /\
+   q15 = byteswap128 (h_power (ghash_twist h) 3) /\
+   q14 = byteswap128 (h_power (ghash_twist h) 2) /\
+   q13 = byteswap128 (h_power (ghash_twist h) 1) /\
+   q12 = byteswap128 (h_power (ghash_twist h) 0) /\
+   q17 = (word_join (karatsuba_mid (h_power (ghash_twist h) 3) :64 word)
+                    (karatsuba_mid (h_power (ghash_twist h) 2) :64 word)
+          :int128) /\
+   q16 = (word_join (karatsuba_mid (h_power (ghash_twist h) 1) :64 word)
+                    (karatsuba_mid (h_power (ghash_twist h) 0) :64 word)
+          :int128) /\
+   word_xor (aes_gcm_rev64_int128 q4) (byteswap128 initial_tag) =
+     byteswap128 (word_xor initial_tag ct0) /\
+   aes_gcm_rev64_int128 q5 = byteswap128 ct1 /\
+   aes_gcm_rev64_int128 q6 = byteswap128 ct2 /\
+   aes_gcm_rev64_int128 q7 = byteswap128 ct3
+   ==> ensures arm
+        (\s. (!j. j < 4
+                  ==> read (memory :> bytes128 (word_add prev_cptr (word(16*j)))) s = g j) /\
+             aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+             read PC s = word (pc + 0x308) /\
+             read X0 s = x0_init /\
+             read X2 s = cptr /\
+             read X5 s = x5_init /\
+             read Q0 s = b0 /\
+             read Q1 s = b1 /\
+             read Q2 s = b2 /\
+             read Q4 s = q4 /\
+             read Q5 s = q5 /\
+             read Q6 s = q6 /\
+             read Q7 s = q7 /\
+             read Q11 s = initial_tag /\
+             read Q12 s = q12 /\
+             read Q13 s = q13 /\
+             read Q14 s = q14 /\
+             read Q15 s = q15 /\
+             read Q16 s = q16 /\
+             read Q17 s = q17 /\
+             read Q18 s = rk0 /\
+             read Q19 s = rk1 /\
+             read Q20 s = rk2 /\
+             read Q21 s = rk3 /\
+             read Q22 s = rk4 /\
+             read Q23 s = rk5 /\
+             read Q24 s = rk6 /\
+             read Q25 s = rk7 /\
+             read Q26 s = rk8 /\
+             read Q31 s = rk9 /\
+             read X10 s = sx10 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14)
+        (\s. (!j. j < 4
+                  ==> read (memory :> bytes128 (word_add prev_cptr (word(16*j)))) s = g j) /\
+             read PC s = word (pc + 0x5c8) /\
+             read X0 s = x5_init /\
+             read X2 s = word_add cptr (word(64*N)) /\
+             read X5 s = x5_init /\
+             read Q12 s = q12 /\
+             read Q13 s = q13 /\
+             read Q14 s = q14 /\
+             read Q15 s = q15 /\
+             read Q16 s = q16 /\
+             read Q17 s = q17 /\
+             read Q18 s = rk0 /\
+             read Q19 s = rk1 /\
+             read Q20 s = rk2 /\
+             read Q21 s = rk3 /\
+             read Q22 s = rk4 /\
+             read Q23 s = rk5 /\
+             read Q24 s = rk6 /\
+             read Q25 s = rk7 /\
+             read Q26 s = rk8 /\
+             read Q31 s = rk9 /\
+             read X10 s = sx10 /\
+             read X13 s = sx13 /\
+             read X14 s = sx14 /\
+             (?cts. LENGTH cts = 4 * N /\
+                    read Q11 s = nist_ghash h initial_tag cts))
+        (MAYCHANGE [PC] ,,
+         MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+         MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+         MAYCHANGE SOME_FLAGS ,,
+         MAYCHANGE [memory :> bytes(cptr, 64*N)] ,,
+         MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MATCH_MP_TAC ENSURES_THREAD_PRIOR_CELLS THEN
+  CONJ_TAC THENL
+   [MP_TAC(SPECL [`prev_cptr:int64`; `cptr:int64`; `64*N`]
+            WRAPPER_FRAME_PRESERVES_DISTINCT_CELLS) THEN
+    ASM_REWRITE_TAC[];
+    MP_TAC(SPECL
+      [`pc:num`; `cptr:int64`; `x0_init:int64`; `x5_init:int64`; `N:num`;
+       `h:int128`; `initial_tag:int128`;
+       `q12:int128`; `q13:int128`; `q14:int128`; `q15:int128`;
+       `q16:int128`; `q17:int128`;
+       `rk0:int128`; `rk1:int128`; `rk2:int128`; `rk3:int128`; `rk4:int128`;
+       `rk5:int128`; `rk6:int128`; `rk7:int128`; `rk8:int128`; `rk9:int128`;
+       `sx10:int64`; `sx13:int64`; `sx14:int64`;
+       `q4:int128`; `q5:int128`; `q6:int128`; `q7:int128`;
+       `b0:int128`; `b1:int128`; `b2:int128`;
+       `ct0:int128`; `ct1:int128`; `ct2:int128`; `ct3:int128`]
+      MAIN_LOOP_WRAPPER_FULL_NOEXISTS_CORRECT) THEN
+    ASM_REWRITE_TAC[]]);;
+
+
 (* Phase 9b/10 (s103) — byte_len > 128 wrapper composing
    KERNEL_PRELUDE_X0_LIFT (pc → pc+0x308) +
    MAIN_LOOP_WRAPPER_FULL_NOEXISTS_CORRECT (pc+0x308 → pc+0x5c8).
