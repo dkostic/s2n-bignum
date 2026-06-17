@@ -43228,7 +43228,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
                                     (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0)
                                        (MAP word_bytereverse
                                           [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
-                                           word_join lk_hi lk_lo]))))]))
+                                           word_join lk_hi lk_lo]))))]) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11;
@@ -43268,11 +43273,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `ptr0:int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -43301,7 +43307,7 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
   ARM_BIGSTEP_TAC AES_GCM_ENC_KERNEL_EXEC "s_end" THENL
    [(* BIGSTEP residuals: X12 self-ref hyp + ival <= &16 byte_len bridge. *)
     ASM_REWRITE_TAC[] THEN
-    CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    TRY(CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC]) THEN
     SUBGOAL_THEN
       `word_sub (word_add (ptr0:int64) (word_ushr bit_len 3)) ptr0 =
        word_ushr bit_len 3`
@@ -43329,7 +43335,8 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
     ASM_REWRITE_TAC[] THEN
     CONJ_TAC THENL
      [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER];
-      FIRST_X_ASSUM(MP_TAC o
+      CONJ_TAC THENL
+       [FIRST_X_ASSUM(MP_TAC o
                     check (fun th ->
                       let t = concl th in
                       not (is_imp t) &&
@@ -43339,7 +43346,9 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
       CONV_TAC(DEPTH_CONV let_CONV) THEN
       ASM_REWRITE_TAC[] THEN
       REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER] THEN
-      DISCH_THEN ACCEPT_TAC]]);;
+      DISCH_THEN ACCEPT_TAC;
+        EXISTS_TAC `word_sub (sx12_e:int32) (word 3)` THEN
+        ASM_REWRITE_TAC[]]]]);;
 
 let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_32_BODY_CORRECT = prove
  (`!pc (ptr0:int64) (bit_len:int64) (cptr:int64) (xiptr:int64)
@@ -44360,7 +44369,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
                                     (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 1)
                                        (MAP word_bytereverse
                                           [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
-                                           word_join lk_hi lk_lo]))))]))
+                                           word_join lk_hi lk_lo]))))]) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11;
@@ -44401,11 +44415,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `ptr0:int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -44433,7 +44448,7 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
     ALL_TAC] THEN
   ARM_BIGSTEP_TAC AES_GCM_ENC_KERNEL_EXEC "s_end" THENL
    [ASM_REWRITE_TAC[] THEN
-    CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    TRY(CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC]) THEN
     SUBGOAL_THEN
       `word_sub (word_add (ptr0:int64) (word_ushr bit_len 3)) ptr0 =
        word_ushr bit_len 3`
@@ -44455,7 +44470,8 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
      [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER];
       CONJ_TAC THENL
        [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED];
-        FIRST_X_ASSUM(MP_TAC o
+        CONJ_TAC THENL
+         [FIRST_X_ASSUM(MP_TAC o
                       check (fun th ->
                         let t = concl th in
                         not (is_imp t) &&
@@ -44466,7 +44482,9 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
         ASM_REWRITE_TAC[] THEN
         REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER;
                     EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED] THEN
-        DISCH_THEN ACCEPT_TAC]]]);;
+        DISCH_THEN ACCEPT_TAC;
+          EXISTS_TAC `word_sub (sx12_e:int32) (word 2)` THEN
+          ASM_REWRITE_TAC[]]]]]);;
 
 (* ========================================================================= *)
 (* Phase 11b Stage 3 (s166) — C2-LE_48 functional strengthening (N=3).        *)
@@ -44999,7 +45017,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
                                     (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 2)
                                        (MAP word_bytereverse
                                           [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
-                                           word_join lk_hi lk_lo]))))]))
+                                           word_join lk_hi lk_lo]))))]) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11;
@@ -45041,11 +45064,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `ptr0:int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -45078,7 +45102,7 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
     ALL_TAC] THEN
   ARM_BIGSTEP_TAC AES_GCM_ENC_KERNEL_EXEC "s_end" THENL
    [ASM_REWRITE_TAC[] THEN
-    CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    TRY(CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC]) THEN
     SUBGOAL_THEN
       `word_sub (word_add (ptr0:int64) (word_ushr bit_len 3)) ptr0 =
        word_ushr bit_len 3`
@@ -45102,7 +45126,8 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
        [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED];
         CONJ_TAC THENL
          [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED];
-          FIRST_X_ASSUM(MP_TAC o
+          CONJ_TAC THENL
+           [FIRST_X_ASSUM(MP_TAC o
                         check (fun th ->
                           let t = concl th in
                           not (is_imp t) &&
@@ -45113,7 +45138,9 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
           ASM_REWRITE_TAC[] THEN
           REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER;
                       EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED] THEN
-          DISCH_THEN ACCEPT_TAC]]]]);;
+          DISCH_THEN ACCEPT_TAC;
+            EXISTS_TAC `word_sub (sx12_e:int32) (word 1)` THEN
+            ASM_REWRITE_TAC[]]]]]]);;
 
 (* ========================================================================= *)
 (* Phase 11b Stage 3 (s166) — C2-LE_64_4 functional strengthening (N=4).      *)
@@ -45682,7 +45709,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_4_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = pro
                                     (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 3)
                                        (MAP word_bytereverse
                                           [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
-                                           word_join lk_hi lk_lo]))))]))
+                                           word_join lk_hi lk_lo]))))]) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11;
@@ -45725,13 +45757,14 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_4_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = pro
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   ABBREV_TAC `q3_mid:int128 = read Q3 s_mid` THEN
   ABBREV_TAC `q10_mid:int128 = read Q10 s_mid` THEN
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `ptr0:int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -45767,7 +45800,7 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_4_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = pro
     ALL_TAC] THEN
   ARM_BIGSTEP_TAC AES_GCM_ENC_KERNEL_EXEC "s_end" THENL
    [ASM_REWRITE_TAC[] THEN
-    CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    TRY(CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC]) THEN
     SUBGOAL_THEN
       `word_sub (word_add (ptr0:int64) (word_ushr bit_len 3)) ptr0 =
        word_ushr bit_len 3`
@@ -45793,7 +45826,8 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_4_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = pro
          [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED];
           CONJ_TAC THENL
            [REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED];
-            FIRST_X_ASSUM(MP_TAC o
+            CONJ_TAC THENL
+             [FIRST_X_ASSUM(MP_TAC o
                           check (fun th ->
                             let t = concl th in
                             not (is_imp t) &&
@@ -45804,7 +45838,9 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_4_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = pro
             ASM_REWRITE_TAC[] THEN
             REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER;
                         EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED] THEN
-            DISCH_THEN ACCEPT_TAC]]]]]);;
+            DISCH_THEN ACCEPT_TAC;
+              EXISTS_TAC `sx12_e:int32` THEN
+              ASM_REWRITE_TAC[]]]]]]]);;
 
 (* ==========================================================================
  * Phase 10 (s127) — Path (c) Step 5: body-only LE_64 unifier.
@@ -71866,6 +71902,11 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = prove
               read (memory :> bytes64 (word_add ptr0 (word 48))) s = b3_lo /\
               read (memory :> bytes64 (word_add ptr0 (word 56))) s = b3_hi)
          (\s. read PC s = word (pc + 0x970) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32) /\
               (val (word_ushr bit_len 3) <= 16
                ==>
               read (memory :> bytes128 cptr) s =
