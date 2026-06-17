@@ -69516,7 +69516,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRE
                             (word_insert
                               (word_zx (word_xor bt_lo lk_lo):int128)
                               (64,64)
-                              (word_xor bt_hi lk_hi)))])))
+                              (word_xor bt_hi lk_hi)))])) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19; X20; X21; X22; X23; X24] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11;
@@ -69558,13 +69563,14 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRE
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   (* === Stage 2: TAIL_N1 CPTR-passthrough (pc+0x7c8 -> pc+0x970), carrying the
         4 firstblocks ciphertext cells (cptr blocks 0..3) across the tail. === *)
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `word_add ptr0 (word 64):int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -69646,29 +69652,33 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_16_BODY_FUNCTIONAL_CLOSED_AES_CORRE
     TRY REFL_TAC THEN
     ASM_REWRITE_TAC[];
     (* eventually subgoal: 4 cptr-0..3 spec conjuncts (now carried by the _CPTR
-       tail POST) + the existential GHASH (parent close). *)
+       tail POST) + the existential GHASH (parent close) + the EMIT counter cell.
+       After TRY(FIRST_ASSUM ACCEPT_TAC) the GHASH and cf existentials survive in
+       POST order: [GHASH; cf]. *)
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
-    TRY (FIRST_ASSUM ACCEPT_TAC) THEN
-    MAP_EVERY EXISTS_TAC
-      [`cts:int128 list`; `q0_mid:int128`] THEN
-    CONJ_TAC THENL
-     [FIRST_ASSUM ACCEPT_TAC;
-      FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
-        is_eq(concl th) && is_var(lhs(concl th)) &&
-        (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
-         with Failure _ -> false))) THEN
-      FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
-                    CONV_RULE(DEPTH_CONV let_CONV) o
-                    check (fun th ->
-                      let t = concl th in
-                      not (is_imp t) &&
-                      not (is_eq t && is_var(rhs t)) &&
-                      (try
-                         let _ = find_term ((=) `nist_ghash`) t in true
-                       with Failure _ -> false)))]]);;
+    TRY (FIRST_ASSUM ACCEPT_TAC) THENL
+     [MAP_EVERY EXISTS_TAC
+       [`cts:int128 list`; `q0_mid:int128`] THEN
+      CONJ_TAC THENL
+       [FIRST_ASSUM ACCEPT_TAC;
+        FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
+          is_eq(concl th) && is_var(lhs(concl th)) &&
+          (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
+           with Failure _ -> false))) THEN
+        FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
+                      CONV_RULE(DEPTH_CONV let_CONV) o
+                      check (fun th ->
+                        let t = concl th in
+                        not (is_imp t) &&
+                        not (is_eq t && is_var(rhs t)) &&
+                        (try
+                           let _ = find_term ((=) `nist_ghash`) t in true
+                         with Failure _ -> false)))];
+      EXISTS_TAC `word_sub (sx12_e:int32) (word 3)` THEN
+      ASM_REWRITE_TAC[]]]);;
 
 
 
@@ -69960,7 +69970,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRE
                          word_bytereverse
                           (word_xor (word_join (word_xor bt1_hi lk_hi:int64)
                                                (word_xor bt1_lo lk_lo:int64) :int128)
-                                    (q1_post:int128))])))
+                                    (q1_post:int128))])) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19; X20; X21; X22; X23; X24] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11;
@@ -70003,13 +70018,14 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRE
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   (* === Stage 2: TAIL_N2 CPTR-passthrough (pc+0x7c8 -> pc+0x970), carrying the
         4 firstblocks ciphertext cells (cptr blocks 0..3) across the tail. === *)
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `word_add ptr0 (word 64):int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -70101,29 +70117,33 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_32_BODY_FUNCTIONAL_CLOSED_AES_CORRE
     TRY REFL_TAC THEN
     ASM_REWRITE_TAC[];
     (* eventually subgoal: 4 cptr-0..3 spec conjuncts (now carried by the _CPTR
-       tail POST) + the LE_32 2-block existential GHASH (parent close). *)
+       tail POST) + the LE_32 2-block existential GHASH (parent close) + the EMIT
+       counter cell.  After TRY(FIRST_ASSUM ACCEPT_TAC) the GHASH and cf
+       existentials survive in POST order: [GHASH; cf]. *)
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
-    TRY (FIRST_ASSUM ACCEPT_TAC) THEN
-    MAP_EVERY EXISTS_TAC
-      [`cts:int128 list`; `q0_mid:int128`; `q1_mid:int128`] THEN
-    CONJ_TAC THENL
-     [FIRST_ASSUM ACCEPT_TAC;
-      FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
-        is_eq(concl th) && is_var(lhs(concl th)) &&
-        (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
-         with Failure _ -> false))) THEN
-      FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
-                    CONV_RULE(DEPTH_CONV let_CONV) o
-                    check (fun th ->
-                      let t = concl th in
-                      not (is_imp t) &&
-                      not (is_eq t && is_var(rhs t)) &&
-                      (try
-                         let _ = find_term ((=) `nist_ghash`) t in true
-                       with Failure _ -> false)))]]);;
+    TRY (FIRST_ASSUM ACCEPT_TAC) THENL
+     [MAP_EVERY EXISTS_TAC
+       [`cts:int128 list`; `q0_mid:int128`; `q1_mid:int128`] THEN
+      CONJ_TAC THENL
+       [FIRST_ASSUM ACCEPT_TAC;
+        FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
+          is_eq(concl th) && is_var(lhs(concl th)) &&
+          (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
+           with Failure _ -> false))) THEN
+        FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
+                      CONV_RULE(DEPTH_CONV let_CONV) o
+                      check (fun th ->
+                        let t = concl th in
+                        not (is_imp t) &&
+                        not (is_eq t && is_var(rhs t)) &&
+                        (try
+                           let _ = find_term ((=) `nist_ghash`) t in true
+                         with Failure _ -> false)))];
+      EXISTS_TAC `word_sub (sx12_e:int32) (word 2)` THEN
+      ASM_REWRITE_TAC[]]]);;
 
 
 (* ------------------------------------------------------------------------- *)
@@ -70440,7 +70460,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRE
                          word_bytereverse
                           (word_xor (word_join (word_xor bt2_hi lk_hi:int64)
                                                (word_xor bt2_lo lk_lo:int64) :int128)
-                                    (q2_post:int128))])))
+                                    (q2_post:int128))])) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19; X20; X21; X22; X23; X24] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11;
@@ -70484,13 +70509,14 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRE
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   (* === Stage 2: TAIL_N3 CPTR-passthrough (pc+0x7c8 -> pc+0x970), carrying the
         4 firstblocks ciphertext cells (cptr blocks 0..3) across the tail. === *)
   MP_TAC(REWRITE_RULE[SOME_FLAGS]
     (SPECL[`pc:num`; `h:int128`;
            `word_add ptr0 (word 64):int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -70595,29 +70621,33 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_48_BODY_FUNCTIONAL_CLOSED_AES_CORRE
     TRY REFL_TAC THEN
     ASM_REWRITE_TAC[];
     (* eventually subgoal: 4 cptr-0..3 spec conjuncts (now carried by the _CPTR
-       tail POST) + the LE_48 3-block existential GHASH (parent close). *)
+       tail POST) + the LE_48 3-block existential GHASH (parent close) + the EMIT
+       counter cell.  After TRY(FIRST_ASSUM ACCEPT_TAC) the GHASH and cf
+       existentials survive in POST order: [GHASH; cf]. *)
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
-    TRY (FIRST_ASSUM ACCEPT_TAC) THEN
-    MAP_EVERY EXISTS_TAC
-      [`cts:int128 list`; `q0_mid:int128`; `q1_mid:int128`; `q2_mid:int128`] THEN
-    CONJ_TAC THENL
-     [FIRST_ASSUM ACCEPT_TAC;
-      FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
-        is_eq(concl th) && is_var(lhs(concl th)) &&
-        (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
-         with Failure _ -> false))) THEN
-      FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
-                    CONV_RULE(DEPTH_CONV let_CONV) o
-                    check (fun th ->
-                      let t = concl th in
-                      not (is_imp t) &&
-                      not (is_eq t && is_var(rhs t)) &&
-                      (try
-                         let _ = find_term ((=) `nist_ghash`) t in true
-                       with Failure _ -> false)))]]);;
+    TRY (FIRST_ASSUM ACCEPT_TAC) THENL
+     [MAP_EVERY EXISTS_TAC
+       [`cts:int128 list`; `q0_mid:int128`; `q1_mid:int128`; `q2_mid:int128`] THEN
+      CONJ_TAC THENL
+       [FIRST_ASSUM ACCEPT_TAC;
+        FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
+          is_eq(concl th) && is_var(lhs(concl th)) &&
+          (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
+           with Failure _ -> false))) THEN
+        FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
+                      CONV_RULE(DEPTH_CONV let_CONV) o
+                      check (fun th ->
+                        let t = concl th in
+                        not (is_imp t) &&
+                        not (is_eq t && is_var(rhs t)) &&
+                        (try
+                           let _ = find_term ((=) `nist_ghash`) t in true
+                         with Failure _ -> false)))];
+      EXISTS_TAC `word_sub (sx12_e:int32) (word 1)` THEN
+      ASM_REWRITE_TAC[]]]);;
 
 
 (* ------------------------------------------------------------------------- *)
@@ -70958,7 +70988,12 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_64_BODY_FUNCTIONAL_CLOSED_AES_CORRE
                          word_bytereverse
                           (word_xor (word_join (word_xor bt3_hi lk_hi:int64)
                                                (word_xor bt3_lo lk_lo:int64) :int128)
-                                    (q3_post:int128))])))
+                                    (q3_post:int128))])) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32))
          (MAYCHANGE [PC; X0; X2; X4; X5; X6; X7; X9; X10; X11; X12; X13;
                      X14; X15; X17; X19; X20; X21; X22; X23; X24] ,,
           MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11;
@@ -71003,6 +71038,7 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_64_BODY_FUNCTIONAL_CLOSED_AES_CORRE
   ABBREV_TAC `q0_mid:int128 = read Q0 s_mid` THEN
   ABBREV_TAC `q1_mid:int128 = read Q1 s_mid` THEN
   ABBREV_TAC `q2_mid:int128 = read Q2 s_mid` THEN
+  ABBREV_TAC `sx12_e:int32 = word_subword (read X12 s_mid) (0,32)` THEN
   ABBREV_TAC `q3_mid:int128 = read Q3 s_mid` THEN
   ABBREV_TAC `q10_mid:int128 = read Q10 s_mid` THEN
   (* === Stage 2: TAIL_N4 CPTR-passthrough (pc+0x7c8 -> pc+0x970), carrying the
@@ -71011,7 +71047,7 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_64_BODY_FUNCTIONAL_CLOSED_AES_CORRE
     (SPECL[`pc:num`; `h:int128`;
            `word_add ptr0 (word 64):int64`;
            `word_add ptr0 (word_ushr bit_len 3):int64`;
-           `word_subword (read X12 s_mid) (0,32):int32`;
+           `sx12_e:int32`;
            `lk_lo:int64`; `lk_hi:int64`;
            `word_ushr bit_len 3:int64`;
            `ivec_ptr:int64`;
@@ -71128,29 +71164,33 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_LE_64_BODY_FUNCTIONAL_CLOSED_AES_CORRE
     TRY REFL_TAC THEN
     ASM_REWRITE_TAC[];
     (* eventually subgoal: 4 cptr-0..3 spec conjuncts (now carried by the _CPTR
-       tail POST) + the LE_64 4-block existential GHASH (parent close). *)
+       tail POST) + the LE_64 4-block existential GHASH (parent close) + the EMIT
+       counter cell.  After TRY(FIRST_ASSUM ACCEPT_TAC) the GHASH and cf
+       existentials survive in POST order: [GHASH; cf]. *)
     ENSURES_FINAL_STATE_TAC THEN
     ASM_REWRITE_TAC[] THEN
     CONV_TAC(DEPTH_CONV let_CONV) THEN
     REPEAT CONJ_TAC THEN
-    TRY (FIRST_ASSUM ACCEPT_TAC) THEN
-    MAP_EVERY EXISTS_TAC
-      [`cts:int128 list`; `q0_mid:int128`; `q1_mid:int128`; `q2_mid:int128`; `q3_mid:int128`] THEN
-    CONJ_TAC THENL
-     [FIRST_ASSUM ACCEPT_TAC;
-      FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
-        is_eq(concl th) && is_var(lhs(concl th)) &&
-        (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
-         with Failure _ -> false))) THEN
-      FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
-                    CONV_RULE(DEPTH_CONV let_CONV) o
-                    check (fun th ->
-                      let t = concl th in
-                      not (is_imp t) &&
-                      not (is_eq t && is_var(rhs t)) &&
-                      (try
-                         let _ = find_term ((=) `nist_ghash`) t in true
-                       with Failure _ -> false)))]]);;
+    TRY (FIRST_ASSUM ACCEPT_TAC) THENL
+     [MAP_EVERY EXISTS_TAC
+       [`cts:int128 list`; `q0_mid:int128`; `q1_mid:int128`; `q2_mid:int128`; `q3_mid:int128`] THEN
+      CONJ_TAC THENL
+       [FIRST_ASSUM ACCEPT_TAC;
+        FIRST_X_ASSUM(SUBST1_TAC o SYM o check (fun th ->
+          is_eq(concl th) && is_var(lhs(concl th)) &&
+          (try (let _ = find_term ((=) `nist_ghash`) (rhs(concl th)) in true)
+           with Failure _ -> false))) THEN
+        FIRST_X_ASSUM(MATCH_ACCEPT_TAC o
+                      CONV_RULE(DEPTH_CONV let_CONV) o
+                      check (fun th ->
+                        let t = concl th in
+                        not (is_imp t) &&
+                        not (is_eq t && is_var(rhs t)) &&
+                        (try
+                           let _ = find_term ((=) `nist_ghash`) t in true
+                         with Failure _ -> false)))];
+      EXISTS_TAC `sx12_e:int32` THEN
+      ASM_REWRITE_TAC[]]]);;
 
 
 (* ========================================================================= *)
@@ -71263,6 +71303,11 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_BODY_FUNCTIONAL_CLOSED_AES_CORRECT = p
               read (memory :> bytes64 (word_add ptr0 (word 112))) s = bt3_lo /\
               read (memory :> bytes64 (word_add ptr0 (word 120))) s = bt3_hi)
          (\s. read PC s = word (pc + 0x970) /\
+              (?cf:int32.
+                read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+                  word_subword
+                    (word_zx (word_bytereverse (cf:int32)):int64)
+                    (0,32):int32) /\
               read (memory :> bytes128 cptr) s =
                 word_xor (word_insert (word_zx (b0_lo:int64) :int128) (64,64) (b0_hi:int64))
                          (word_bytereverse
