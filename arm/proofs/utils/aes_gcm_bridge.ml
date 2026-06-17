@@ -2262,3 +2262,107 @@ let AES_GCM_CTR_AT_HIGH96 = prove
   REWRITE_TAC[aes_gcm_ctr_at; ITER] THEN
   REWRITE_TAC[GSYM aes_gcm_ctr_at] THEN
   ASM_REWRITE_TAC[AES_GCM_CTR_INCREMENT_HIGH96]);;
+
+(* ========================================================================= *)
+(* Phase 11b G1 (s208) — int128 -> NIST-byte-list conversion bridge.          *)
+(*                                                                            *)
+(* The body-level AES wrappers expose each 16-byte ciphertext block as a      *)
+(* single int128 memory read, `read (memory :> bytes128 (cptr+16i)) s = W`,   *)
+(* where W is the kernel's little-endian store value.  The public             *)
+(* `byte_list_at` presentation theorem (mirroring AES256_XTS_ENCRYPT_CORRECT) *)
+(* needs each such block re-expressed as 16 individual NIST-ordered bytes     *)
+(* (`!j. j<16 ==> read (bytes8 (cptr+16i+j)) s = EL j <NIST-bytes>`), the raw *)
+(* unfolding of `byte_list_at` at a 16-byte window.                           *)
+(*                                                                            *)
+(* The byte orders cancel exactly: the kernel stores the int128 little-endian *)
+(* (byte j at address cptr+16i+j is bit-window [8j,8) of W), whereas the spec *)
+(* `int128_to_nist_bytes` lays out byte j as the MSB-first window             *)
+(* [120-8j,8).  Hence `read (bytes8 (p+j)) s = EL j (int128_to_nist_bytes     *)
+(* (word_bytereverse W))`: byte-reversing W turns its little-endian byte j    *)
+(* into the NIST byte j.  `byte_list_at` is defined in aes_xts_common.ml      *)
+(* (not in this file's dependency cone), so the statements use the unfolded   *)
+(* `!j. j<16 ==> ...` form, which is definitionally `byte_list_at m p         *)
+(* (word 16) s`.                                                              *)
+(* ------------------------------------------------------------------------- *)
+
+(* Core conversion: the 16 bytes at p are the NIST bytes of the byte-reverse  *)
+(* of the int128 stored there.  Proof: unfold the bounded forall, reduce      *)
+(* `int128_to_nist_bytes (word_bytereverse V)` elementwise via EL_CONV, split *)
+(* the bytes128 read all the way down to its 16 constituent bytes8 reads      *)
+(* (READ_MEMORY_BYTESIZED_SPLIT recursing 128->64->32->16->8, with the        *)
+(* address constants folded by WORD_ADD_ASSOC_CONSTS), then close each byte   *)
+(* equality by BITBLAST.                                                      *)
+let READ_BYTES128_AS_NIST_BYTE_LIST = prove
+ (`!(p:int64) (V:int128) s.
+     read (memory :> bytes128 p) s = V
+     ==> !i. i < 16
+             ==> read (memory :> bytes8 (word_add p (word i))) s =
+                 EL i (int128_to_nist_bytes (word_bytereverse V))`,
+  REPEAT GEN_TAC THEN DISCH_THEN(SUBST1_TAC o SYM) THEN
+  CONV_TAC EXPAND_CASES_CONV THEN
+  REWRITE_TAC[int128_to_nist_bytes] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  GEN_REWRITE_TAC TOP_DEPTH_CONV
+    [READ_MEMORY_BYTESIZED_SPLIT; WORD_ADD_ASSOC_CONSTS] THEN
+  CONV_TAC(DEPTH_CONV WORD_NUM_RED_CONV) THEN
+  REWRITE_TAC[WORD_ADD_0] THEN
+  REPEAT CONJ_TAC THEN BITBLAST_TAC);;
+
+(* Byte-reverse distributes over the kernel's `pt XOR byterev(cipher)` emit   *)
+(* shape: byte-reversing the whole block turns the inner `word_bytereverse C` *)
+(* back into `C` and the assembled plaintext half-word into its NIST form.    *)
+let WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE = prove
+ (`!(b_lo:int64) (b_hi:int64) (C:int128).
+     word_bytereverse
+       (word_xor (word_insert (word_zx b_lo :int128) (64,64) b_hi)
+                 (word_bytereverse C)) =
+     word_xor (word_bytereverse (word_insert (word_zx b_lo :int128) (64,64) b_hi))
+              C`,
+  REPEAT GEN_TAC THEN BITBLAST_TAC);;
+
+(* Conversion specialised to the kernel's ciphertext EMIT shape               *)
+(* `pt XOR word_bytereverse(cipher)`: the 16 bytes at p are the NIST bytes of *)
+(* `word_xor (word_bytereverse pt) cipher` (the spec-order ciphertext block,  *)
+(* still with the assembled little-endian plaintext half-word to be bridged   *)
+(* to the spec plaintext block separately).                                   *)
+let READ_BYTES128_EMIT_AS_NIST_BYTE_LIST = prove
+ (`!(p:int64) (b_lo:int64) (b_hi:int64) (C:int128) s.
+     read (memory :> bytes128 p) s =
+       word_xor (word_insert (word_zx b_lo :int128) (64,64) b_hi)
+                (word_bytereverse C)
+     ==> !i. i < 16
+             ==> read (memory :> bytes8 (word_add p (word i))) s =
+                 EL i (int128_to_nist_bytes
+                        (word_xor
+                          (word_bytereverse
+                            (word_insert (word_zx b_lo :int128) (64,64) b_hi))
+                          C))`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[GSYM WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE] THEN
+  MATCH_MP_TAC READ_BYTES128_AS_NIST_BYTE_LIST THEN ASM_REWRITE_TAC[]);;
+
+(* Full spec-targeted conversion.  Given the kernel's per-block ciphertext    *)
+(* EMIT read (with the AES cipher already identified against the spec counter *)
+(* `aes_gcm_ctr_at` and FIPS key schedule `ks`) AND the plaintext-block       *)
+(* byte-order identity `word_bytereverse <assembled pt> = aes_gcm_block_at    *)
+(* pt_bytes i` (discharged at the presentation layer from the input          *)
+(* byte_list_at PRE), the 16 bytes at p are exactly the NIST bytes of the     *)
+(* spec ciphertext block `aes_gcm_ct_block_at pt_bytes ctr0 ks i`.  This is   *)
+(* the G1 "ciphertext bytes = spec" hook the byte_list_at public theorem      *)
+(* consumes per block.                                                        *)
+let READ_BYTES128_EMIT_AS_CT_BLOCK_NIST_BYTES = prove
+ (`!(p:int64) (b_lo:int64) (b_hi:int64) (ctr0:int128) (ks:int128 list)
+     (pt_bytes:byte list) (i:num) s.
+     read (memory :> bytes128 p) s =
+       word_xor (word_insert (word_zx b_lo :int128) (64,64) b_hi)
+                (word_bytereverse (aes128_cipher (aes_gcm_ctr_at ctr0 i) ks))
+     /\ word_bytereverse (word_insert (word_zx b_lo :int128) (64,64) b_hi) =
+        aes_gcm_block_at pt_bytes i
+     ==> !j. j < 16
+             ==> read (memory :> bytes8 (word_add p (word j))) s =
+                 EL j (int128_to_nist_bytes
+                        (aes_gcm_ct_block_at pt_bytes ctr0 ks i))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at] THEN
+  FIRST_X_ASSUM(fun th -> REWRITE_TAC[GSYM th]) THEN
+  MATCH_MP_TAC READ_BYTES128_EMIT_AS_NIST_BYTE_LIST THEN ASM_REWRITE_TAC[]);;
