@@ -2366,3 +2366,145 @@ let READ_BYTES128_EMIT_AS_CT_BLOCK_NIST_BYTES = prove
   REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at] THEN
   FIRST_X_ASSUM(fun th -> REWRITE_TAC[GSYM th]) THEN
   MATCH_MP_TAC READ_BYTES128_EMIT_AS_NIST_BYTE_LIST THEN ASM_REWRITE_TAC[]);;
+
+(* ========================================================================= *)
+(* Phase 11b G1 (s209) — plaintext-block byte-order identity.                 *)
+(*                                                                            *)
+(* The capstone `READ_BYTES128_EMIT_AS_CT_BLOCK_NIST_BYTES` above carries a   *)
+(* second antecedent, the plaintext-block byte-order identity                 *)
+(*   `word_bytereverse <assembled pt int128> = aes_gcm_block_at pt_bytes i`,  *)
+(* which the public `byte_list_at` presentation theorem must discharge from   *)
+(* its `byte_list_at pt_in ptr0 byte_len` PRE.  These three lemmas close      *)
+(* the spec-side half of that obligation; the presentation layer supplies     *)
+(* the address-arithmetic glue connecting the kernel's per-block bytes128     *)
+(* plaintext read to the byte_list_at window.                                 *)
+(* ------------------------------------------------------------------------- *)
+
+(* `nist_bytes_to_int128` is a left inverse of `int128_to_nist_bytes`: packing *)
+(* the 16 NIST-ordered bytes of an int128 back together recovers the original. *)
+(* Proof: unfold both definitions, reduce the `EL k [...]` indices on the      *)
+(* concrete 16-element list, then BITBLAST the bit-for-bit identity.           *)
+let NIST_BYTES_TO_INT128_INVOLUTION = prove
+ (`!w:int128. nist_bytes_to_int128 (int128_to_nist_bytes w) = w`,
+  GEN_TAC THEN REWRITE_TAC[int128_to_nist_bytes; nist_bytes_to_int128] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN BITBLAST_TAC);;
+
+(* `aes_gcm_block_at bs i` collapses to the explicit 16-byte NIST packing      *)
+(* whenever block `i` lies fully within `bs` (all 16 input bytes present, so   *)
+(* every `if i*16+j < LENGTH bs` guard in the definition is true).  This is    *)
+(* the "full block" specialisation used for all blocks of a byte_len-bounded   *)
+(* buffer in the LE-path band.                                                 *)
+let AES_GCM_BLOCK_AT_FULL = prove
+ (`!bs:byte list i.
+     16 * i + 16 <= LENGTH bs
+     ==> aes_gcm_block_at bs i =
+         nist_bytes_to_int128
+           [EL (16*i) bs; EL (16*i+1) bs; EL (16*i+2) bs; EL (16*i+3) bs;
+            EL (16*i+4) bs; EL (16*i+5) bs; EL (16*i+6) bs; EL (16*i+7) bs;
+            EL (16*i+8) bs; EL (16*i+9) bs; EL (16*i+10) bs; EL (16*i+11) bs;
+            EL (16*i+12) bs; EL (16*i+13) bs; EL (16*i+14) bs; EL (16*i+15) bs]`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[aes_gcm_block_at; MAP] THEN
+  SUBGOAL_THEN
+   `i * 16 + 0 < LENGTH(bs:byte list) /\ i*16+1<LENGTH bs /\ i*16+2<LENGTH bs /\
+    i*16+3<LENGTH bs /\ i*16+4<LENGTH bs /\ i*16+5<LENGTH bs /\
+    i*16+6<LENGTH bs /\ i*16+7<LENGTH bs /\ i*16+8<LENGTH bs /\
+    i*16+9<LENGTH bs /\ i*16+10<LENGTH bs /\ i*16+11<LENGTH bs /\
+    i*16+12<LENGTH bs /\ i*16+13<LENGTH bs /\ i*16+14<LENGTH bs /\
+    i*16+15<LENGTH bs`
+   STRIP_ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN AP_TERM_TAC THEN REWRITE_TAC[CONS_11] THEN
+  REPEAT CONJ_TAC THEN AP_THM_TAC THEN AP_TERM_TAC THEN ARITH_TAC);;
+
+(* Plaintext-block byte-order identity (spec side).  If the 16 NIST bytes of   *)
+(* `word_bytereverse W` coincide, byte for byte, with the 16-byte window of    *)
+(* `bs` at block `i` (the hypothesis the presentation layer obtains by         *)
+(* combining `READ_BYTES128_AS_NIST_BYTE_LIST` on the plaintext bytes128 read  *)
+(* with the input `byte_list_at`), then `word_bytereverse W` IS the spec       *)
+(* plaintext block `aes_gcm_block_at bs i`.  Proof: rewrite the RHS by         *)
+(* `AES_GCM_BLOCK_AT_FULL`, substitute the 16 byte equalities backwards, then  *)
+(* recognise the reconstructed list as `int128_to_nist_bytes (word_bytereverse *)
+(* W)` and discharge with `NIST_BYTES_TO_INT128_INVOLUTION`.                    *)
+let WORD_BYTEREVERSE_AS_AES_GCM_BLOCK_AT = prove
+ (`!(W:int128) (bs:byte list) (i:num).
+     16 * i + 16 <= LENGTH bs /\
+     (!j. j < 16
+          ==> EL j (int128_to_nist_bytes (word_bytereverse W)) =
+              EL (16*i+j) bs)
+     ==> word_bytereverse W = aes_gcm_block_at bs i`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPECL [`bs:byte list`; `i:num`] AES_GCM_BLOCK_AT_FULL) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+  FIRST_X_ASSUM(fun th ->
+    MP_TAC(SPEC `0` th) THEN MP_TAC(SPEC `1` th) THEN MP_TAC(SPEC `2` th) THEN
+    MP_TAC(SPEC `3` th) THEN MP_TAC(SPEC `4` th) THEN MP_TAC(SPEC `5` th) THEN
+    MP_TAC(SPEC `6` th) THEN MP_TAC(SPEC `7` th) THEN MP_TAC(SPEC `8` th) THEN
+    MP_TAC(SPEC `9` th) THEN MP_TAC(SPEC `10` th) THEN MP_TAC(SPEC `11` th) THEN
+    MP_TAC(SPEC `12` th) THEN MP_TAC(SPEC `13` th) THEN MP_TAC(SPEC `14` th) THEN
+    MP_TAC(SPEC `15` th)) THEN
+  CONV_TAC NUM_REDUCE_CONV THEN
+  REWRITE_TAC[ARITH_RULE `16*i+0 = 16*i`] THEN
+  REPEAT(DISCH_THEN(fun th -> REWRITE_TAC[SYM th])) THEN
+  GEN_REWRITE_TAC (RAND_CONV o ONCE_DEPTH_CONV) [int128_to_nist_bytes] THEN
+  CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  REWRITE_TAC[GSYM int128_to_nist_bytes; NIST_BYTES_TO_INT128_INVOLUTION]);;
+
+(* The kernel reads each 16-byte plaintext block as a pair of 64-bit halves    *)
+(* (`ldp`-style), exposing `read (bytes64 p) = b_lo` (low half) and             *)
+(* `read (bytes64 (p+8)) = b_hi` (high half).  These reassemble into the        *)
+(* int128 `word_insert (word_zx b_lo)(64,64) b_hi` that the body wrappers carry *)
+(* in their EMIT-form ciphertext.  Proof: split the bytes128 read into its two  *)
+(* bytes64 halves (READ_MEMORY_BYTESIZED_SPLIT), plug in the two reads, BITBLAST.*)
+let READ_BYTES128_FROM_BYTES64_PAIR = prove
+ (`!(p:int64) (b_lo:int64) (b_hi:int64) (s:armstate).
+     read (memory :> bytes64 p) s = b_lo /\
+     read (memory :> bytes64 (word_add p (word 8))) s = b_hi
+     ==> read (memory :> bytes128 p) s =
+         word_insert (word_zx b_lo :int128) (64,64) b_hi`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  GEN_REWRITE_TAC LAND_CONV [READ_MEMORY_BYTESIZED_SPLIT] THEN
+  ASM_REWRITE_TAC[] THEN BITBLAST_TAC);;
+
+(* Presentation-layer plaintext-block hook.  Combines the three lemmas above    *)
+(* into the single fact the public byte_list_at theorem needs per block: given  *)
+(* the kernel's two 64-bit plaintext reads at `ptr0 + 16i` / `ptr0 + 16i + 8`,  *)
+(* a byte_list_at-style window over `pt_in` (raw `!k. k<n ==> read (bytes8      *)
+(* (ptr0+k)) = EL k pt_in`, definitionally `byte_list_at pt_in ptr0 (word n)`)  *)
+(* covering at least byte `16i+16`, and block `i` fully present in `pt_in`, the *)
+(* reassembled int128's byte-reverse IS the spec plaintext block                *)
+(* `aes_gcm_block_at pt_in i`.  This discharges the second antecedent of         *)
+(* READ_BYTES128_EMIT_AS_CT_BLOCK_NIST_BYTES directly from the public PRE.       *)
+(* Proof: reassemble the bytes128 read (READ_BYTES128_FROM_BYTES64_PAIR), feed   *)
+(* WORD_BYTEREVERSE_AS_AES_GCM_BLOCK_AT, and discharge its byte hypothesis by    *)
+(* READ_BYTES128_AS_NIST_BYTE_LIST against the byte_list_at window (address      *)
+(* `(ptr0+16i)+j = ptr0+(16i+j)` folded by WORD_RULE).                           *)
+let PT_BLOCK_AT_FROM_BYTES64_PAIR = prove
+ (`!(ptr0:int64) (b_lo:int64) (b_hi:int64) (pt_in:byte list)
+     (i:num) (n:num) (s:armstate).
+     read (memory :> bytes64 (word_add ptr0 (word (16*i)))) s = b_lo /\
+     read (memory :> bytes64 (word_add ptr0 (word (16*i+8)))) s = b_hi /\
+     16 * i + 16 <= LENGTH pt_in /\
+     16 * i + 16 <= n /\
+     (!k. k < n
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = EL k pt_in)
+     ==> word_bytereverse (word_insert (word_zx b_lo :int128) (64,64) b_hi) =
+         aes_gcm_block_at pt_in i`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+   `read (memory :> bytes128 (word_add ptr0 (word (16*i)))) s =
+    word_insert (word_zx (b_lo:int64) :int128) (64,64) (b_hi:int64)`
+   ASSUME_TAC THENL
+   [MATCH_MP_TAC READ_BYTES128_FROM_BYTES64_PAIR THEN ASM_REWRITE_TAC[] THEN
+    ASM_REWRITE_TAC[WORD_RULE
+     `word_add (word_add ptr0 (word (16*i))) (word 8) =
+      word_add ptr0 (word (16*i+8))`];
+    ALL_TAC] THEN
+  MATCH_MP_TAC WORD_BYTEREVERSE_AS_AES_GCM_BLOCK_AT THEN ASM_REWRITE_TAC[] THEN
+  X_GEN_TAC `j:num` THEN DISCH_TAC THEN
+  FIRST_ASSUM(fun th -> MP_TAC(MATCH_MP READ_BYTES128_AS_NIST_BYTE_LIST th)) THEN
+  DISCH_THEN(MP_TAC o SPEC `j:num`) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  ASM_REWRITE_TAC[WORD_RULE
+   `word_add (word_add ptr0 (word (16*i))) (word j) =
+    word_add ptr0 (word (16*i+j))`] THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `16*i+j` o check (is_forall o concl)) THEN
+  ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN ACCEPT_TAC]);;
