@@ -2196,3 +2196,69 @@ let XIPTR_4BLOCK_AS_NIST_GHASH = prove
   POP_ASSUM(fun th -> REWRITE_TAC[th]) THEN
   REWRITE_TAC[XIPTR_2BLOCK_R1; XIPTR_2BLOCK_R2; XIPTR_2BLOCK_R3] THEN
   REWRITE_TAC[GSYM XIPTR_2BLOCK_R4]);;
+
+(* ========================================================================= *)
+(* Phase 11b G3 (s205) — spec-side counter arithmetic.                        *)
+(*                                                                            *)
+(* The kernel stores the post-increment 32-bit big-endian counter back to     *)
+(* `ivec+12` (`str w9,[x16,#12]` at kernel offset 0x950, w9 = rev w12).  To   *)
+(* pin that stored cell to the spec counter `aes_gcm_ctr_at` (G3 "counter     *)
+(* bump") we need the pure arithmetic facts that iterating                    *)
+(* `aes_gcm_ctr_increment` n times adds n to the low 32-bit field (the BE-32  *)
+(* counter the kernel maintains in w12), leaving the upper 96 bits unchanged. *)
+(* These are spec-only (no kernel state); they are the algebraic core for the *)
+(* eventual G3 POST conjunct once X12 is threaded concretely through the      *)
+(* prelude.  Mirrors the s182 "land spec-side algebra first" cadence.         *)
+(*                                                                            *)
+(* The mask `0xffffffffffffffffffffffff00000000` selects int128 bits 32..127 *)
+(* (the IV-derived 96-bit prefix); bits 0..31 are the BE-32 counter field.    *)
+(* ------------------------------------------------------------------------- *)
+
+(* One BE-32 increment bumps the low-32 counter field by 1.  Proof distributes*)
+(* `word_subword _ (0,32)` over the `word_or`/`word_and` of the increment      *)
+(* definition; the `word_and c mask` branch contributes 0 (mask is zero below *)
+(* bit 32) and the `word_zx (word_add ...)` branch is the field+1.  Avoids     *)
+(* WORD_BLAST (which would blast the 32-bit ripple-carry adder and hang).      *)
+let AES_GCM_CTR_INCREMENT_LOW32 = prove
+ (`!c:int128. word_subword (aes_gcm_ctr_increment c) (0,32):int32 =
+              word_add (word_subword c (0,32)) (word 1)`,
+  GEN_TAC THEN
+  REWRITE_TAC[aes_gcm_ctr_increment; WORD_SUBWORD_OR; WORD_SUBWORD_AND] THEN
+  CONV_TAC(DEPTH_CONV WORD_SIMPLE_SUBWORD_CONV) THEN
+  REWRITE_TAC[WORD_AND_0; WORD_OR_0] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_RED_CONV) THEN
+  REWRITE_TAC[WORD_AND_0; WORD_OR_0]);;
+
+(* One BE-32 increment preserves the upper 96 bits (the IV prefix).  The       *)
+(* `word_zx (word_add ...)` term is killed by the high mask; abstract the      *)
+(* int32 adder result so WORD_BLAST need not blast the ripple-carry chain.     *)
+let AES_GCM_CTR_INCREMENT_HIGH96 = prove
+ (`!c:int128.
+     word_and (aes_gcm_ctr_increment c)
+              (word 0xffffffffffffffffffffffff00000000) =
+     word_and c (word 0xffffffffffffffffffffffff00000000)`,
+  GEN_TAC THEN REWRITE_TAC[aes_gcm_ctr_increment] THEN
+  ABBREV_TAC
+    `d:int32 = word_add (word_subword (c:int128) (0,32):int32) (word 1)` THEN
+  POP_ASSUM(K ALL_TAC) THEN CONV_TAC WORD_BLAST);;
+
+(* Iterating n BE-32 increments adds n to the low-32 counter field.           *)
+let AES_GCM_CTR_AT_LOW32 = prove
+ (`!c:int128 n. word_subword (aes_gcm_ctr_at c n) (0,32):int32 =
+                word_add (word_subword c (0,32)) (word n)`,
+  GEN_TAC THEN INDUCT_TAC THEN
+  REWRITE_TAC[aes_gcm_ctr_at; ITER] THENL
+   [REWRITE_TAC[WORD_ADD_0];
+    REWRITE_TAC[AES_GCM_CTR_INCREMENT_LOW32; GSYM aes_gcm_ctr_at] THEN
+    ASM_REWRITE_TAC[] THEN CONV_TAC WORD_RULE]);;
+
+(* Iterating n BE-32 increments preserves the upper 96 bits (the IV prefix).  *)
+let AES_GCM_CTR_AT_HIGH96 = prove
+ (`!c:int128 n.
+     word_and (aes_gcm_ctr_at c n)
+              (word 0xffffffffffffffffffffffff00000000) =
+     word_and c (word 0xffffffffffffffffffffffff00000000)`,
+  GEN_TAC THEN INDUCT_TAC THEN
+  REWRITE_TAC[aes_gcm_ctr_at; ITER] THEN
+  REWRITE_TAC[GSYM aes_gcm_ctr_at] THEN
+  ASM_REWRITE_TAC[AES_GCM_CTR_INCREMENT_HIGH96]);;
