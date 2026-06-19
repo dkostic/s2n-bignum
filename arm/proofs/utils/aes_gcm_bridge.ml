@@ -2264,6 +2264,80 @@ let AES_GCM_CTR_AT_HIGH96 = prove
   ASM_REWRITE_TAC[AES_GCM_CTR_INCREMENT_HIGH96]);;
 
 (* ========================================================================= *)
+(* Phase 11b G3 (s220) — counter-cell ANCHORING bridge (debt 5 foundation).   *)
+(*                                                                            *)
+(* SCOPE CORRECTION (s220): the C6b roadmap / reviewer-219 framed debt 5 (G3  *)
+(* counter pinning) as a one-shot "witness-swap, 2-3 sessions, one per band". *)
+(* That is NOT accurate; the g3_counter_cell_threading_recipe memory (written  *)
+(* by s206-207 who threaded the EMIT form) is right: the `?cf` POST conjunct   *)
+(* CANNOT be anchored by a witness swap because nothing in any band's chain    *)
+(* ties the kernel's counter register X12 to the spec counter `ctr0`.  The     *)
+(* prelude DELIBERATELY abstracts X12 to self-ref form                         *)
+(*   `read X12 s = word_zx (word_subword (read X12 s) (0,32):int32)`           *)
+(* at the `AES_GCM_PRELUDE_HTABLE_KMID_FLAG_X12_INV_CORRECT` cut               *)
+(* (aes_gcm_enc_kernel.ml:16195) — the concrete value computed by the          *)
+(* `lsr x12,x11,#32; rev w12,w12` pair (kernel offsets 0x64/0x70, slice instr  *)
+(* steps 33/36) is thrown away.  Pinning therefore requires a multi-step       *)
+(* STRUCTURAL arc that re-threads concrete X12 through the prelude cut         *)
+(* cascade + the per-band N0_BODY -> tail composition (where `sx12` is         *)
+(* currently instantiated as the opaque `word_subword (read X12 s_mid)(0,32)`, *)
+(* aes_gcm_enc_kernel.ml:47009).  This mirrors the s180-194 G1 firstblocks     *)
+(* threading effort, not a single rewrite.                                     *)
+(*                                                                            *)
+(* This block lands the SPEC-SIDE algebra the threading will consume, in the   *)
+(* same "land the algebra first" cadence as s205 (the increment lemmas above)  *)
+(* and s182.  Verified facts (from a warm prelude trace, s217orch):            *)
+(*   - The kernel's native 32-bit BE counter at block 0 (X12 right after the   *)
+(*     `rev w12,w12`) is `word_bytereverse (word_subword ctr0 (96,32):int32)`  *)
+(*     (= `word_bytereverse (word_ushr ctr_hi 32)`, since the BE counter field *)
+(*     occupies int128 bits 96..127 = the top 32 bits of ctr_hi).              *)
+(*   - Each `add w12,#1` adds 1 to that field; block k uses `+ word k`.        *)
+(*   - The cell stored to ivec+12 is `word_subword (word_zx (word_bytereverse  *)
+(*     w12_k)) (0,32)` where `w12_k` is the native counter at block k.         *)
+(* ------------------------------------------------------------------------- *)
+
+(* The byte-reverse of the int128 BE-counter field (bits 96..127) equals the  *)
+(* low-32 field (bits 0..31) of the byte-reversed counter.  This is the       *)
+(* endianness pivot relating the kernel's native (host-order) counter to the  *)
+(* spec counter `word_bytereverse ctr0`, whose increments live in bits 0..31. *)
+let AES_GCM_CTR_BE_FIELD_AS_LOW32 = prove
+ (`!c:int128.
+     word_bytereverse (word_subword c (96,32):int32) =
+     word_subword (word_bytereverse c :int128) (0,32):int32`,
+  GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* The kernel's native counter at block k (base + k increments) equals the    *)
+(* low-32 field of the spec counter `aes_gcm_ctr_at (word_bytereverse ctr0) k`.*)
+(* Composes AES_GCM_CTR_BE_FIELD_AS_LOW32 with AES_GCM_CTR_AT_LOW32 (s205).    *)
+let AES_GCM_KERNEL_CTR_AS_SPEC_LOW32 = prove
+ (`!ctr0:int128 k.
+     word_add (word_bytereverse (word_subword ctr0 (96,32):int32)) (word k) =
+     word_subword (aes_gcm_ctr_at (word_bytereverse ctr0) k) (0,32):int32`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[AES_GCM_CTR_AT_LOW32] THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* Full counter-CELL anchoring: the kernel stores the cell value              *)
+(*   `word_subword (word_zx (word_bytereverse w12_k)) (0,32)`                  *)
+(* at ivec+12, where `w12_k = word_add base (word k)` is the native counter at *)
+(* block k.  This equals the same cell computed from the spec counter         *)
+(* `aes_gcm_ctr_at (word_bytereverse ctr0) k` — i.e. once the structural       *)
+(* threading delivers `w12_k` in `word_add base (word k)` form, this lemma     *)
+(* rewrites the near-vacuous `?cf` POST cell into the spec-anchored form in    *)
+(* one step.  This is the rewrite the per-band debt-5 closer will apply.       *)
+let AES_GCM_CTR_CELL_AS_SPEC = prove
+ (`!ctr0:int128 k.
+     word_subword
+       (word_zx (word_bytereverse
+          (word_add (word_bytereverse (word_subword ctr0 (96,32):int32))
+                    (word k)))
+        :int64) (0,32):int32 =
+     word_subword
+       (word_zx (word_bytereverse
+          (word_subword (aes_gcm_ctr_at (word_bytereverse ctr0) k) (0,32):int32))
+        :int64) (0,32):int32`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[AES_GCM_KERNEL_CTR_AS_SPEC_LOW32]);;
+
+(* ========================================================================= *)
 (* Phase 11b G1 (s208) — int128 -> NIST-byte-list conversion bridge.          *)
 (*                                                                            *)
 (* The body-level AES wrappers expose each 16-byte ciphertext block as a      *)
