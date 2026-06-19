@@ -16235,6 +16235,99 @@ let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_X12_INV_CORRECT = prove
     REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
 
 (* ========================================================================= *)
+(* Phase 11b G3 (s220) — CONCRETE-X12 variant of the HTABLE_KMID cut.         *)
+(* First structural step of debt 5 (G3 counter pinning).                      *)
+(*                                                                            *)
+(* The base AES_GCM_PRELUDE_HTABLE_KMID_FLAG_X12_INV_CORRECT (above) keeps    *)
+(* X12 in the OPAQUE self-ref form                                            *)
+(*   `read X12 s = word_zx (word_subword (read X12 s) (0,32):int32)`          *)
+(* in its POST, discarding the concrete counter value.  That abstraction is   *)
+(* the root reason the `?cf` G3 POST conjunct is near-vacuous in every band   *)
+(* wrapper (the witness can never be pinned to the spec counter `ctr0`).      *)
+(*                                                                            *)
+(* This variant instead carries X12 CONCRETELY.  The 0xf0..0x244 range        *)
+(* contains exactly ONE X12 write — `add w12,#1` at kernel offset 0x14c — so  *)
+(* given PRE `read X12 s = word_zx sx12`, the POST is                          *)
+(*   `read X12 s = word_zx (word_add sx12 (word 1):int32)`.                    *)
+(* Proof is byte-identical to the base cut (same ARM_STEPS (61--145), same     *)
+(* Q16/Q17/flag closers); only the X12 POST conjunct changes (and the         *)
+(* X12-closer arm becomes a no-op since the goal is now the concrete equality *)
+(* the simulator already produced, so the WORD_ZX_ZX/SYM/helper line still     *)
+(* discharges it — confirmed warm in s217orch).                               *)
+(*                                                                            *)
+(* NEXT (debt 5 threading, multi-session): chain this with a concrete-X12      *)
+(* IVEC_CTR/ROUND_KEYS prelude prefix (where X12's BASE is established as      *)
+(* `word_bytereverse (word_subword ctr0 (96,32))` via `lsr x12,x11,#32`@0x64  *)
+(* + `rev w12,w12`@0x70, then `+ word k` per `add w12,#1`), then re-thread     *)
+(* the concrete sx12 through PRELUDE_N0_BODY -> per-N tail composition, and    *)
+(* finally rewrite the `?cf` cell with the spec-anchoring bridge lemmas        *)
+(* AES_GCM_CTR_CELL_AS_SPEC / AES_GCM_KERNEL_CTR_AS_SPEC_LOW32                 *)
+(* (aes_gcm_bridge.ml, s220) to land `aes_gcm_ctr_at`-anchored G3.            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_PRELUDE_HTABLE_KMID_FLAG_X12_INV_CTR_CORRECT = prove
+ (`!pc (sx0:int64) (sx5:int64) (sx12:int32) (htable_ptr:int64) (h:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_prelude_slice_mc)
+                   (htable_ptr, 96)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_prelude_slice_mc /\
+              read PC s = word (pc + 0xf0) /\
+              read X0 s = sx0 /\
+              read X5 s = sx5 /\
+              read X6 s = htable_ptr /\
+              read X12 s = word_zx sx12 /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3))
+         (\s. read PC s = word (pc + 0x244) /\
+              read X0 s = sx0 /\
+              read X5 s = sx5 /\
+              read X6 s = htable_ptr /\
+              read X12 s = word_zx (word_add sx12 (word 1):int32) /\
+              read Q12 s = byteswap128 (h_power (ghash_twist h) 0) /\
+              read Q13 s = byteswap128 (h_power (ghash_twist h) 1) /\
+              read Q14 s = byteswap128 (h_power (ghash_twist h) 2) /\
+              read Q15 s = byteswap128 (h_power (ghash_twist h) 3) /\
+              read Q16 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 1):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 0):64 word)
+                 :int128) /\
+              read Q17 s =
+                (word_join (karatsuba_mid (h_power (ghash_twist h) 3):64 word)
+                           (karatsuba_mid (h_power (ghash_twist h) 2):64 word)
+                 :int128) /\
+              (read NF s <=> ival (word_sub sx0 sx5) < &0) /\
+              (read VF s <=>
+               ~(ival sx0 - ival sx5 = ival (word_sub sx0 sx5))))
+         (MAYCHANGE [PC; X9; X12] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q8; Q9; Q11;
+                     Q12; Q13; Q14; Q15; Q16; Q17;
+                     Q22; Q26; Q27; Q28; Q29; Q30] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  RULE_ASSUM_TAC(REWRITE_RULE[NONOVERLAPPING_CLAUSES;
+                              fst AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC]) THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_PRELUDE_SLICE_EXEC (61--145) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  CONJ_TAC THENL
+   [CONJ_TAC THENL
+     [IMP_REWRITE_TAC[WORD_ZX_ZX; DIMINDEX_32; DIMINDEX_64; LE_REFL; ARITH] THEN
+      CONV_TAC SYM_CONV THEN
+      MATCH_ACCEPT_TAC
+       (WORD_BLAST `!x:int32. word_zx (word_subword (word_zx x:int64) (0,32):int32) = (word_zx x:int64)`);
+      ALL_TAC] THEN
+    REWRITE_TAC[byteswap128; karatsuba_mid] THEN CONV_TAC WORD_BLAST;
+    REWRITE_TAC[SOME_FLAGS] THEN MONOTONE_MAYCHANGE_TAC]);;
+
+(* ========================================================================= *)
 (* Phase 11b Stage 1 (s140) — Q11 prelude bridge: HTABLE_KMID_FLAG_X12_INV    *)
 (* strengthened with Q11 = word_bytereverse(initial_tag).                     *)
 (*                                                                            *)
