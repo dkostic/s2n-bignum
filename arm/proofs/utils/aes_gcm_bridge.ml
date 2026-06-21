@@ -2337,6 +2337,106 @@ let AES_GCM_CTR_CELL_AS_SPEC = prove
         :int64) (0,32):int32`,
   REPEAT GEN_TAC THEN REWRITE_TAC[AES_GCM_KERNEL_CTR_AS_SPEC_LOW32]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G3 (s245) — counter-BLOCK anchoring bridge (debt 2 foundation).  *)
+(*                                                                            *)
+(* Where AES_GCM_CTR_CELL_AS_SPEC (above) pins the 32-bit stored counter cell *)
+(* (debt 5), the AES keystream consumes the FULL 128-bit counter block as its *)
+(* cipher input.  The kernel assembles block k's counter as a 128-bit value   *)
+(* (the `fmov d_i,x10; fmov v_i.d[1],x9` + `rev w9,w12; orr x9,x11,x9,lsl#32`  *)
+(* dance): bits 0..63 = ctr_lo (the IV low 64), bits 64..95 = ctr_hi low 32   *)
+(* (the IV mid 32), bits 96..127 = the byte-reversed BE-32 counter field at   *)
+(* block k.  The prepretail / firstblocks-tail AES wrappers expose the Q0..Q3 *)
+(* keystream as `aes_arm_round^9` of exactly this counter block (debt 2: the  *)
+(* tail blocks 4..7 are currently FREE inputs `q*_pre` to the prepretail AES  *)
+(* theorem, with no equation to ctr0).                                        *)
+(*                                                                            *)
+(* This lemma is the spec-side algebra the debt-2 threading will consume: it  *)
+(* says the spec counter block `aes_gcm_ctr_at (word_bytereverse ctr0) k`,    *)
+(* byte-reversed (so it matches the kernel's host-order int128 view), equals  *)
+(* exactly the kernel's assembled counter-block in terms of ctr0's fields and *)
+(* the per-block field `word_subword (word_bytereverse ctr0) (0,32) + k`.     *)
+(* Once the structural threading delivers the native counter block in this    *)
+(* shape (`base + k` field, `word_and` of the IV mid 32), this lemma rewrites *)
+(* the AES input to the spec counter in one step — mirroring how              *)
+(* AES_GCM_CTR_CELL_AS_SPEC closes the debt-5 cell.  Same "land the spec-side *)
+(* algebra first" cadence as s205 / s220.                                     *)
+(*                                                                            *)
+(* Proof: reconstruct the opaque `aes_gcm_ctr_at ... k` as                    *)
+(*   word_or (word_and C mask96) (word_zx (word_subword C (0,32)))            *)
+(* (the canonical IV-prefix / counter-field split, BITBLAST), substitute the  *)
+(* low-32 (AES_GCM_CTR_AT_LOW32) and high-96 (AES_GCM_CTR_AT_HIGH96) field     *)
+(* facts so C becomes fully explicit in `word_bytereverse ctr0` and the field,*)
+(* abstract the field so BITBLAST need not blast the symbolic `word k` adder,  *)
+(* then BITBLAST the byte-shuffle (≈0.2s; WORD_BLAST hangs on the nested       *)
+(* bytereverse per [[g3_x12_unifier_coldfix_recipe]] / the counter memories). *)
+(* ------------------------------------------------------------------------- *)
+
+(* Field fact: the top 32 bits (int128 bits 96..127) of the byte-reversed     *)
+(* spec counter block at index k are the byte-reverse of the BE-32 counter     *)
+(* field `word_subword sc (0,32) + word k` (sc = the spec counter `ctr0`).    *)
+let AES_GCM_CTR_AT_BYTEREV_FIELD = prove
+ (`!sc:int128 k.
+     word_subword (word_bytereverse (aes_gcm_ctr_at sc k)) (96,32):int32 =
+     word_bytereverse (word_add (word_subword sc (0,32):int32) (word k))`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(ISPECL[`sc:int128`;`k:num`] AES_GCM_CTR_AT_HIGH96) THEN
+  MP_TAC(ISPECL[`sc:int128`;`k:num`] AES_GCM_CTR_AT_LOW32) THEN
+  ABBREV_TAC `C:int128 = aes_gcm_ctr_at sc k` THEN
+  STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+   `C:int128 = word_or (word_and sc (word 0xffffffffffffffffffffffff00000000))
+                       (word_zx (word_add (word_subword sc (0,32):int32) (word k)):int128)`
+   SUBST1_TAC THENL
+   [ONCE_REWRITE_TAC[BITBLAST_RULE
+      `(C:int128) = word_or (word_and C (word 0xffffffffffffffffffffffff00000000))
+                            (word_zx (word_subword C (0,32):int32):int128)`] THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  ABBREV_TAC `ctrfld = (word_add (word_subword (sc:int128) (0,32):int32) (word k)):int32` THEN
+  POP_ASSUM_LIST(K ALL_TAC) THEN
+  BITBLAST_TAC);;
+
+(* Full counter-block bridge: the byte-reversed spec counter block at index k *)
+(* equals the kernel's assembled 128-bit counter block, keyed on the kernel   *)
+(* counter `ctr0` (so the spec counter is `word_bytereverse ctr0`).  bits      *)
+(* 0..63 = ctr0 low 64, bits 64..95 = ctr0 mid 32 (`word_and ... 0xffffffff`), *)
+(* bits 96..127 = byte-reverse of `word_subword (word_bytereverse ctr0) (0,32) *)
+(* + word k`.                                                                  *)
+let AES_GCM_CTR_BLOCK_AS_SPEC = prove
+ (`!ctr0:int128 k.
+     word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) k) =
+     word_insert (word_zx (word_subword ctr0 (0,64):int64) :int128) (64,64)
+        (word_or (word_and (word_subword ctr0 (64,64):int64) (word 0xffffffff))
+           (word_shl (word_zx (word_bytereverse
+              (word_add (word_subword (word_bytereverse ctr0) (0,32):int32)
+                        (word k))):int64) 32))`,
+  REPEAT GEN_TAC THEN
+  MP_TAC(ISPECL[`word_bytereverse (ctr0:int128):int128`;`k:num`]
+               AES_GCM_CTR_AT_HIGH96) THEN
+  MP_TAC(ISPECL[`word_bytereverse (ctr0:int128):int128`;`k:num`]
+               AES_GCM_CTR_AT_LOW32) THEN
+  ABBREV_TAC `C:int128 = aes_gcm_ctr_at (word_bytereverse ctr0) k` THEN
+  STRIP_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+   `C:int128 =
+    word_or (word_and (word_bytereverse ctr0)
+                      (word 0xffffffffffffffffffffffff00000000))
+            (word_zx (word_add
+               (word_subword (word_bytereverse ctr0) (0,32):int32)
+               (word k)):int128)`
+   SUBST1_TAC THENL
+   [ONCE_REWRITE_TAC[BITBLAST_RULE
+      `(C:int128) = word_or (word_and C (word 0xffffffffffffffffffffffff00000000))
+                            (word_zx (word_subword C (0,32):int32):int128)`] THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  ABBREV_TAC `ctrfld =
+     (word_add (word_subword (word_bytereverse (ctr0:int128)) (0,32):int32)
+               (word k)):int32` THEN
+  POP_ASSUM_LIST(K ALL_TAC) THEN
+  BITBLAST_TAC);;
+
 (* ========================================================================= *)
 (* Phase 11b G1 (s208) — int128 -> NIST-byte-list conversion bridge.          *)
 (*                                                                            *)
