@@ -2437,6 +2437,80 @@ let AES_GCM_CTR_BLOCK_AS_SPEC = prove
   POP_ASSUM_LIST(K ALL_TAC) THEN
   BITBLAST_TAC);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G3 (s246) — debt-2 STEP 2 native counter-BLOCK crux.             *)
+(*                                                                            *)
+(* Where AES_GCM_CTR_BLOCK_AS_SPEC (above, s245) is the pure spec-side        *)
+(* identity, this is the bridge the keystream THREADING actually applies: it  *)
+(* takes the kernel's NATIVE assembled counter block — the form the (64,128]  *)
+(* and GT_128 spines expose for the tail blocks 4..7 (Q0..Q3) under a         *)
+(* `?sx11_e sx12_e` existential — and pins it to the byte-reversed spec       *)
+(* counter `word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) k)`,     *)
+(* GIVEN the three counter-construction field identities the prelude          *)
+(* establishes.                                                               *)
+(*                                                                            *)
+(* The native block (from e.g. the (64,128] spine                            *)
+(* `..._FIRSTBLOCKS_PREPRETAIL_STRONG_X12_NIST_BODY_WITH_Q11_AES_CTR_CORRECT` *)
+(* POST @aes_gcm_enc_kernel.ml, the Q0..Q3 AES inputs) is                     *)
+(*   word_insert (word_zx ctr_lo) (64,64)                                    *)
+(*     (word_or sx11_e (word_shl (word_zx (word_bytereverse                   *)
+(*        (word_zx (word_zx g :int64) :int32))) 32))                          *)
+(* where g:int32 is the native BE-32 counter field at the block (block 4 has  *)
+(* g = sx12_e, block 4+j has g = sx12_e + j, modulo the int32->int64->int32   *)
+(* zero-extend round trip the kernel's `rev w9,w12; orr x9,..` dance emits).  *)
+(*                                                                            *)
+(* The THREE field facts the threading must carry (all established by the     *)
+(* kernel prelude — verified s246 against arm/aes-gcm/aes_gcm_enc_kernel_aes128.S):*)
+(*   (1) ctr_lo  = word_subword ctr0 (0,64)        [ldp x10,x11,[x16]; fmov]  *)
+(*   (2) sx11_e  = word_and (word_subword ctr0 (64,64)) 0xffffffff            *)
+(*       — the `.S` does `orr w11,w11,w11` (a 32-bit write, which              *)
+(*       ZERO-EXTENDS x11, clearing its top 32 bits) BEFORE `orr x9,x11,..`,  *)
+(*       so the native `word_or sx11_e (..)` IS reconcilable to the spec      *)
+(*       `word_and`-form precisely because sx11_e is already masked.  (This   *)
+(*       resolves the s245 "native word_or vs spec word_and not equal in      *)
+(*       general" worry: the equality DOES hold, given fact (2).)             *)
+(*   (3) g       = word_add (word_subword (word_bytereverse ctr0) (0,32)) (word k)*)
+(*       — the entry BE-32 counter field at block k = base + k (base = the    *)
+(*       block-4 field; cf AES_GCM_KERNEL_CTR_AS_SPEC_LOW32, s220).           *)
+(*                                                                            *)
+(* Threading recipe (validated s246 end-to-end on a mock block-5 goal):       *)
+(*   peel the 9 aes_arm_round + aes_arm_final_round wrappers off the spine's  *)
+(*   Q0..Q3 conjunct via `REPEAT (AP_THM_TAC THEN AP_TERM_TAC)` (keeps AES    *)
+(*   opaque, exposes the bare counter-input identity), then                   *)
+(*   `MATCH_MP_TAC AES_GCM_NATIVE_CTR_BLOCK_AS_SPEC THEN ASM_REWRITE_TAC[]    *)
+(*    THEN CONV_TAC WORD_RULE` (the WORD_RULE discharges the per-block field  *)
+(*   residual `(base + 4) + j = base + (4+j)`).  This mirrors the BLOCK0123   *)
+(*   native<->spec reconciliation (aes_gcm_enc_kernel.ml @16879) but for the  *)
+(*   tail blocks whose counter field is symbolic (sx12_e) rather than the     *)
+(*   concrete `word_join ctr_hi ctr_lo`.                                      *)
+(* ------------------------------------------------------------------------- *)
+
+(* The int32 -> int64 -> int32 zero-extend round trip is the identity.  The   *)
+(* kernel's `rev w9,w12` (32-bit reverse) followed by the `fmov`/`orr` lane   *)
+(* moves leaves this double-zero-extend on the BE-32 counter field; collapse  *)
+(* it before applying the counter-block bridge.                               *)
+let WORD_ZX_ZX_ID_32_64_32 = prove
+ (`!x:int32. word_zx (word_zx x :int64) :int32 = x`,
+  GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+(* The native counter-BLOCK crux: kernel's assembled block (abstract field g) *)
+(* = byte-reversed spec counter block, given the 3 field identities.  Reduces *)
+(* to AES_GCM_CTR_BLOCK_AS_SPEC after collapsing the field round trip and     *)
+(* substituting the field facts.                                              *)
+let AES_GCM_NATIVE_CTR_BLOCK_AS_SPEC = prove
+ (`!ctr0:int128 ctr_lo:int64 sx11_e:int64 g:int32 k.
+     ctr_lo = word_subword ctr0 (0,64) /\
+     sx11_e = word_and (word_subword ctr0 (64,64):int64) (word 0xffffffff) /\
+     g = word_add (word_subword (word_bytereverse ctr0) (0,32):int32) (word k)
+     ==> word_insert (word_zx ctr_lo :int128) (64,64)
+           (word_or sx11_e (word_shl (word_zx (word_bytereverse
+             (word_zx (word_zx (g:int32) :int64) :int32)
+               :int32) :int64) 32))
+         = word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) k)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_REWRITE_TAC[WORD_ZX_ZX_ID_32_64_32] THEN
+  REWRITE_TAC[AES_GCM_CTR_BLOCK_AS_SPEC]);;
+
 (* ========================================================================= *)
 (* Phase 11b G1 (s208) — int128 -> NIST-byte-list conversion bridge.          *)
 (*                                                                            *)
