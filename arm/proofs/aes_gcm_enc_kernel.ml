@@ -86361,6 +86361,58 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_FIRSTBLOCKS_PREPRETAIL_STRONG_X12_NIST
     REWRITE_TAC[LENGTH] THEN ARITH_TAC]);;
 
 (* ========================================================================= *)
+(* s260 C6b debt-3 ALGEBRA FOUNDATION — collapse the raw GHASH `cts` witness  *)
+(* to MAP word_bytereverse [q4;q5;q6;q7].                                     *)
+(*                                                                           *)
+(* The (64,128] / GT_128 spine theorems close their GHASH existential        *)
+(*   `?cts. LENGTH cts = 4 /\ read Q11 s = nist_ghash h (word_bytereverse    *)
+(*    initial_tag) cts`                                                       *)
+(* with a RAW HARDWARE witness (e.g. kernel @86655):                         *)
+(*   cts = [word_xor (word_bytereverse t)                                    *)
+(*            (byteswap128 (word_xor (aes_gcm_rev64_int128 q4)               *)
+(*                                   (byteswap128 (word_bytereverse t))));   *)
+(*          byteswap128 (aes_gcm_rev64_int128 q5);                           *)
+(*          byteswap128 (aes_gcm_rev64_int128 q6);                           *)
+(*          byteswap128 (aes_gcm_rev64_int128 q7)]                           *)
+(* where t = initial_tag and q4..q7 = read Q4..Q7 at pc+0x5c8.               *)
+(*                                                                           *)
+(* This lemma shows that witness equals `MAP word_bytereverse [q4;q5;q6;q7]` *)
+(* (the initial_tag in the GHASH `?cts` cancels out of element 0).  Combined *)
+(* with `EMIT_GHASH_ELT_AS_CT_BLOCK_AT` (@~104786) applied to Q4..Q7 in EMIT *)
+(* spec form, this pins the wider-band `cts` to                              *)
+(*   MAP (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) [0;1;2;3].    *)
+(* The remaining structural work (debt 3) is exposing Q4..Q7 @0x5c8 in EMIT  *)
+(* form (a firstblocks-tower strengthening).                                 *)
+(*                                                                           *)
+(* Algebra: REV64_EXT_IS_BYTEREVERSE (byteswap128 o rev64 = word_bytereverse)*)
+(* for the three tail elements; element 0 collapses by byteswap distribution *)
+(* over xor + involution + XOR-cancellation (BITBLAST).                       *)
+(* ========================================================================= *)
+
+let GHASH_CTS_ELT0_AS_BYTEREVERSE = prove
+ (`!(t:int128) (q4:int128).
+    word_xor (word_bytereverse t)
+       (byteswap128 (word_xor (aes_gcm_rev64_int128 q4)
+                              (byteswap128 (word_bytereverse t)))) =
+    word_bytereverse q4`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[byteswap128; aes_gcm_rev64_int128] THEN
+  BITBLAST_TAC);;
+
+let GHASH_CTS_WITNESS_AS_BYTEREVERSE = prove
+ (`!(t:int128) (q4:int128) (q5:int128) (q6:int128) (q7:int128).
+    [word_xor (word_bytereverse t)
+       (byteswap128 (word_xor (aes_gcm_rev64_int128 q4)
+                              (byteswap128 (word_bytereverse t))));
+     byteswap128 (aes_gcm_rev64_int128 q5);
+     byteswap128 (aes_gcm_rev64_int128 q6);
+     byteswap128 (aes_gcm_rev64_int128 q7)] =
+    [word_bytereverse q4; word_bytereverse q5;
+     word_bytereverse q6; word_bytereverse q7]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[REV64_EXT_IS_BYTEREVERSE; GHASH_CTS_ELT0_AS_BYTEREVERSE]);;
+
+(* ========================================================================= *)
 (* s247 C6b debt-2 STEP 2b DELIVERABLE — (64,128] spine, tail Q0..Q3 PINNED.  *)
 (* Sibling of ..._STRONG_X12_NIST_BODY_WITH_Q11_AES_CTR_X12_CORRECT (@above)  *)
 (* whose tail Q0..Q3 (blocks 4..7) are now in SPEC-COUNTER form              *)
