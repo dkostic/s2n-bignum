@@ -10570,6 +10570,135 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_SPEC_FORM_PLUS_Q567_FLAG_X12_CORRECT = pro
   ASM_REWRITE_TAC[] THEN
   DISCH_THEN(fun th -> REWRITE_TAC[GSYM th]));;
 
+(* Phase 1 step 2: _CTR delegation clone of NIST_SPEC_FORM_PLUS_Q567_FLAG_X12.
+   Adds X10/X11 PRE + Q0/Q1/Q2/X10/X11 POST; delegates to step 1 (_X12_CTR). *)
+let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_SPEC_FORM_PLUS_Q567_FLAG_X12_CTR_CORRECT = prove
+ (`!pc (cptr:int64) (q0:int128) (q1:int128) (q2:int128) (q3:int128)
+        (q4_in:int128) (q5:int128) (q6:int128) (q9_in:int128) (q10_in:int128)
+        (q11_in:int128) (q16:int128) (rk9:int128)
+        (x19:int64) (x20:int64) (x21:int64) (x22:int64) (x23:int64)
+        (x24:int64) (sx14:int64)
+        (x0_in:int64) (x5_in:int64) (sx12:int32)
+        (sx10:int64) (sx11:int64)
+        (h:int128) (prev_tag:int128)
+        (ct0:int128) (ct1:int128) (ct2:int128) (ct3:int128).
+    nonoverlapping (word pc, LENGTH aes_gcm_main_loop_body_slice_mc) (cptr, 64) /\
+    (let h0,l0,m0 =
+       karatsuba_components (byteswap128 (word_xor prev_tag ct0))
+                            (byteswap128 (h_power (ghash_twist h) 3)) in
+     let h1,l1,m1 =
+       karatsuba_components (byteswap128 ct1)
+                            (byteswap128 (h_power (ghash_twist h) 2)) in
+     let h2,l2,m2 =
+       karatsuba_components (byteswap128 ct2)
+                            (byteswap128 (h_power (ghash_twist h) 1)) in
+     let h3,l3,m3 =
+       karatsuba_components (byteswap128 ct3)
+                            (byteswap128 (h_power (ghash_twist h) 0)) in
+     word_xor q9_in q5 = word_xor (word_xor (word_xor h0 h1) h2) h3 /\
+     word_xor q11_in q6 = word_xor (word_xor (word_xor l0 l1) l2) l3 /\
+     word_xor q10_in
+              (word_pmul (word_subword q4_in (0,64) :64 word)
+                         (word_subword q16 (0,64) :64 word) :int128) =
+     word_xor (word_xor (word_xor m0 m1) m2) m3)
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc)
+                  aes_gcm_main_loop_body_slice_mc /\
+              read PC s = word (pc + 0x1c8) /\
+              read X2 s = cptr /\
+              read Q0 s = q0 /\
+              read Q1 s = q1 /\
+              read Q2 s = q2 /\
+              read Q3 s = q3 /\
+              read Q4 s = q4_in /\
+              read Q5 s = q5 /\
+              read Q6 s = q6 /\
+              read Q9 s = q9_in /\
+              read Q10 s = q10_in /\
+              read Q11 s = q11_in /\
+              read Q16 s = q16 /\
+              read Q31 s = rk9 /\
+              read X0 s = x0_in /\
+              read X5 s = x5_in /\
+              read X10 s = sx10 /\
+              read X11 s = sx11 /\
+              read X12 s = word_zx sx12 /\
+              read X19 s = x19 /\
+              read X20 s = x20 /\
+              read X21 s = x21 /\
+              read X22 s = x22 /\
+              read X23 s = x23 /\
+              read X24 s = x24 /\
+              read X14 s = sx14)
+         (\s. read PC s = word (pc + 0x2bc) /\
+              read X0 s = word_add x0_in (word 64) /\
+              read X2 s = word_add cptr (word 64) /\
+              read X5 s = x5_in /\
+              read X10 s = sx10 /\
+              read X11 s = sx11 /\
+              read X12 s = word_zx (word_add sx12 (word 4):int32) /\
+              (read NF s <=>
+               ival (word_sub (word_add x0_in (word 64)) x5_in) < &0) /\
+              (read VF s <=>
+               ~(ival (word_add x0_in (word 64)) - ival x5_in =
+                 ival (word_sub (word_add x0_in (word 64)) x5_in))) /\
+              read Q0 s = word_insert (word_zx sx10 :int128) (64,64)
+                (word_or sx11 (word_shl (word_zx (word_bytereverse
+                  (word_zx (word_zx (word_add (word_zx (word_zx (sx12:int32) :int64) :int32) (word 1)) :int64) :int32)
+                    :int32) :int64) 32)) /\
+              read Q1 s = word_insert (word_zx sx10 :int128) (64,64)
+                (word_or sx11 (word_shl (word_zx (word_bytereverse
+                  (word_zx (word_zx (word_add (word_zx (word_zx (word_add (word_zx (word_zx (sx12:int32) :int64) :int32) (word 1)) :int64) :int32) (word 1)) :int64) :int32)
+                    :int32) :int64) 32)) /\
+              read Q2 s = word_insert (word_zx sx10 :int128) (64,64)
+                (word_or sx11 (word_shl (word_zx (word_bytereverse
+                  (word_zx (word_zx (word_add (word_zx (word_zx (word_add (word_zx (word_zx (word_add (word_zx (word_zx (sx12:int32) :int64) :int32) (word 1)) :int64) :int32) (word 1)) :int64) :int32) (word 1)) :int64) :int32)
+                    :int32) :int64) 32)) /\
+              read Q5 s = (word_xor (aese q1 rk9)
+                           (word_insert
+                             (word_zx x19 :int128)
+                             (64,64)
+                             (word_xor x20 sx14)) :int128) /\
+              read Q6 s = (word_xor (aese q2 rk9)
+                           (word_insert
+                             (word_zx x21 :int128)
+                             (64,64)
+                             x22) :int128) /\
+              read Q7 s = (word_xor (aese q3 rk9)
+                           (word_insert
+                             (word_zx x23 :int128)
+                             (64,64)
+                             (word_xor x24 sx14)) :int128) /\
+              read Q11 s = nist_ghash h prev_tag [ct0; ct1; ct2; ct3])
+         (MAYCHANGE [PC] ,,
+          MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+          MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X24] ,,
+          MAYCHANGE SOME_FLAGS ,,
+          MAYCHANGE [memory :> bytes(cptr, 64)] ,,
+          MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  STRIP_TAC THEN
+  MP_TAC(SPECL [`pc:num`; `cptr:int64`; `q0:int128`; `q1:int128`;
+                `q2:int128`; `q3:int128`;
+                `q4_in:int128`; `q5:int128`; `q6:int128`;
+                `q9_in:int128`; `q10_in:int128`; `q11_in:int128`;
+                `q16:int128`; `rk9:int128`;
+                `x19:int64`; `x20:int64`; `x21:int64`; `x22:int64`;
+                `x23:int64`; `x24:int64`; `sx14:int64`;
+                `x0_in:int64`; `x5_in:int64`; `sx12:int32`;
+                `sx10:int64`; `sx11:int64`]
+               AES_GCM_MAIN_LOOP_BODY_GHASH_KERNEL_MODULO_PLUS_Q567_FLAG_X12_CTR_CORRECT) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  MP_TAC(SPECL [`h:int128`; `prev_tag:int128`; `ct0:int128`;
+                `ct1:int128`; `ct2:int128`; `ct3:int128`;
+                `q5:int128`; `q6:int128`; `q9_in:int128`;
+                `q10_in:int128`; `q11_in:int128`; `q4_in:int128`;
+                `q16:int128`]
+               KERNEL_4BLOCK_NIST_BRIDGE_LASSOC) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(fun th -> REWRITE_TAC[GSYM th]));;
+
+
 let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_PLUS_Q567_FLAG_X12_CORRECT = prove
  (`!pc (cptr:int64) (b0:int128) (b1:int128) (b2:int128)
         (q4_pre:int128) (q11_pre:int128) (q5_pre:int128) (q7_pre:int128)
