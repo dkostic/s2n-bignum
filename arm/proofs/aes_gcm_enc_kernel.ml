@@ -89044,6 +89044,44 @@ let GHASH_CTS_WITNESS_AS_BYTEREVERSE = prove
   REWRITE_TAC[REV64_EXT_IS_BYTEREVERSE; GHASH_CTS_ELT0_AS_BYTEREVERSE]);;
 
 (* ========================================================================= *)
+(* s265 C6b debt-3 GT_128 arc — list_of_seq step-by-4 recursion.              *)
+(*                                                                           *)
+(* SCOPING (s265): unlike the (64,128] band (no main loop), the GT_128 band's *)
+(* inner GHASH `cts` is LOOP-ACCUMULATED.  The main-loop ENSURES_WHILE_PUP    *)
+(* invariant (@9892 and X12/CTR/X9 variants @14200) carries                   *)
+(*   ?cts. LENGTH cts = 4 * i /\ read Q11 s = nist_ghash h initial_tag cts    *)
+(* with `cts` PURELY EXISTENTIAL — neither the ghost `cts` nor the per-iter   *)
+(* stored ciphertext memory (the separate `?stored. ... EL j stored` block)   *)
+(* is pinned to spec-cipher form.  Pinning GT_128's `cts` therefore requires  *)
+(* STRENGTHENING the loop invariant (the Phase-8 analogue), NOT a mechanical  *)
+(* clone of the (64,128] `_CTS` spine.                                        *)
+(*                                                                           *)
+(* The clean target invariant form is                                        *)
+(*   cts = list_of_seq (\j. <spec ct block j>) (4 * i)                        *)
+(* because `list_of_seq` appends ONE element at the TAIL per step             *)
+(*   (list_of_seq s (SUC n) = APPEND (list_of_seq s n) [s n]),                *)
+(* exactly matching the body's `EXISTS_TAC (APPEND cts [ct0;ct1;ct2;ct3])`    *)
+(* accumulation (@10028).  This lemma is the inductive step the strengthened  *)
+(* loop body needs: advancing i -> i+1 (i.e. 4*i -> 4*i+4) appends the four   *)
+(* fresh blocks at indices 4*i .. 4*i+3, matching the four ct0..ct3 the body  *)
+(* produces.  Pair it with GHASH_CTS_WITNESS_AS_BYTEREVERSE (per-iter the     *)
+(* body's ct0..ct3 = word_bytereverse q4..q7) + EMIT_GHASH_ELT_AS_CT_BLOCK_AT *)
+(* (@109588, general index i) to pin each appended block to                   *)
+(*   aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks (4*i+k).            *)
+(* ========================================================================= *)
+
+let LIST_OF_SEQ_STEP4 = prove
+ (`!(f:num->A) n.
+     list_of_seq f (n + 4) =
+     APPEND (list_of_seq f n) [f n; f (n + 1); f (n + 2); f (n + 3)]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `n + 4 = SUC(SUC(SUC(SUC n)))`; list_of_seq] THEN
+  REWRITE_TAC[GSYM APPEND_ASSOC; APPEND] THEN
+  REWRITE_TAC[ARITH_RULE `SUC(SUC(SUC n)) = n + 3`;
+              ARITH_RULE `SUC(SUC n) = n + 2`;
+              ARITH_RULE `SUC n = n + 1`]);;
+
+(* ========================================================================= *)
 (* s247 C6b debt-2 STEP 2b DELIVERABLE — (64,128] spine, tail Q0..Q3 PINNED.  *)
 (* Sibling of ..._STRONG_X12_NIST_BODY_WITH_Q11_AES_CTR_X12_CORRECT (@above)  *)
 (* whose tail Q0..Q3 (blocks 4..7) are now in SPEC-COUNTER form              *)
