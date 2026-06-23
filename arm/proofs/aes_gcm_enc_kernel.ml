@@ -89081,6 +89081,36 @@ let LIST_OF_SEQ_STEP4 = prove
               ARITH_RULE `SUC(SUC n) = n + 2`;
               ARITH_RULE `SUC n = n + 1`]);;
 
+(* The GHASH inductive step the strengthened GT_128 main-loop body uses to     *)
+(* re-establish the invariant cts = list_of_seq spec_block (4*i) at i -> i+1.   *)
+(* Advancing the list_of_seq accumulator by 4 blocks (4*i -> 4*i+4) splits the  *)
+(* nist_ghash into the "old accumulator" (cts at 4*i) applied to the 4 fresh    *)
+(* blocks at indices n .. n+3 — exactly the body's GHASH advance.  Composes     *)
+(* LIST_OF_SEQ_STEP4 (the list step) with NIST_GHASH_APPEND (the ghash split).  *)
+let NIST_GHASH_LIST_OF_SEQ_STEP4 = prove
+ (`!(h:int128) (acc:int128) (f:num->int128) (n:num).
+     nist_ghash h acc (list_of_seq f (n + 4)) =
+     nist_ghash h (nist_ghash h acc (list_of_seq f n))
+       [f n; f (n + 1); f (n + 2); f (n + 3)]`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[LIST_OF_SEQ_STEP4; NIST_GHASH_APPEND]);;
+
+(* R3 reconciliation (for the eventual 3-way _CTS unifier): the GT_128 band     *)
+(* carries cts as `list_of_seq spec_block (4*N)`, while the (64,128]/LE bands    *)
+(* pin the firstblocks as a literal `MAP spec_block [0;1;2;3]` (= list_of_seq    *)
+(* spec_block 4 at N=1).  These two lemmas reconcile the representations so a    *)
+(* unifier can express the firstblocks 4-block prefix in either form.           *)
+let LIST_OF_SEQ_4 = prove
+ (`!(f:num->A). list_of_seq f 4 = [f 0; f 1; f 2; f 3]`,
+  GEN_TAC THEN
+  REWRITE_TAC[ARITH_RULE `4 = SUC(SUC(SUC(SUC 0)))`; list_of_seq] THEN
+  REWRITE_TAC[APPEND; ARITH_RULE `SUC(SUC(SUC 0)) = 3`;
+              ARITH_RULE `SUC(SUC 0) = 2`; ARITH_RULE `SUC 0 = 1`]);;
+
+let MAP_0123_AS_LIST_OF_SEQ = prove
+ (`!(g:num->A). MAP g [0;1;2;3] = list_of_seq g 4`,
+  GEN_TAC THEN REWRITE_TAC[LIST_OF_SEQ_4; MAP]);;
+
 (* ========================================================================= *)
 (* s247 C6b debt-2 STEP 2b DELIVERABLE — (64,128] spine, tail Q0..Q3 PINNED.  *)
 (* Sibling of ..._STRONG_X12_NIST_BODY_WITH_Q11_AES_CTR_X12_CORRECT (@above)  *)
