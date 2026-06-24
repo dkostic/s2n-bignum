@@ -94902,6 +94902,77 @@ let GHASH_CTS_LIST_AS_SPEC_BLOCK = prove
   ASM_REWRITE_TAC[CONS_11]);;
 
 (* ========================================================================= *)
+(* Phase 11b G3 (s280) — C6b DEBT 3 GT_128 STEP B CHEAT-2 STEP 3 helpers.      *)
+(*                                                                            *)
+(* Generic READ-ONLY input-window threading for the main-loop wrapper.  The   *)
+(* STEP-B `_CTS` wrapper MPs the stronger body cut                            *)
+(*   AES_GCM_MAIN_LOOP_BODY_..._Q4Q7_AES_X567_CORRECT_X9                       *)
+(* whose PRE reads 8 plaintext 64-bit halves at `x0_in + {0,8,..,56}` but     *)
+(* whose POST does NOT re-assert them.  To make those reads available at      *)
+(* every loop iteration we thread a quantified bytes64 plaintext window        *)
+(* (READ-ONLY: the plaintext buffer is never in MAYCHANGE) through the cut,    *)
+(* exactly mirroring the writable-cell threading used by                       *)
+(* AES_GCM_MAIN_LOOP_WRAPPER_FULL_MEM_CORRECT (ENSURES_THREAD_PRIOR_CELLS /     *)
+(* WRAPPER_FRAME_PRESERVES_PRIOR_CELLS) but with bytes64 (stride 8) cells and   *)
+(* no write to the region.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+(* Strengthen a cut's PRE and POST with a quantified bytes64 window, given the *)
+(* cut frame R preserves every window cell (true for any read-only region).    *)
+let ENSURES_THREAD_RO_WINDOW = prove
+ (`!(base:int64) (M:num) (g:num->int64) step (P:armstate->bool) Q R.
+    (!s s2. R s s2
+            ==> (!j. j < M
+                     ==> read (memory :> bytes64 (word_add base (word(8*j)))) s2 =
+                         read (memory :> bytes64 (word_add base (word(8*j)))) s)) /\
+    ensures step P Q R
+    ==> ensures step
+         (\s. (!j. j < M
+                   ==> read (memory :> bytes64 (word_add base (word(8*j)))) s = g j) /\ P s)
+         (\s. (!j. j < M
+                   ==> read (memory :> bytes64 (word_add base (word(8*j)))) s = g j) /\ Q s)
+         R`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[ensures] THEN STRIP_TAC THEN
+  GEN_TAC THEN DISCH_THEN(CONJUNCTS_THEN2 ASSUME_TAC ASSUME_TAC) THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `s:armstate`) THEN ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC(REWRITE_RULE[RIGHT_IMP_FORALL_THM] EVENTUALLY_MONO) THEN
+  X_GEN_TAC `s3:armstate` THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+  RULE_ASSUM_TAC BETA_RULE THEN
+  REPEAT CONJ_TAC THENL
+   [REPEAT STRIP_TAC THEN ASM_MESON_TAC[];
+    ASM_REWRITE_TAC[];
+    ASM_REWRITE_TAC[]]);;
+
+(* The main-loop body's MAYCHANGE frame preserves every read-only plaintext    *)
+(* window cell, given the whole window is nonoverlapping with the 64-byte       *)
+(* ciphertext write window.  `cw` is the per-iteration ciphertext base          *)
+(* (`word_add cptr (word(64*i))`).                                              *)
+let BODY_FRAME_PRESERVES_RO_WINDOW = prove
+ (`!(x0_in:int64) (cw:int64) (M:num).
+      nonoverlapping (x0_in, 8 * M) (cw, 64)
+      ==> (!s s2.
+            (MAYCHANGE [PC] ,,
+             MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+             MAYCHANGE [X0; X2; X6; X7; X9; X12; X19; X20; X21; X22; X23; X24] ,,
+             MAYCHANGE SOME_FLAGS ,,
+             MAYCHANGE [memory :> bytes(cw, 64)] ,,
+             MAYCHANGE [events]) s s2
+            ==> (!j. j < M
+                     ==> read (memory :> bytes64 (word_add x0_in (word(8*j)))) s2 =
+                         read (memory :> bytes64 (word_add x0_in (word(8*j)))) s))`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[SOME_FLAGS] THEN DISCH_TAC THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID; GSYM SEQ_ASSOC] THEN
+  PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN
+  CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[ASSIGNS_THM] THEN
+  REWRITE_TAC[LEFT_IMP_EXISTS_THM] THEN
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  READ_OVER_WRITE_ORTHOGONAL_TAC);;
+
+(* ========================================================================= *)
 (* Phase 11b G3 (s272) — C6b DEBT 3 GT_128 STEP B.                            *)
 (* Co-inductive main-loop wrapper-invariant strengthening: pin the GHASH      *)
 (* accumulator `cts` to `list_of_seq spec_block (4*N)` (spec-ciphertext       *)
