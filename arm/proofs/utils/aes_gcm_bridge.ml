@@ -2615,6 +2615,58 @@ let READ_BYTES128_EMIT_AS_CT_BLOCK_NIST_BYTES = prove
   FIRST_X_ASSUM(fun th -> REWRITE_TAC[GSYM th]) THEN
   MATCH_MP_TAC READ_BYTES128_EMIT_AS_NIST_BYTE_LIST THEN ASM_REWRITE_TAC[]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G3 (s274) — debt-3 GT_128 STEP B CHEAT-2 algebra foundation.     *)
+(*                                                                            *)
+(* The main-loop body's OUTPUT Q4..Q7 are emitted in hardware aese-EMIT form  *)
+(*   word_xor (aese s9 rk9)                                                   *)
+(*            (word_insert (word_zx (pt_lo XOR rk10_lo)) (64,64)              *)
+(*                         (pt_hi XOR rk10_hi))                               *)
+(* where s9 = aes_arm_round^9 (word_bytereverse (aes_gcm_ctr_at ctr0 i)).     *)
+(* The STEP-B co-inductive wrapper invariant needs each output, byte-         *)
+(* reversed, pinned to the spec ciphertext block                             *)
+(* `aes_gcm_ct_block_at pt_bytes ctr0 ks i`.                                  *)
+(*                                                                            *)
+(* This lemma is the spec-side algebra closing that pin GIVEN the plaintext   *)
+(* byte-order identity `word_bytereverse <assembled pt int128>               *)
+(*   = aes_gcm_block_at pt_bytes i` (which the wrapper supplies from its      *)
+(* byte_list_at PRE, exactly as the public-theorem hook does).  It composes   *)
+(* EMIT_FORM_HALVES_AS_SPEC_CIPHER (EMIT -> pt XOR byterev(cipher)) with the  *)
+(* byte-reverse-over-xor distribution + involution                           *)
+(* (WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE), then folds the result into      *)
+(* aes_gcm_ct_block_at via its definition.                                   *)
+(*                                                                            *)
+(* This is the per-block (block-index-agnostic) closer for the 4 CHEAT-2      *)
+(* spec-pin arms `word_bytereverse q(4+k)' = spec_block(4i+4+k)` once the     *)
+(* AES-counter tower has identified s9 with the 9-round counter image and     *)
+(* spec_block := aes_gcm_ct_block_at pt_bytes ctr0 ks.  The kernel's NATIVE   *)
+(* counter block feeding s9 is pinned to `word_bytereverse (aes_gcm_ctr_at    *)
+(* ctr0 i)` separately by AES_GCM_NATIVE_CTR_BLOCK_AS_SPEC (above).           *)
+(* ------------------------------------------------------------------------- *)
+let EMIT_FORM_HALVES_AS_CT_BLOCK = prove
+ (`!ctr0 (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9
+        (rk10_lo:int64) (rk10_hi:int64) (pt_lo:int64) (pt_hi:int64)
+        (pt_bytes:byte list) (i:num).
+     word_bytereverse (word_insert (word_zx pt_lo :int128) (64,64) pt_hi) =
+       aes_gcm_block_at pt_bytes i
+     ==> word_bytereverse
+           (word_xor
+             (aese (aes_arm_round (aes_arm_round (aes_arm_round
+                   (aes_arm_round (aes_arm_round (aes_arm_round
+                   (aes_arm_round (aes_arm_round (aes_arm_round
+                      (word_bytereverse (aes_gcm_ctr_at ctr0 i))
+                   rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9)
+             (word_insert (word_zx (word_xor pt_lo rk10_lo) :int128)
+                          (64,64) (word_xor pt_hi rk10_hi)))
+         = aes_gcm_ct_block_at pt_bytes ctr0
+             (MAP word_bytereverse
+                [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                 word_join rk10_hi rk10_lo]) i`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER] THEN
+  REWRITE_TAC[WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE] THEN
+  ASM_REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at]);;
+
 (* ========================================================================= *)
 (* Phase 11b G1 (s209) — plaintext-block byte-order identity.                 *)
 (*                                                                            *)
