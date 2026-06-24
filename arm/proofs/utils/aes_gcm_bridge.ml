@@ -2667,6 +2667,55 @@ let EMIT_FORM_HALVES_AS_CT_BLOCK = prove
   REWRITE_TAC[WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE] THEN
   ASM_REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at]);;
 
+(* The directly-applicable composition for the CHEAT-2 site: the body's       *)
+(* OUTPUT Q4 (block-0-of-group shape) carries its AES input as the kernel's   *)
+(* NATIVE assembled counter block (the `fmov d,x10; fmov v.d[1],x9` +         *)
+(* `rev w9,w12; orr x9,x11,..` dance), NOT yet in spec-counter form.  This    *)
+(* lemma chains AES_GCM_NATIVE_CTR_BLOCK_AS_SPEC (native counter block ->     *)
+(* word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) k)) with          *)
+(* EMIT_FORM_HALVES_AS_CT_BLOCK, so it takes the raw body output straight to  *)
+(* the spec ct block in one MATCH_MP_TAC, given the THREE counter field facts *)
+(* (ctr_lo / sx11_e / g — established by the kernel prelude, cf              *)
+(* AES_GCM_NATIVE_CTR_BLOCK_AS_SPEC) plus the plaintext byte-order identity.  *)
+(* This is the per-block (block-0 shape) closer the STEP-B wrapper invariant  *)
+(* applies to re-establish `word_bytereverse q4' = spec_block(4i+4)`.          *)
+let EMIT_FORM_NATIVE_CTR_AS_CT_BLOCK = prove
+ (`!ctr0 (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9
+        (rk10_lo:int64) (rk10_hi:int64) (pt_lo:int64) (pt_hi:int64)
+        (pt_bytes:byte list) (k:num)
+        (ctr_lo:int64) (sx11_e:int64) (g:int32).
+     ctr_lo = word_subword ctr0 (0,64) /\
+     sx11_e = word_and (word_subword ctr0 (64,64):int64) (word 0xffffffff) /\
+     g = word_add (word_subword (word_bytereverse ctr0) (0,32):int32) (word k) /\
+     word_bytereverse (word_insert (word_zx pt_lo :int128) (64,64) pt_hi) =
+       aes_gcm_block_at pt_bytes k
+     ==> word_bytereverse
+           (word_xor
+             (aese (aes_arm_round (aes_arm_round (aes_arm_round
+                   (aes_arm_round (aes_arm_round (aes_arm_round
+                   (aes_arm_round (aes_arm_round (aes_arm_round
+                      (word_insert (word_zx ctr_lo :int128) (64,64)
+                         (word_or sx11_e (word_shl (word_zx (word_bytereverse
+                           (word_zx (word_zx (g:int32) :int64) :int32)
+                             :int32) :int64) 32)))
+                   rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9)
+             (word_insert (word_zx (word_xor pt_lo rk10_lo) :int128)
+                          (64,64) (word_xor pt_hi rk10_hi)))
+         = aes_gcm_ct_block_at pt_bytes (word_bytereverse ctr0)
+             (MAP word_bytereverse
+                [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                 word_join rk10_hi rk10_lo]) k`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+   `word_insert (word_zx (ctr_lo:int64) :int128) (64,64)
+       (word_or (sx11_e:int64) (word_shl (word_zx (word_bytereverse
+         (word_zx (word_zx (g:int32) :int64) :int32) :int32) :int64) 32)) =
+    word_bytereverse (aes_gcm_ctr_at (word_bytereverse ctr0) k)`
+   SUBST1_TAC THENL
+   [MATCH_MP_TAC AES_GCM_NATIVE_CTR_BLOCK_AS_SPEC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  MATCH_MP_TAC EMIT_FORM_HALVES_AS_CT_BLOCK THEN ASM_REWRITE_TAC[]);;
+
 (* ========================================================================= *)
 (* Phase 11b G1 (s209) — plaintext-block byte-order identity.                 *)
 (*                                                                            *)
