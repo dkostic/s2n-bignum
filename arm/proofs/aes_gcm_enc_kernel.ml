@@ -5707,6 +5707,103 @@ let AES_GCM_MAIN_LOOP_BODY_GHASH_DISCHARGE_AES_CORRECT = prove
   ENSURES_FINAL_STATE_TAC THEN
   ASM_REWRITE_TAC[]);;
 
+(* ========================================================================= *)
+(* s277 C6b debt-3 GT_128 STEP B CHEAT-2 — AES-counter tower STEP 1.          *)
+(* X19..X24 exposure cut (0x308 -> 0x1c8).  The companion of                  *)
+(* ..._GHASH_DISCHARGE_AES_CORRECT (above): that cut exposes Q0..Q3 = the     *)
+(* round-9 AES INPUTS; this cut exposes the round-N plaintext halves          *)
+(* X19..X24 at s114 — the GHASH scalar regs the body cut `_Q4Q7_AES`          *)
+(* (@~15610) currently LEAVES existential (`x19k..x24k`).                     *)
+(*                                                                           *)
+(*   X19 @s114 = word_xor b5_lo sx13   (ldp [x0,#16]@instr94, eor x19@106)    *)
+(*   X20 @s114 = b5_hi   (raw; the sx14 XOR @instr136 is AFTER s114)          *)
+(*   X21 @s114 = word_xor b6_lo sx13   (ldp [x0,#32]@instr18, eor x21@112)    *)
+(*   X22 @s114 = word_xor b6_hi sx14   (eor x22@instr31, before s114)         *)
+(*   X23 @s114 = word_xor b7_lo sx13   (ldp [x0,#48]@instr15, eor x23@26)     *)
+(*   X24 @s114 = b7_hi   (raw; the sx14 XOR @instr137 is AFTER s114)          *)
+(*                                                                           *)
+(* These forms match the EMIT shapes of Q5/Q6/Q7 in the body cut's POST       *)
+(* EXACTLY (Q5 uses word_xor x19k.. / word_xor x20k sx14; Q6 uses x21k /      *)
+(* x22k; Q7 uses x23k / word_xor x24k sx14).  All four plaintext loads are    *)
+(* INSIDE the slice and X0 = x0_in is unchanged until instr 127 (add x0,#64), *)
+(* so b5/b6/b7 are concrete given the six bytes64 PRE reads at x0_in+16..56.  *)
+(*                                                                           *)
+(* PROOF = pure raw stepping: the POST is scalar (no Karatsuba / int128),     *)
+(* so ENSURES_FINAL_STATE_TAC + ASM_REWRITE closes it with NO WORD_BLAST.     *)
+(* (A single combined Q+X DISCHARGE via raw 1--114 was tried and FAILS — the  *)
+(* Q9/Q10/Q11 Karatsuba forms wedge WORD_BLAST on a 605KB term, per           *)
+(* [[word_blast_karatsuba_sum_barrier]] — hence the modular split.)          *)
+(* This cut is the STEP-1 building block; STEP 2 conjoins it with             *)
+(* ..._GHASH_DISCHARGE_AES_CORRECT (same 0x308->0x1c8 interval) to            *)
+(* de-existentialize x19k..x24k in a `_Q4Q7_AES_X567` body-cut clone.         *)
+(* Proved 0-hyp warm (s277).                                                  *)
+(* ========================================================================= *)
+let AES_GCM_MAIN_LOOP_BODY_GHASH_DISCHARGE_X567_CORRECT = prove
+ (`!pc (b0:int128) (b1:int128) (b2:int128)
+        (q4_pre:int128) (q11_pre:int128) (q5_pre:int128) (q7_pre:int128)
+        (q6_pre:int128)
+        (q12:int128) (q13:int128) (q14:int128) (q15:int128) (q16:int128)
+        (q17:int128)
+        (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+        (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+        (sx9:int64) (sx10:int64) (sx13:int64) (sx14:int64)
+        (x0_in:int64)
+        (b5_lo:int64) (b5_hi:int64) (b6_lo:int64) (b6_hi:int64)
+        (b7_lo:int64) (b7_hi:int64).
+    ensures arm
+     (\s. aligned_bytes_loaded s (word pc) aes_gcm_main_loop_body_slice_mc /\
+          read PC s = word pc /\
+          read X0 s = x0_in /\
+          read Q0 s = b0 /\
+          read Q1 s = b1 /\
+          read Q2 s = b2 /\
+          read Q4 s = q4_pre /\
+          read Q5 s = q5_pre /\
+          read Q6 s = q6_pre /\
+          read Q7 s = q7_pre /\
+          read Q11 s = q11_pre /\
+          read Q12 s = q12 /\
+          read Q13 s = q13 /\
+          read Q14 s = q14 /\
+          read Q15 s = q15 /\
+          read Q16 s = q16 /\
+          read Q17 s = q17 /\
+          read Q18 s = rk0 /\
+          read Q19 s = rk1 /\
+          read Q20 s = rk2 /\
+          read Q21 s = rk3 /\
+          read Q22 s = rk4 /\
+          read Q23 s = rk5 /\
+          read Q24 s = rk6 /\
+          read Q25 s = rk7 /\
+          read Q26 s = rk8 /\
+          read X9 s = sx9 /\
+          read X10 s = sx10 /\
+          read X13 s = sx13 /\
+          read X14 s = sx14 /\
+          read (memory :> bytes64 (word_add x0_in (word 16))) s = b5_lo /\
+          read (memory :> bytes64 (word_add x0_in (word 24))) s = b5_hi /\
+          read (memory :> bytes64 (word_add x0_in (word 32))) s = b6_lo /\
+          read (memory :> bytes64 (word_add x0_in (word 40))) s = b6_hi /\
+          read (memory :> bytes64 (word_add x0_in (word 48))) s = b7_lo /\
+          read (memory :> bytes64 (word_add x0_in (word 56))) s = b7_hi)
+     (\s. read PC s = word (pc + 0x1c8) /\
+          read X19 s = (word_xor b5_lo sx13) /\
+          read X20 s = b5_hi /\
+          read X21 s = (word_xor b6_lo sx13) /\
+          read X22 s = (word_xor b6_hi sx14) /\
+          read X23 s = (word_xor b7_lo sx13) /\
+          read X24 s = b7_hi)
+     (MAYCHANGE [PC] ,,
+      MAYCHANGE [Q0; Q1; Q2; Q3; Q4; Q5; Q6; Q7; Q8; Q9; Q10; Q11] ,,
+      MAYCHANGE [X19; X20; X21; X22; X23; X24] ,,
+      MAYCHANGE [events])`,
+  REPEAT GEN_TAC THEN
+  ENSURES_INIT_TAC "s0" THEN
+  ARM_STEPS_TAC AES_GCM_MAIN_LOOP_BODY_SLICE_EXEC (1--114) THEN
+  ENSURES_FINAL_STATE_TAC THEN
+  ASM_REWRITE_TAC[]);;
+
 let AES_GCM_MAIN_LOOP_BODY_GHASH_NIST_FULL_CORRECT = prove
  (`!pc (cptr:int64) (b0:int128) (b1:int128) (b2:int128)
         (q4_pre:int128) (q11_pre:int128) (q5_pre:int128) (q7_pre:int128)
