@@ -91768,6 +91768,71 @@ let MAP_0123_AS_LIST_OF_SEQ = prove
   GEN_TAC THEN REWRITE_TAC[LIST_OF_SEQ_4; MAP]);;
 
 (* ========================================================================= *)
+(* s273 C6b debt-3 GT_128 STEP B — CHEAT-1 closure helpers.                   *)
+(* The strengthened main-loop invariant's GHASH advance needs                 *)
+(*   [spec_block(4i)..spec_block(4i+3)] = [ct0..ct3]                          *)
+(* from the loop-top byteswap-id constraints + the spec pins                  *)
+(*   word_bytereverse q(4+k) = spec_block(4i+k).                              *)
+(* ------------------------------------------------------------------------- *)
+
+(* byteswap128 distributes over word_xor (pure half-swap; cheap BITBLAST,     *)
+(* no full word_bytereverse expansion).                                       *)
+let BYTESWAP128_WORD_XOR = prove
+ (`!(a:int128) (b:int128).
+     byteswap128 (word_xor a b) = word_xor (byteswap128 a) (byteswap128 b)`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[byteswap128] THEN BITBLAST_TAC);;
+
+(* Element 0: ct0 = word_bytereverse q4 from the prev-tag-XOR'd byteswap-id.  *)
+(* ALGEBRAIC (no 6-min full-reversal BITBLAST): apply byteswap128 both sides, *)
+(* distribute over xor, collapse via involution + REV64_EXT_IS_BYTEREVERSE,   *)
+(* then XOR-cancel via AP_TERM (word_xor prev_tag) + WORD_RULE reductions.    *)
+let GHASH_CT0_AS_BYTEREVERSE = prove
+ (`!(prev_tag:int128) (q4:int128) (ct0:int128).
+    word_xor (aes_gcm_rev64_int128 q4) (byteswap128 prev_tag) =
+      byteswap128 (word_xor prev_tag ct0)
+    ==> ct0 = word_bytereverse q4`,
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(MP_TAC o AP_TERM `byteswap128`) THEN
+  REWRITE_TAC[BYTESWAP128_WORD_XOR; BYTESWAP128_INVOLUTION_LOCAL;
+              REV64_EXT_IS_BYTEREVERSE] THEN
+  DISCH_THEN(MP_TAC o AP_TERM `word_xor (prev_tag:int128)`) THEN
+  REWRITE_TAC[WORD_RULE `!(p:int128) x. word_xor p (word_xor x p) = x`;
+              WORD_RULE `!(p:int128) c. word_xor p (word_xor p c) = c`] THEN
+  DISCH_THEN(ACCEPT_TAC o SYM));;
+
+(* Tail blocks 1/2/3 (no prev-tag XOR): ct = word_bytereverse q.              *)
+let GHASH_CT_TAIL_AS_BYTEREVERSE = prove
+ (`!(q:int128) (ct:int128).
+    aes_gcm_rev64_int128 q = byteswap128 ct ==> ct = word_bytereverse q`,
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(MP_TAC o AP_TERM `byteswap128`) THEN
+  REWRITE_TAC[BYTESWAP128_INVOLUTION_LOCAL; REV64_EXT_IS_BYTEREVERSE] THEN
+  DISCH_THEN(ACCEPT_TAC o SYM));;
+
+(* The 4-block ct-list = spec-block list, from the loop invariant's           *)
+(* byteswap-id constraints + the spec pins.  Used by STEP-B's BODY arm to     *)
+(* discharge the GHASH-advance list equality.                                 *)
+let GHASH_CTS_LIST_AS_SPEC_BLOCK = prove
+ (`!(prev_tag:int128) (q4:int128) (q5:int128) (q6:int128) (q7:int128)
+     (ct0:int128) (ct1:int128) (ct2:int128) (ct3:int128)
+     (spec_block:num->int128) (i:num).
+    word_xor (aes_gcm_rev64_int128 q4) (byteswap128 prev_tag) =
+      byteswap128 (word_xor prev_tag ct0) /\
+    aes_gcm_rev64_int128 q5 = byteswap128 ct1 /\
+    aes_gcm_rev64_int128 q6 = byteswap128 ct2 /\
+    aes_gcm_rev64_int128 q7 = byteswap128 ct3 /\
+    word_bytereverse q4 = spec_block (4*i) /\
+    word_bytereverse q5 = spec_block (4*i+1) /\
+    word_bytereverse q6 = spec_block (4*i+2) /\
+    word_bytereverse q7 = spec_block (4*i+3)
+    ==> [spec_block (4*i); spec_block (4*i+1); spec_block (4*i+2); spec_block (4*i+3)] =
+        [ct0; ct1; ct2; ct3]`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  FIRST_X_ASSUM(ASSUME_TAC o MATCH_MP GHASH_CT0_AS_BYTEREVERSE) THEN
+  REPEAT(FIRST_X_ASSUM(ASSUME_TAC o MATCH_MP GHASH_CT_TAIL_AS_BYTEREVERSE)) THEN
+  ASM_REWRITE_TAC[CONS_11]);;
+
+(* ========================================================================= *)
 (* Phase 11b G3 (s272) — C6b DEBT 3 GT_128 STEP B.                            *)
 (* Co-inductive main-loop wrapper-invariant strengthening: pin the GHASH      *)
 (* accumulator `cts` to `list_of_seq spec_block (4*N)` (spec-ciphertext       *)
@@ -92244,12 +92309,17 @@ let AES_GCM_MAIN_LOOP_WRAPPER_FULL_X12_CTR_X9_CTS_CORRECT = prove
           ASSUME_TAC THENL
          [REWRITE_TAC[ARITH_RULE `4 * (i+1) = 4 * i + 4`] THEN
           REWRITE_TAC[NIST_GHASH_LIST_OF_SEQ_STEP4] THEN
-          (* [spec_block(4i)..spec_block(4i+3)] = [ct0..ct3] via the PRE pins +  *)
-          (* GHASH_CTS_WITNESS_AS_BYTEREVERSE.                                    *)
+          (* [spec_block(4i)..spec_block(4i+3)] = [ct0..ct3] via the PRE pins:   *)
+          (* the loop-top byteswap-id constraints + the spec pins                *)
+          (* wbr q(4+k) = spec_block(4i+k).  CHEAT-1 CLOSED (s273).               *)
           AP_TERM_TAC THEN
-          REWRITE_TAC[ARITH_RULE `4 * i + 1 = 4*i+1`; ARITH_RULE `4*i+2 = 4*i+2`;
-                      ARITH_RULE `4*i+3 = 4*i+3`] THEN
-          CHEAT_TAC;
+          MP_TAC (SPECL
+            [`nist_ghash (h:int128) initial_tag (list_of_seq spec_block (4*i))`;
+             `q4:int128`; `q5:int128`; `q6:int128`; `q7:int128`;
+             `ct0:int128`; `ct1:int128`; `ct2:int128`; `ct3:int128`;
+             `spec_block:num->int128`; `i:num`]
+            GHASH_CTS_LIST_AS_SPEC_BLOCK) THEN
+          ASM_REWRITE_TAC[];
           ALL_TAC] THEN
         ASM_REWRITE_TAC[] THEN
         REPEAT CONJ_TAC THEN
