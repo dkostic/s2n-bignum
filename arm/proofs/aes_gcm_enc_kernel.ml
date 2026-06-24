@@ -94972,6 +94972,32 @@ let BODY_FRAME_PRESERVES_RO_WINDOW = prove
   GEN_TAC THEN DISCH_TAC THEN
   READ_OVER_WRITE_ORTHOGONAL_TAC);;
 
+(* Close the Pre-prime ==> cut.Pre window-read conjuncts: each goal reads a   *)
+(* bytes64 plaintext cell at `word_add ... (word K)` and must match the       *)
+(* `pt_half`-indexed read provided by the threaded window hypothesis.  Find   *)
+(* the num index, rebuild the address as `word_add ptr0 (word(8*n))`, prove   *)
+(* the address rewrite by WORD_RULE, and discharge from the window forall.    *)
+let S280_WIN_READ_TAC : tactic =
+  REPEAT CONJ_TAC THEN
+  W(fun (asl,w) ->
+    let rhs = rand w in
+    let n = rand rhs in                   (* the num index, e.g. 8*i+8 *)
+    let lhs = lhand w in
+    let comp = rand(rator lhs) in
+    let addr = rand(rand comp) in
+    let newaddr = mk_comb(`word_add (ptr0:int64)`,
+                          mk_comb(`word:num->int64`,
+                                  mk_binop `( * ):num->num->num` `8` n)) in
+    let winhyp = tryfind (fun (_,th) ->
+       let c = concl th in
+       if is_forall c && can (find_term (fun t -> t = `8 * N + 8`)) c &&
+          can (find_term (fun t -> t = `pt_half:num->int64`)) c
+       then th else fail()) asl in
+    SUBGOAL_THEN (mk_eq(addr, newaddr)) SUBST1_TAC THENL
+     [CONV_TAC WORD_RULE;
+      MP_TAC (SPEC n winhyp) THEN ANTS_TAC THENL
+       [ASM_ARITH_TAC; DISCH_THEN ACCEPT_TAC]]) ;;
+
 (* ========================================================================= *)
 (* Phase 11b G3 (s272) — C6b DEBT 3 GT_128 STEP B.                            *)
 (* Co-inductive main-loop wrapper-invariant strengthening: pin the GHASH      *)
