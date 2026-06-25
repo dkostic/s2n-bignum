@@ -2716,6 +2716,41 @@ let EMIT_FORM_NATIVE_CTR_AS_CT_BLOCK = prove
     ALL_TAC] THEN
   MATCH_MP_TAC EMIT_FORM_HALVES_AS_CT_BLOCK THEN ASM_REWRITE_TAC[]);;
 
+(* ------------------------------------------------------------------------- *)
+(* Phase 11b G3 (s285) — debt-3 GT_128 STEP C.3 spec-pin closer.             *)
+(*                                                                            *)
+(* The GT_128 STRONG-path firstblocks prelude (_Q4Q7) delivers each of        *)
+(* Q4..Q7 in SPEC-CIPHER EMIT form                                            *)
+(*   word_xor (word_insert (word_zx b_lo) (64,64) b_hi)                       *)
+(*            (word_bytereverse (aes128_cipher (aes_gcm_ctr_at ctr0 i) ks))   *)
+(* (the AES tower already identified against the spec counter `aes_gcm_ctr_at`*)
+(* and FIPS schedule `ks`).  The GT_128 `_CTS` main-loop wrapper requires      *)
+(* each, byte-reversed, pinned to the spec ciphertext block                   *)
+(*   aes_gcm_ct_block_at pt_bytes ctr0 ks i.                                   *)
+(*                                                                            *)
+(* This is the spec-side algebra closing that pin GIVEN the plaintext block    *)
+(* byte-order identity `word_bytereverse <assembled pt int128>                *)
+(*   = aes_gcm_block_at pt_bytes i` (which the consumer supplies from its      *)
+(* `!j2` byte-order PRE family).  It is the SPEC-CIPHER-EMIT analogue of       *)
+(* EMIT_FORM_HALVES_AS_CT_BLOCK (which takes the raw AES-tower EMIT form), and *)
+(* mirrors EMIT_GHASH_ELT_AS_CT_BLOCK_AT's body but takes the block identity   *)
+(* directly so it needs no byte-coverage `!k` antecedent.                      *)
+(* ------------------------------------------------------------------------- *)
+let EMIT_SPEC_CIPHER_HALVES_AS_CT_BLOCK = prove
+ (`!(b_lo:int64) (b_hi:int64) (ctr0:int128) (ks:int128 list)
+     (pt_bytes:byte list) (i:num).
+     word_bytereverse (word_insert (word_zx b_lo :int128) (64,64) b_hi) =
+       aes_gcm_block_at pt_bytes i
+     ==> word_bytereverse
+           (word_xor (word_insert (word_zx b_lo :int128) (64,64) b_hi)
+                     (word_bytereverse
+                        (aes128_cipher (aes_gcm_ctr_at ctr0 i) ks)))
+         = aes_gcm_ct_block_at pt_bytes ctr0 ks i`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE;
+              aes_gcm_ct_block_at; aes_gcm_ks_block_at] THEN
+  ASM_REWRITE_TAC[]);;
+
 (* ========================================================================= *)
 (* Phase 11b G1 (s209) — plaintext-block byte-order identity.                 *)
 (*                                                                            *)
