@@ -121016,6 +121016,190 @@ let TAIL_FRAME_PRESERVES_PRIOR_CELLS = prove
 
 
 (* ========================================================================= *)
+(* s301 C6b debt-1 Part B STEP B2 — tail-cell-frame band-generic helpers.      *)
+(* These feed LE_TAIL_CELLS_FRAME, the band-body wiring lemma that produces    *)
+(* the tail-kernel cell-preservation frame fact (the s300 TAIL_FRAME_PRESERVES *)
+(* _PRIOR_CELLS instantiated for the GT_128 band bodies).  W denotes the       *)
+(* masked byte length val(word_and(byte_len_w-1)(~63)); the middle ciphertext  *)
+(* window is (cptr+64, W-64) and the tail block lives at cptr_tail = cptr + W.  *)
+(*   LE_TAIL_WIN_COLLAPSE   — 16*4*((W-64) DIV 64) = W-64   (W a multiple of 64)*)
+(*   LE_TAIL_W_BOUNDS       — 128 <= W <= val byte_len_w - 1                    *)
+(*   LE_TAIL_CPTR_TAIL_VAL  — val(cptr + word W) = val cptr + W (no wrap)       *)
+(*   LE_TAIL_CELLS_FRAME    — given the 3 window-disjointness facts (tail block *)
+(*       cptr_tail, tag buffer xiptr, counter cell ivec+12) + band arith, the  *)
+(*       tail-kernel MAYCHANGE preserves all M = 4*((W-64) DIV 64) middle cells.*)
+(* ========================================================================= *)
+
+let LE_TAIL_WIN_COLLAPSE = prove
+ (`!byte_len_w:int64.
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> 16 * 4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                                  (word 18446744073709551552:int64)) - 64) DIV 64) =
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) - 64`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ABBREV_TAC `W = val (word_and (word_sub byte_len_w (word 1):int64)
+                                (word 18446744073709551552:int64))` THEN
+  SUBGOAL_THEN `W MOD 64 = 0 /\ 128 <= W` STRIP_ASSUME_TAC THENL
+   [CONJ_TAC THENL
+     [EXPAND_TAC "W" THEN
+      SUBGOAL_THEN
+        `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+        SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+      SUBGOAL_THEN `word 63:int64 = word (2 EXP 6 - 1):int64` SUBST1_TAC THENL
+       [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+      REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+      CONV_TAC NUM_REDUCE_CONV THEN
+      SIMP_TAC[MOD_MULT; ARITH_EQ; EXP];
+      MP_TAC(SPEC `byte_len_w:int64` MAIN_LOOP_WRAPPER_N_NONZERO) THEN
+      ASM_REWRITE_TAC[] THEN
+      MP_TAC(SPECL [`(W - 64) DIV 64`; `64`] DIV_MUL_LE) THEN
+      EXPAND_TAC "W" THEN ARITH_TAC];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `(W - 64) MOD 64 = 0` MP_TAC THENL
+   [UNDISCH_TAC `W MOD 64 = 0` THEN UNDISCH_TAC `128 <= W` THEN
+    SPEC_TAC(`W:num`,`W:num`) THEN
+    SIMP_TAC[GSYM DIVIDES_MOD; ARITH_EQ] THEN
+    REWRITE_TAC[divides] THEN REPEAT STRIP_TAC THEN
+    EXISTS_TAC `x - 1` THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  SPEC_TAC(`W - 64`,`V:num`) THEN
+  SIMP_TAC[GSYM DIVIDES_MOD; ARITH_EQ; divides] THEN
+  REPEAT STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+  SIMP_TAC[DIV_MULT; ARITH_EQ] THEN ARITH_TAC);;
+
+let LE_TAIL_W_BOUNDS = prove
+ (`!byte_len_w:int64.
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> 128 <= val (word_and (word_sub byte_len_w (word 1):int64)
+                              (word 18446744073709551552:int64)) /\
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) <= val byte_len_w - 1`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN CONJ_TAC THENL
+   [SUBGOAL_THEN
+      `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+      SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+    SUBGOAL_THEN `word 63:int64 = word (2 EXP 6 - 1):int64` SUBST1_TAC THENL
+     [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+    REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+    SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+      SUBST1_TAC THENL
+     [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+      COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    SUBGOAL_THEN `2 <= (val (byte_len_w:int64) - 1) DIV 64` MP_TAC THENL
+     [REWRITE_TAC[ARITH_RULE `2 <= n <=> ~(n = 0) /\ ~(n = 1)`] THEN
+      REWRITE_TAC[DIV_EQ_0; ARITH_EQ] THEN
+      MP_TAC(ARITH_RULE
+        `!a:num. ~(a DIV 64 = 1) <=> a < 64 \/ 128 <= a`) THEN
+      REWRITE_TAC[] THEN ASM_ARITH_TAC;
+      ARITH_TAC];
+    MP_TAC(ISPECL [`word_sub byte_len_w (word 1):int64`;
+                  `word 18446744073709551552:int64`] (CONJUNCT1 VAL_WORD_AND_LE)) THEN
+    SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+      SUBST1_TAC THENL
+     [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+      COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+      ARITH_TAC]]);;
+
+let LE_TAIL_CPTR_TAIL_VAL = prove
+ (`!(cptr:int64) byte_len_w:int64.
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63 /\
+     val cptr + val byte_len_w <= 2 EXP 64 /\
+     val (word_and (word_sub byte_len_w (word 1):int64)
+                   (word 18446744073709551552:int64)) <= val byte_len_w - 1
+     ==> val (word_add cptr
+                (word (val (word_and (word_sub byte_len_w (word 1):int64)
+                                     (word 18446744073709551552:int64)))) :int64) =
+         val cptr +
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[VAL_WORD_ADD_CASES; DIMINDEX_64; VAL_WORD] THEN
+  SUBGOAL_THEN
+    `val (word_and (word_sub byte_len_w (word 1):int64)
+                   (word 18446744073709551552:int64)) MOD 2 EXP 64 =
+     val (word_and (word_sub byte_len_w (word 1):int64)
+                   (word 18446744073709551552:int64))`
+    SUBST1_TAC THENL
+   [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC]);;
+
+(* Band-generic tail-cell frame helper (final).  Takes the 3 window-disjointness
+   caller obligations (tail block cptr_tail, tag buffer xiptr, counter cell
+   ivec+12 — each disjoint from the middle ciphertext window (cptr+64, W-64),
+   in nonoverlapping_modulo form) + standard band arith + the cptr_tail anchor.
+   buffer-fits is DERIVED.  W = val(word_and(byte_len_w-1)(~63)),
+   M = 4*((W-64) DIV 64).  Uses LE_TAIL_W_BOUNDS + LE_TAIL_WIN_COLLAPSE. *)
+let LE_TAIL_CELLS_FRAME = prove
+ (`!(cptr:int64) (cptr_tail:int64) (xiptr:int64) (ivec_ptr:int64)
+     (byte_len_w:int64).
+      128 < val byte_len_w /\
+      val byte_len_w < 2 EXP 63 /\
+      val cptr + val byte_len_w <= 2 EXP 64 /\
+      nonoverlapping_modulo (2 EXP 64)
+        (val (word_add cptr (word 64)),
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) - 64)
+        (val cptr_tail, 16) /\
+      nonoverlapping_modulo (2 EXP 64)
+        (val (word_add cptr (word 64)),
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) - 64)
+        (val xiptr, 16) /\
+      nonoverlapping_modulo (2 EXP 64)
+        (val (word_add cptr (word 64)),
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) - 64)
+        (val (word_add ivec_ptr (word 12)), 4)
+      ==> (!s s2.
+            (MAYCHANGE [PC; X0; X5; X6; X7; X9; X12] ,,
+             MAYCHANGE [Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11; Q20; Q21] ,,
+             MAYCHANGE [memory :> bytes128 cptr_tail;
+                        memory :> bytes128 xiptr] ,,
+             MAYCHANGE [memory :> bytes32 (word_add ivec_ptr (word 12))] ,,
+             MAYCHANGE [NF; ZF; CF; VF] ,,
+             MAYCHANGE [events]) s s2
+            ==> (!j. j < 4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                                             (word 18446744073709551552:int64)) - 64) DIV 64)
+                     ==> read (memory :> bytes128 (word_add (word_add cptr (word 64)) (word(16*j)))) s2 =
+                         read (memory :> bytes128 (word_add (word_add cptr (word 64)) (word(16*j)))) s))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPEC `byte_len_w:int64` LE_TAIL_W_BOUNDS) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  ABBREV_TAC `W = val (word_and (word_sub byte_len_w (word 1):int64)
+                                (word 18446744073709551552:int64))` THEN
+  STRIP_TAC THEN
+  SUBGOAL_THEN `val (word_add cptr (word 64):int64) = val (cptr:int64) + 64` ASSUME_TAC THENL
+   [REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  MP_TAC(SPEC `byte_len_w:int64` LE_TAIL_WIN_COLLAPSE) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  MP_TAC(SPECL [`cptr:int64`; `cptr_tail:int64`; `xiptr:int64`; `ivec_ptr:int64`;
+                `4 * ((W - 64) DIV 64)`]
+          TAIL_FRAME_PRESERVES_PRIOR_CELLS) THEN
+  ASM_REWRITE_TAC[ARITH_RULE `16 * 4 * x = 16 * (4 * x)`] THEN
+  ASM_REWRITE_TAC[ARITH_RULE `16 * (4 * x) = 16 * 4 * x`] THEN
+  REWRITE_TAC[SOME_FLAGS] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  (* rewrite the window `val(word_add cptr (word 64))` -> `val cptr + 64` in the
+     ASM nonoverlapping facts so they match the goal conjuncts; buffer-fits is
+     the only genuinely-new goal. *)
+  RULE_ASSUM_TAC(REWRITE_RULE[ASSUME `val (word_add cptr (word 64):int64) = val (cptr:int64) + 64`]) THEN
+  CONJ_TAC THENL
+   [MAP_EVERY UNDISCH_TAC
+      [`W <= val (byte_len_w:int64) - 1`;
+       `val (cptr:int64) + val (byte_len_w:int64) <= 2 EXP 64`;
+       `128 <= W`] THEN
+    ARITH_TAC;
+    ASM_REWRITE_TAC[]]);;
+
+
+
+(* ========================================================================= *)
 (* s290 C6b debt-3 GT_128 STEP D — body cascade _CTS.                          *)
 (* The 4 GT_128 LE_N body _CTS clones of the _QSPEC siblings @above, with the *)
 (* inner GHASH ?cts existential PINNED to the concrete loop-accumulated spec  *)
