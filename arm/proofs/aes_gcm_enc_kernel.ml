@@ -123144,6 +123144,18 @@ let BYTE_LIST_AT_BLOCKS_COLLAPSE = prove
     FIRST_X_ASSUM(MP_TAC o SPEC `n:num`) THEN
     REWRITE_TAC[LT] THEN DISCH_THEN MATCH_ACCEPT_TAC]);;
 
+(* A shorter window is a weakening of a longer one (same data, same base).    *)
+(* The whole-input public POST wants a `word byte_len` window, while the       *)
+(* block-rounded collapse produces a `word (16*n)` window with 16*n >= byte_len *)
+(* (the last block is full-width even for a partial-byte tail).  This trims    *)
+(* the collapsed block-window down to the exact byte_len the caller observes.  *)
+let BYTE_LIST_AT_TRUNCATE = prove
+ (`!(m:byte list) (p:int64) (len:int64) (len2:int64) s.
+     val len2 <= val len /\ byte_list_at m p len s
+     ==> byte_list_at m p len2 s`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[byte_list_at] THEN
+  REPEAT STRIP_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC);;
+
 (* contained reflexivity for 64-bit address regions. *)
 let CONTAINED_REFL_64 = prove
  (`!(x:int64) n. contained (x,n) (x,n)`,
