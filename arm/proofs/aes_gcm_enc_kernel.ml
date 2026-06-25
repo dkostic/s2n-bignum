@@ -123240,6 +123240,99 @@ let aes_gcm_ct_bytes = define
                     : byte list =
     aes_gcm_bytes_of_blocks (list_of_seq (aes_gcm_ct_block_at pt_in ctr0 ks) n)`;;
 
+(* ========================================================================= *)
+(* Phase 11b G1 (s295) — DEBT 1 Part B foundation: ciphertext memory cell ->  *)
+(* byte_list_at window glue.                                                  *)
+(*                                                                            *)
+(* Part A collapsed the EXPOSED per-block windows.  Part B must first PIN the *)
+(* wider-band stored ciphertext (havoc'd / length-ghosted in the spine) to    *)
+(* spec, then expose it as the same per-block byte_list_at windows Part A      *)
+(* consumes.  The kernel stores each ciphertext block as a single 128-bit     *)
+(* `read (memory :> bytes128 p) s = V` cell; these lemmas convert one such     *)
+(* cell read into one 16-byte `byte_list_at (int128_to_nist_bytes blk) p       *)
+(* (word 16) s` window — the exact per-block shape                            *)
+(* BYTE_LIST_AT_BLOCKS_COLLAPSE folds.  They are the bytes128-cell analogue of *)
+(* the Part-A per-window collapse bridges and are reused, per cell, by the     *)
+(* B2 spine threading and B3 tail exposure.                                    *)
+(* ------------------------------------------------------------------------- *)
+
+(* The 16 NIST bytes of `word_bytereverse V` sit at p..p+15 whenever the       *)
+(* 128-bit cell at p holds V.  This is `byte_list_at` packaging of the bridge  *)
+(* `READ_BYTES128_AS_NIST_BYTE_LIST` (the `!i. i < 16 ==> read bytes8 ..` form *)
+(* IS `byte_list_at .. (word 16)` once `val (word 16) = 16` is reduced).       *)
+let READ_BYTES128_AS_BYTE_LIST_AT = prove
+ (`!(p:int64) (V:int128) s.
+     read (memory :> bytes128 p) s = V
+     ==> byte_list_at (int128_to_nist_bytes (word_bytereverse V)) p (word 16) s`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[byte_list_at] THEN
+  CONV_TAC(ONCE_DEPTH_CONV WORD_VAL_CONV) THEN
+  MATCH_MP_TAC READ_BYTES128_AS_NIST_BYTE_LIST THEN
+  ASM_REWRITE_TAC[]);;
+
+(* Spec-pinned form: if the cell holds V AND `word_bytereverse V = blk` (the    *)
+(* spec ciphertext block, supplied at the use site by the EMIT bridge), the     *)
+(* window pins directly to `int128_to_nist_bytes blk`.                          *)
+let READ_BYTES128_SPEC_PINNED_AS_BYTE_LIST_AT = prove
+ (`!(p:int64) (V:int128) (blk:int128) s.
+     read (memory :> bytes128 p) s = V /\
+     word_bytereverse V = blk
+     ==> byte_list_at (int128_to_nist_bytes blk) p (word 16) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  FIRST_X_ASSUM(SUBST1_TAC o SYM) THEN
+  MATCH_MP_TAC READ_BYTES128_AS_BYTE_LIST_AT THEN
+  ASM_REWRITE_TAC[]);;
+
+(* Byte-reverse flip helper (from the involution), for re-orienting a cell      *)
+(* spec-pin between `V = word_bytereverse blk` and `word_bytereverse V = blk`.  *)
+let WBR_EQ_FLIP = prove
+ (`!(a:int128) (b:int128). (a = word_bytereverse b) <=> (word_bytereverse a = b)`,
+  MESON_TAC[WORD_BYTEREVERSE_BYTEREVERSE]);;
+
+(* THE per-cell composite (the B2/B3 workhorse): given a ciphertext memory cell *)
+(* in the kernel's NATIVE AES-tower emit form (the @11730 / @18823 body shape — *)
+(* `word_xor (aese (aes_arm_round^9 <native counter>) rk9) <pt-xor-rk10>`), the *)
+(* three counter-field facts the prelude establishes, and the plaintext         *)
+(* byte-order identity, the 16 bytes at p ARE the NIST bytes of the spec         *)
+(* ciphertext block `aes_gcm_ct_block_at pt_bytes (word_bytereverse ctr0) ks k`. *)
+(* Chains EMIT_FORM_NATIVE_CTR_AS_CT_BLOCK (native emit -> spec block) with       *)
+(* READ_BYTES128_AS_BYTE_LIST_AT, RETYPE-FREE: the giant native term is taken    *)
+(* from the cell-read hypothesis via MATCH_MP and the spec identity supplied by  *)
+(* ASM_SIMP, so the native term is never re-typed in tactic land (the s294       *)
+(* hand-typed-native pitfall).                                                  *)
+let CT_CELL_NATIVE_AS_SPEC_BYTE_LIST_AT = prove
+ (`!(p:int64) ctr0 (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9
+        (rk10_lo:int64) (rk10_hi:int64) (pt_lo:int64) (pt_hi:int64)
+        (pt_bytes:byte list) (k:num)
+        (ctr_lo:int64) (sx11_e:int64) (g:int32) s.
+     ctr_lo = word_subword ctr0 (0,64) /\
+     sx11_e = word_and (word_subword ctr0 (64,64):int64) (word 0xffffffff) /\
+     g = word_add (word_subword (word_bytereverse ctr0) (0,32):int32) (word k) /\
+     word_bytereverse (word_insert (word_zx pt_lo :int128) (64,64) pt_hi) =
+       aes_gcm_block_at pt_bytes k /\
+     read (memory :> bytes128 p) s =
+       word_xor
+         (aese (aes_arm_round (aes_arm_round (aes_arm_round
+               (aes_arm_round (aes_arm_round (aes_arm_round
+               (aes_arm_round (aes_arm_round (aes_arm_round
+                  (word_insert (word_zx ctr_lo :int128) (64,64)
+                     (word_or sx11_e (word_shl (word_zx (word_bytereverse
+                       (word_zx (word_zx (g:int32) :int64) :int32)
+                         :int32) :int64) 32)))
+               rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9)
+         (word_insert (word_zx (word_xor pt_lo rk10_lo) :int128)
+                      (64,64) (word_xor pt_hi rk10_hi))
+     ==> byte_list_at
+           (int128_to_nist_bytes
+              (aes_gcm_ct_block_at pt_bytes (word_bytereverse ctr0)
+                 (MAP word_bytereverse
+                    [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                     word_join rk10_hi rk10_lo]) k))
+           p (word 16) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  FIRST_ASSUM(MP_TAC o MATCH_MP READ_BYTES128_AS_BYTE_LIST_AT) THEN
+  ASM_SIMP_TAC[EMIT_FORM_NATIVE_CTR_AS_CT_BLOCK]);;
+
 (* contained reflexivity for 64-bit address regions. *)
 let CONTAINED_REFL_64 = prove
  (`!(x:int64) n. contained (x,n) (x,n)`,
