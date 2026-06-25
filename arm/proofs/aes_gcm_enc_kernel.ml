@@ -123027,6 +123027,123 @@ let ENSURES_ADD_BYTE_LIST_AT_TO_POST = prove
   MATCH_MP_TAC(REWRITE_RULE[RIGHT_IMP_FORALL_THM] EVENTUALLY_MONO) THEN
   ASM_MESON_TAC[]);;
 
+(* ========================================================================= *)
+(* Phase 11b G1 (s292) — DEBT 1 foundation: byte_list_at concatenation.       *)
+(*                                                                            *)
+(* The PRESENT/SUBROUTINE/public POST exposes each 16-byte ciphertext block   *)
+(* as a SEPARATE 16-byte window                                               *)
+(*   byte_list_at (int128_to_nist_bytes (aes_gcm_ct_block_at .. i))           *)
+(*                (word_add cptr (word (16*i))) (word 16) s                    *)
+(* per block i.  DEBT 1 collapses these per-block windows into a SINGLE       *)
+(* whole-input window                                                         *)
+(*   byte_list_at <whole-ct-bytes> cptr (word byte_len) s                     *)
+(* mirroring the XTS public POST (aes_xts_encrypt.ml:5563).                    *)
+(*                                                                            *)
+(* The whole-input ciphertext byte spec used here is                          *)
+(*   aes_gcm_bytes_of_blocks (list_of_seq (aes_gcm_ct_block_at ..) n)         *)
+(* i.e. the existing `aes_gcm_bytes_of_blocks` (concat of NIST byte            *)
+(* conversions @aes_gcm_spec.ml:192) applied to the per-block spec ciphertext *)
+(* list.  This reuses in-tree spec machinery — no new whole-input ct          *)
+(* definition needed.                                                         *)
+(* ------------------------------------------------------------------------- *)
+
+(* Binary concatenation workhorse: two ADJACENT byte_list_at windows (m1 at p *)
+(* of length len1, m2 at p+len1 of length len2) combine into one window       *)
+(* (APPEND m1 m2 at p of total length len), provided LENGTH m1 = val len1 (so *)
+(* the EL split lands on the boundary) and val len = val len1 + val len2 (the *)
+(* no-overflow side condition, discharged once at the use site).              *)
+let BYTE_LIST_AT_APPEND = prove
+ (`!(m1:byte list) (m2:byte list) (p:int64) (len1:int64) (len2:int64) (len:int64) s.
+     LENGTH m1 = val len1 /\
+     val len = val len1 + val len2 /\
+     byte_list_at m1 p len1 s /\
+     byte_list_at m2 (word_add p len1) len2 s
+     ==> byte_list_at (APPEND m1 m2) p len s`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[byte_list_at] THEN STRIP_TAC THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  ASM_CASES_TAC `i < val(len1:int64)` THENL
+   [ASM_SIMP_TAC[EL_APPEND] THEN
+    FIRST_X_ASSUM(MP_TAC o SPEC `i:num`) THEN ASM_REWRITE_TAC[];
+    SUBGOAL_THEN `?k. i = val(len1:int64) + k` (CHOOSE_THEN SUBST_ALL_TAC) THENL
+     [EXISTS_TAC `i - val(len1:int64)` THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `EL (val(len1:int64) + k) (APPEND m1 m2) = EL k (m2:byte list)`
+     SUBST1_TAC THENL
+     [ASM_SIMP_TAC[EL_APPEND; ARITH_RULE `val(len1:int64) + k < val len1 <=> F`] THEN
+      AP_THM_TAC THEN AP_TERM_TAC THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN
+      `word_add p (word (val(len1:int64) + k)):int64 = word_add (word_add p len1) (word k)`
+      SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o SPEC `k:num`) THEN
+    ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    DISCH_THEN ACCEPT_TAC]);;
+
+(* Each NIST-byte block is exactly 16 bytes.  Used to discharge the           *)
+(* `LENGTH m1 = val len1` side condition (len1 = word 16) at every fold step. *)
+let LENGTH_INT128_TO_NIST_BYTES = prove
+ (`!w:int128. LENGTH (int128_to_nist_bytes w) = 16`,
+  REWRITE_TAC[int128_to_nist_bytes; LENGTH] THEN ARITH_TAC);;
+
+(* Length of a block-list flattened to NIST bytes: 16 bytes per block.        *)
+let LENGTH_AES_GCM_BYTES_OF_BLOCKS = prove
+ (`!ws:int128 list. LENGTH (aes_gcm_bytes_of_blocks ws) = 16 * LENGTH ws`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC[aes_gcm_bytes_of_blocks; LENGTH; LENGTH_APPEND;
+                  LENGTH_INT128_TO_NIST_BYTES] THEN ARITH_TAC);;
+
+(* `aes_gcm_bytes_of_blocks` distributes over list APPEND (the spec-side       *)
+(* mirror of BYTE_LIST_AT_APPEND).                                             *)
+let AES_GCM_BYTES_OF_BLOCKS_APPEND = prove
+ (`!l1 l2:int128 list.
+     aes_gcm_bytes_of_blocks (APPEND l1 l2) =
+     APPEND (aes_gcm_bytes_of_blocks l1) (aes_gcm_bytes_of_blocks l2)`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC[aes_gcm_bytes_of_blocks; APPEND; APPEND_ASSOC]);;
+
+(* KEYSTONE n-block collapse: given the per-block ciphertext windows           *)
+(*   byte_list_at (int128_to_nist_bytes (blk i)) (cptr+16i) (word 16) s        *)
+(* for every i < n, conclude the SINGLE whole-input window                     *)
+(*   byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk n)) cptr           *)
+(*                (word (16*n)) s.                                             *)
+(* This is the core of DEBT 1 Part A: it folds any number of exposed per-block *)
+(* windows into one whole-input byte_list_at.  Precondition `16*n < 2 EXP 64`  *)
+(* (the byte count fits a 64-bit word) is discharged at use sites from         *)
+(* byte_len < 2^63.  Proof: induction on n, snoc form of list_of_seq, one      *)
+(* BYTE_LIST_AT_APPEND step appending the n-th block's window at cptr+16n.      *)
+let BYTE_LIST_AT_BLOCKS_COLLAPSE = prove
+ (`!(blk:num->int128) (cptr:int64) (n:num) s.
+     16 * n < 2 EXP 64 /\
+     (!i. i < n
+          ==> byte_list_at (int128_to_nist_bytes (blk i))
+                           (word_add cptr (word (16 * i))) (word 16) s)
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk n))
+                      cptr (word (16 * n)) s`,
+  GEN_TAC THEN GEN_TAC THEN INDUCT_TAC THEN
+  REWRITE_TAC[list_of_seq; aes_gcm_bytes_of_blocks; MULT_CLAUSES] THENL
+   [REWRITE_TAC[byte_list_at; VAL_WORD_0; LT] THEN MESON_TAC[]; ALL_TAC] THEN
+  GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[AES_GCM_BYTES_OF_BLOCKS_APPEND] THEN
+  MATCH_MP_TAC BYTE_LIST_AT_APPEND THEN
+  MAP_EVERY EXISTS_TAC [`word (16 * n):int64`; `word 16:int64`] THEN
+  REPEAT CONJ_TAC THENL
+   [REWRITE_TAC[LENGTH_AES_GCM_BYTES_OF_BLOCKS; LENGTH_LIST_OF_SEQ] THEN
+    REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN CONV_TAC SYM_CONV THEN
+    MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+    REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `(16 * n) MOD 2 EXP 64 = 16 * n /\ 16 MOD 2 EXP 64 = 16 /\
+                  (16 + 16 * n) MOD 2 EXP 64 = 16 + 16 * n`
+      (fun th -> REWRITE_TAC[th]) THENL
+     [REPEAT CONJ_TAC THEN MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+      ARITH_TAC];
+    FIRST_X_ASSUM MATCH_MP_TAC THEN CONJ_TAC THENL
+     [ASM_ARITH_TAC;
+      REPEAT STRIP_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC];
+    SUBGOAL_THEN `aes_gcm_bytes_of_blocks [(blk:num->int128) n] =
+                  int128_to_nist_bytes (blk n)`
+      SUBST1_TAC THENL
+     [REWRITE_TAC[aes_gcm_bytes_of_blocks; APPEND_NIL]; ALL_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o SPEC `n:num`) THEN
+    REWRITE_TAC[LT] THEN DISCH_THEN MATCH_ACCEPT_TAC]);;
+
 (* contained reflexivity for 64-bit address regions. *)
 let CONTAINED_REFL_64 = prove
  (`!(x:int64) n. contained (x,n) (x,n)`,
