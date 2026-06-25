@@ -123156,6 +123156,80 @@ let BYTE_LIST_AT_TRUNCATE = prove
   REPEAT GEN_TAC THEN REWRITE_TAC[byte_list_at] THEN
   REPEAT STRIP_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC);;
 
+(* Explicit per-band collapse bridges (n = 1,2,3,4), the directly-consumable    *)
+(* specializations of BYTE_LIST_AT_BLOCKS_COLLAPSE for the LE bands and the     *)
+(* GT_128 first-4-blocks region.  Each band's PRESENT/public POST exposes       *)
+(* exactly n per-block windows at cptr, cptr+16, .., cptr+16(n-1); these fold   *)
+(* them into the single whole-window `byte_list_at (aes_gcm_bytes_of_blocks      *)
+(* (list_of_seq blk n)) cptr (word (16*n)) s`.  Proof is uniform: MP the         *)
+(* keystone, discharge `16*n < 2 EXP 64` by ARITH, expand `i < n`, reduce the   *)
+(* per-block addresses.  TRUNCATE then trims `word (16*n)` to `word byte_len`.   *)
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_1 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 1))
+                      cptr (word 16) s`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `1`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 1 = 16`] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 1 <=> i = 0`] THEN
+    GEN_TAC THEN DISCH_THEN SUBST1_TAC THEN
+    ASM_REWRITE_TAC[MULT_CLAUSES; WORD_ADD_0]]);;
+
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_2 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 2))
+                      cptr (word 32) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `2`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 2 = 32`] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 2 <=> i = 0 \/ i = 1`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
+
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_3 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 2)) (word_add cptr (word 32)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 3))
+                      cptr (word 48) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `3`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 3 = 48`] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 3 <=> i = 0 \/ i = 1 \/ i = 2`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
+
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_4 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 2)) (word_add cptr (word 32)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 3)) (word_add cptr (word 48)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 4))
+                      cptr (word 64) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `4`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 4 = 64`] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 4 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
+
 (* contained reflexivity for 64-bit address regions. *)
 let CONTAINED_REFL_64 = prove
  (`!(x:int64) n. contained (x,n) (x,n)`,
