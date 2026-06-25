@@ -120932,6 +120932,88 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_GT_128_LE_64_BODY_FUNCTIONAL_CLOSED_AES_QSPEC_CO
         SUBST1_TAC THENL [CONV_TAC WORD_RULE; ALL_TAC] THEN
       REWRITE_TAC[AES_GCM_CTR_CELL_AS_SPEC]]]);;
 
+(* ========================================================================= *)
+(* s300 C6b debt-1 Part B STEP B2 — tail-step stored-ct cell preservation.    *)
+(* The GT_128 band bodies thread the spec-pinned middle-region stored-ct      *)
+(* cells (cptr+64+16j, j<M) through the Stage-2 tail-kernel ARM_BIGSTEP.  The *)
+(* tail kernel writes only bytes128 cptr_tail, bytes128 xiptr, bytes32        *)
+(* (ivec+12), all DISJOINT from the middle cells (cptr_tail/xiptr/ivec+12 lie *)
+(* outside the [cptr+64, cptr+64+16M) ciphertext window).  These two lemmas   *)
+(* discharge the per-cell preservation:                                       *)
+(*   MIDDLE_CELL_ORTHOGONAL_REGION   — a cell (cptr+64+16j, j<M) is orthogonal *)
+(*       to any region (q,sz) the whole window (cptr+64,16M) is disjoint from *)
+(*       (subregion containment).                                             *)
+(*   TAIL_FRAME_PRESERVES_PRIOR_CELLS — given the 3 whole-window vs tail-write *)
+(*       nonoverlapping facts, the tail kernel MAYCHANGE preserves all M       *)
+(*       cells (READ_OVER_WRITE over the disjoint writes).                     *)
+(* ========================================================================= *)
+let MIDDLE_CELL_ORTHOGONAL_REGION = prove
+ (`!(base:int64) (M:num) (q:int64) (sz:num) (j:num).
+      j < M /\
+      val base + 16 * M <= 2 EXP 64 /\
+      nonoverlapping_modulo (2 EXP 64) (val base, 16*M) (val q, sz)
+      ==> orthogonal_components
+            (memory :> bytes128 (word_add base (word(16*j))))
+            (memory :> bytes (q, sz))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+    `nonoverlapping_modulo (2 EXP 64)
+       (val (word_add (base:int64) (word(16*j))),16) (val (q:int64), sz)`
+    ASSUME_TAC THENL
+   [SUBGOAL_THEN `val(word_add (base:int64) (word(16*j))) = val base + 16*j`
+      SUBST1_TAC THENL
+     [REWRITE_TAC[VAL_WORD_ADD; VAL_WORD; DIMINDEX_64] THEN
+      SUBGOAL_THEN `(16*j) MOD 2 EXP 64 = 16*j` SUBST1_TAC THENL
+       [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+      MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    MATCH_MP_TAC NONOVERLAPPING_MODULO_SUBREGIONS THEN
+    MAP_EVERY EXISTS_TAC [`val(base:int64)`; `16*M`; `val(q:int64)`; `sz:num`] THEN
+    REPEAT CONJ_TAC THENL
+     [FIRST_ASSUM ACCEPT_TAC;
+      MATCH_MP_TAC CONTAINED_MODULO_SIMPLE THEN ASM_ARITH_TAC;
+      REWRITE_TAC[CONTAINED_MODULO_REFL] THEN DISJ1_TAC THEN ARITH_TAC];
+    ALL_TAC] THEN
+  ORTHOGONAL_COMPONENTS_TAC);;
+
+let TAIL_FRAME_PRESERVES_PRIOR_CELLS = prove
+ (`!(cptr:int64) (cptr_tail:int64) (xiptr:int64) (ivec_ptr:int64) (M:num).
+      val (word_add cptr (word 64)) + 16 * M <= 2 EXP 64 /\
+      nonoverlapping_modulo (2 EXP 64) (val (word_add cptr (word 64)), 16*M) (val cptr_tail, 16) /\
+      nonoverlapping_modulo (2 EXP 64) (val (word_add cptr (word 64)), 16*M) (val xiptr, 16) /\
+      nonoverlapping_modulo (2 EXP 64) (val (word_add cptr (word 64)), 16*M) (val (word_add ivec_ptr (word 12)), 4)
+      ==> (!s s2.
+            (MAYCHANGE [PC; X0; X5; X6; X7; X9; X12] ,,
+             MAYCHANGE [Q2; Q3; Q4; Q5; Q7; Q8; Q9; Q10; Q11; Q20; Q21] ,,
+             MAYCHANGE [memory :> bytes128 cptr_tail;
+                        memory :> bytes128 xiptr] ,,
+             MAYCHANGE [memory :> bytes32 (word_add ivec_ptr (word 12))] ,,
+             MAYCHANGE [NF; ZF; CF; VF] ,,
+             MAYCHANGE [events]) s s2
+            ==> (!j. j < M
+                     ==> read (memory :> bytes128 (word_add (word_add cptr (word 64)) (word(16*j)))) s2 =
+                         read (memory :> bytes128 (word_add (word_add cptr (word 64)) (word(16*j)))) s))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID; GSYM SEQ_ASSOC; SOME_FLAGS] THEN
+  PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN
+  CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[ASSIGNS_THM] THEN
+  REWRITE_TAC[LEFT_IMP_EXISTS_THM] THEN
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  MP_TAC(SPECL [`cptr:int64`; `M:num`; `cptr_tail:int64`; `16`; `j:num`]
+          MIDDLE_CELL_ORTHOGONAL_REGION) THEN
+  MP_TAC(SPECL [`cptr:int64`; `M:num`; `xiptr:int64`; `16`; `j:num`]
+          MIDDLE_CELL_ORTHOGONAL_REGION) THEN
+  MP_TAC(SPECL [`cptr:int64`; `M:num`; `word_add ivec_ptr (word 12):int64`; `4`; `j:num`]
+          MIDDLE_CELL_ORTHOGONAL_REGION) THEN
+  ASM_REWRITE_TAC[GSYM bytes128] THEN
+  REPEAT(DISCH_THEN(fun th -> ASSUME_TAC(REWRITE_RULE[GSYM bytes128] th))) THEN
+  READ_OVER_WRITE_ORTHOGONAL_TAC);;
+
+
 
 (* ========================================================================= *)
 (* s290 C6b debt-3 GT_128 STEP D — body cascade _CTS.                          *)
