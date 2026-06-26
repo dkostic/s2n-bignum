@@ -154644,3 +154644,84 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_SUBROUTINE_CTS_COLLAPSED_MEM_CORRECT =
   REPEAT CONJ_TAC THEN
   TRY(FIRST_ASSUM ACCEPT_TAC) THEN
   s306_window_arm);;
+
+(* ========================================================================= *)
+(* Phase 11b G1 (s312) — C6b DEBT 1 Part B STEP D piece for the GT_128 band:  *)
+(* frame-preservation lemmas for the prologue / epilogue window threading.    *)
+(*                                                                            *)
+(* The GT_128 SUBROUTINE_CTS_MEM wrapper (still to land) promotes the         *)
+(* post-prologue core `..._GT_128_PRESENT_CTS_MEM_TAIL_CORRECT` (PC pc+0x2c   *)
+(* -> pc+0x970, in-frame SP) through the 11-instruction prologue and the      *)
+(* 9-instruction epilogue.  Unlike the 64_TO_128 band (whose windows are      *)
+(* concrete N=1..4 cells that EXPAND_CASES unfolds), GT_128 carries TWO       *)
+(* symbolic-count quantified windows that DISCARD_OLDSTATE_TAC (@arm.ml:553)  *)
+(* drops across raw ARM_STEPS (any `read .. s_k` forall is erased when s_k     *)
+(* is discarded):                                                             *)
+(*   (1) the pt_half PRE window `!j<8K+8 ==> read(bytes64(ptr0+8j)) s =        *)
+(*       pt_half j`  (consumed by the core MP at the post-prologue state);     *)
+(*   (2) the ct-middle POST window `!j<4K ==> read(bytes128(cptr+64+16j)) s =  *)
+(*       wbr(spec_block(j+4))`  (must survive the epilogue to the POST).       *)
+(* Threading goes through ENSURES_SEQUENCE_TAC (cut at pc+0x2c and pc+0x970,   *)
+(* turning the prologue and epilogue into sub-`ensures` segments) + the        *)
+(* generic ENSURES_THREAD_RO_WINDOW @96571 / ENSURES_THREAD_PRIOR_CELLS @10923 *)
+(* combinators, each fed one of these two frame-preservation lemmas.  (Raw     *)
+(* READ_OVER_WRITE_ORTHOGONAL_TAC over the symbolic-count window — the         *)
+(* 64_TO_128 inline recipe — fails with `dest_comb` on the `word(8*j)` /       *)
+(* `word(16*j)` offsets; the ENSURES_THREAD_* combinators are the right tool.) *)
+(*                                                                            *)
+(* PROLOGUE frame: the 11 prologue instrs (stp/mov, kernel 0..0x28) write only *)
+(* [PC;SP;X16;X8;X29] + the 128-byte stack frame (the 16 bytes64 spill cells   *)
+(* merge into `bytes(sp-128,128)` after ENSURES_FINAL_STATE_TAC — matches      *)
+(* AES_GCM_PRELUDE_POST_PROLOGUE_CORRECT @25568).  So every read-only          *)
+(* plaintext window cell at ptr0 is preserved, given the whole window is       *)
+(* nonoverlapping with the stack frame.  Clone of PRELUDE_FRAME_PRESERVES_RO_  *)
+(* WINDOW @96630 with the prologue frame.                                      *)
+(* EPILOGUE frame: the 9 epilogue instrs (8 ldp + ret, kernel 0x970..) restore *)
+(* callee-saved regs from the stack and return — writing ONLY registers        *)
+(* ([PC;SP;X19..X24;X29;X30] + Q8..Q15) and NO user memory, so the prior       *)
+(* ciphertext cells at cptr+64+16j are preserved unconditionally.  Clone of    *)
+(* WRAPPER_FRAME_PRESERVES_PRIOR_CELLS @10899 with the epilogue frame (no      *)
+(* memory-write component).                                                    *)
+(* ========================================================================= *)
+
+let PROLOGUE_FRAME_PRESERVES_RO_WINDOW = prove
+ (`!(ptr0:int64) (stackpointer:int64) (M:num).
+      nonoverlapping (ptr0, 8 * M) (word_sub stackpointer (word 128), 128)
+      ==> (!s s2.
+            (MAYCHANGE [PC; SP; X16; X8; X29] ,,
+             MAYCHANGE [memory :> bytes(word_sub stackpointer (word 128), 128)] ,,
+             MAYCHANGE [events]) s s2
+            ==> (!j. j < M
+                     ==> read (memory :> bytes64 (word_add ptr0 (word(8*j)))) s2 =
+                         read (memory :> bytes64 (word_add ptr0 (word(8*j)))) s))`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID; GSYM SEQ_ASSOC] THEN
+  PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN
+  CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[ASSIGNS_THM] THEN
+  REWRITE_TAC[LEFT_IMP_EXISTS_THM] THEN
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  READ_OVER_WRITE_ORTHOGONAL_TAC);;
+
+let EPILOGUE_FRAME_PRESERVES_PRIOR_CELLS = prove
+ (`!(base:int64) (M:num).
+      (!s s2.
+            (MAYCHANGE [PC; SP; X19; X20; X21; X22; X23; X24; X29; X30] ,,
+             MAYCHANGE [Q8; Q9; Q10; Q11; Q12; Q13; Q14; Q15] ,,
+             MAYCHANGE [events]) s s2
+            ==> (!j. j < M
+                     ==> read (memory :> bytes128 (word_add base (word(16*j)))) s2 =
+                         read (memory :> bytes128 (word_add base (word(16*j)))) s))`,
+  REPEAT GEN_TAC THEN
+  REWRITE_TAC[MAYCHANGE; SEQ_ID; GSYM SEQ_ASSOC] THEN
+  PURE_REWRITE_TAC[ASSIGNS_SEQ] THEN
+  CONV_TAC(TOP_DEPTH_CONV BETA_CONV) THEN
+  REWRITE_TAC[ASSIGNS_THM] THEN
+  REWRITE_TAC[LEFT_IMP_EXISTS_THM] THEN
+  REPEAT GEN_TAC THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  GEN_TAC THEN DISCH_TAC THEN
+  READ_OVER_WRITE_ORTHOGONAL_TAC);;
