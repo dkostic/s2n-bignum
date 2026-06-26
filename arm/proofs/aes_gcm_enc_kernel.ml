@@ -126670,6 +126670,20 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_GT_128_BODY_FUNCTIONAL_CLOSED_AES_CTS_CORRECT = 
         TRY(FIRST_ASSUM ACCEPT_TAC) THEN
         SUBGOAL_THEN `F` CONTR_TAC THEN ASM_ARITH_TAC]]]);;
 
+(* ----------------------------------------------------------------------------
+ * Pure-OCaml string helper used by the GUARD_ARITH assumption filters below
+ * (s303 GT_128 combinator _CTS_MEM @~127118 onward). Defined here (before its
+ * first use) to keep the file def-before-use clean for cold loads / checkpoint
+ * rebuilds; a redundant identical copy further down (~138864) is a harmless
+ * redef. No HOL dependencies. ([[fragment_cold_misses_forward_refs]] — s306.)
+ * ---------------------------------------------------------------------------- *)
+
+let contains_substring sub s =
+  let ls = String.length s and lsub = String.length sub in
+  let rec go i = if i + lsub > ls then false
+                 else if String.sub s i lsub = sub then true else go (i+1) in
+  go 0;;
+
 (* ============================================================================
  * Phase 11b G1 (s303) — debt-1 Part B STEP B2: GT_128 body combinator _CTS_MEM.
  *
