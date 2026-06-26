@@ -2667,6 +2667,43 @@ let EMIT_FORM_HALVES_AS_CT_BLOCK = prove
   REWRITE_TAC[WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE] THEN
   ASM_REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at]);;
 
+(* The swapped-operand sibling of EMIT_FORM_HALVES_AS_CT_BLOCK.                *)
+(*                                                                            *)
+(* The (64,128] / GT_128 tail kernels emit tail blocks 1/2/3 in the           *)
+(* operand-flipped, half-joined shape                                         *)
+(*   word_xor (word_join (pt_hi ^ rk10_hi) (pt_lo ^ rk10_lo)) (aese s9 rk9)   *)
+(* (see AES_GCM_LENC_TAIL_N{2,3,4}_FULL_KERNEL_FUNCTIONAL_CPTR_CORRECT block-  *)
+(* 1/2/3 cptr conjuncts).  Under the kernel's stored byte order, the 128-bit  *)
+(* memory cell holds word_bytereverse of this emit form, and that bytereverse *)
+(* equals the spec ciphertext block aes_gcm_ct_block_at directly.  This is the *)
+(* swapped analogue of EMIT_FORM_HALVES_AS_CT_BLOCK and is the per-cell closer *)
+(* for the (64,128] _CTS_MEM band-body tail blocks 1/2/3 (debt-1 Part B).      *)
+(* Proof: rewrite via EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED, distribute the  *)
+(* outer bytereverse over the XOR + involution, fold the ct/ks block defs.     *)
+let EMIT_FORM_HALVES_AS_CT_BLOCK_SWAPPED = prove
+ (`!ctr0 (rk0:int128) rk1 rk2 rk3 rk4 rk5 rk6 rk7 rk8 rk9
+        (rk10_lo:int64) (rk10_hi:int64) (pt_lo:int64) (pt_hi:int64)
+        (pt_bytes:byte list) (i:num).
+     word_bytereverse (word_insert (word_zx pt_lo :int128) (64,64) pt_hi) =
+       aes_gcm_block_at pt_bytes i
+     ==> word_bytereverse
+           (word_xor
+             (word_join (word_xor pt_hi rk10_hi :int64)
+                        (word_xor pt_lo rk10_lo :int64) :int128)
+             (aese (aes_arm_round (aes_arm_round (aes_arm_round
+                   (aes_arm_round (aes_arm_round (aes_arm_round
+                   (aes_arm_round (aes_arm_round (aes_arm_round
+                      (word_bytereverse (aes_gcm_ctr_at ctr0 i))
+                   rk0) rk1) rk2) rk3) rk4) rk5) rk6) rk7) rk8) rk9))
+         = aes_gcm_ct_block_at pt_bytes ctr0
+             (MAP word_bytereverse
+                [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                 word_join rk10_hi rk10_lo]) i`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[EMIT_FORM_HALVES_AS_SPEC_CIPHER_SWAPPED] THEN
+  REWRITE_TAC[WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE] THEN
+  ASM_REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at]);;
+
 (* The directly-applicable composition for the CHEAT-2 site: the body's       *)
 (* OUTPUT Q4 (block-0-of-group shape) carries its AES input as the kernel's   *)
 (* NATIVE assembled counter block (the `fmov d,x10; fmov v.d[1],x9` +         *)
