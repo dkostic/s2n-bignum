@@ -153073,3 +153073,232 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_64_TO_128_PRESENT_CTS_COLLAPSED_MEM_CORRECT = pr
   REPEAT CONJ_TAC THEN
   TRY(FIRST_ASSUM ACCEPT_TAC) THEN
   s306_window_arm);;
+
+(* ========================================================================= *)
+(* Phase 11b G1 (s309) — GT_128 STEP C apex building blocks: the general-n    *)
+(* whole-input ciphertext window arith + collapse lemma.                      *)
+(*                                                                            *)
+(* The GT_128 PRESENT_CTS_MEM_TAIL POST exposes, per byte-length sub-band     *)
+(* (tail size N=1/2/3/4), the 4*K+4+N spec ciphertext blocks as: 4 first-     *)
+(* block byte_list_at windows (cptr+16i), 4*K middle cells (cptr+64+16j), and *)
+(* N tail cells (cptr_tail+16j), where K = (val WA - 64) DIV 64 and WA =       *)
+(* (byte_len_w - 1) AND ~63 is the block-aligned main-loop length.  STEP C     *)
+(* folds these into one whole-input window `byte_list_at (aes_gcm_ct_bytes ..  *)
+(* (4*K+4+N)) cptr byte_len_w s`, the GT_128 analogue of the s306 (64,128]     *)
+(* collapse (which used the FIXED COLLAPSE_{1..8}; GT_128's block count is the  *)
+(* SYMBOLIC 4*K+4+N).  These lemmas isolate the genuine new arithmetic — that  *)
+(* val WA = 16*(4*K+4) (WA is a 64-multiple), and the per-band TRUNCATE bound  *)
+(* val byte_len_w <= 16*(4*K+4+N) — so the apex per-band arm is a single MP.   *)
+(* ========================================================================= *)
+
+(* val WA = 16*(4K+4): WA = (byte_len_w-1) AND ~63 is a multiple of 64 (the     *)
+(* block-aligned length), and >= 128 for byte_len_w > 128, so it equals        *)
+(* 64*K + 64 = 16*(4K+4) with K = (val WA - 64) DIV 64.  Same masked-length     *)
+(* arithmetic as MAIN_LOOP_WRAPPER_X0_ADD_X5.                                  *)
+let S309_VAL_WA = prove
+ (`!(byte_len_w:int64).
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) =
+         16 * (4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                          (word 18446744073709551552:int64)) - 64) DIV 64) + 4)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  SUBGOAL_THEN
+    `(word 18446744073709551552:int64) = word_not (word 63:int64)`
+    SUBST1_TAC THENL [CONV_TAC WORD_BLAST; ALL_TAC] THEN
+  ABBREV_TAC
+    `mask_w:int64 = word_and (word_sub (byte_len_w:int64) (word 1))
+                             (word_not (word 63:int64))` THEN
+  SUBGOAL_THEN
+    `val (mask_w:int64) MOD 64 = 0 /\
+     128 <= val mask_w /\
+     val mask_w <= val (byte_len_w:int64) - 1`
+    STRIP_ASSUME_TAC THENL
+   [EXPAND_TAC "mask_w" THEN
+    SUBGOAL_THEN `word_not (word 63:int64) = word_not (word (2 EXP 6 - 1):int64)`
+      SUBST1_TAC THENL [CONV_TAC NUM_REDUCE_CONV; ALL_TAC] THEN
+    REWRITE_TAC[VAL_WORD_AND_NOT_MASK_WORD] THEN
+    CONV_TAC NUM_REDUCE_CONV THEN
+    SUBGOAL_THEN `val (word_sub byte_len_w (word 1):int64) = val byte_len_w - 1`
+      SUBST1_TAC THENL
+     [REWRITE_TAC[VAL_WORD_SUB_CASES; VAL_WORD_1] THEN
+      COND_CASES_TAC THEN ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC;
+      ALL_TAC] THEN
+    REPEAT CONJ_TAC THENL
+     [SIMP_TAC[MOD_MULT; ARITH_EQ];
+      SIMP_TAC[ARITH_RULE `128 <= 64 * n <=> 2 <= n`;
+               ARITH_RULE `2 <= n DIV 64 <=> 128 <= n`] THEN ASM_ARITH_TAC;
+      MESON_TAC[DIV_MUL_LE]];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `64 * (val (mask_w:int64) - 64) DIV 64 = val mask_w - 64`
+    ASSUME_TAC THENL
+   [MP_TAC (CONJUNCT2 DIVISION_SIMP) THEN
+    DISCH_THEN(MP_TAC o SPECL[`val (mask_w:int64)`; `64`]) THEN
+    ASM_REWRITE_TAC[ADD_CLAUSES] THEN DISCH_TAC THEN
+    POP_ASSUM(SUBST1_TAC o SYM) THEN
+    REWRITE_TAC[ARITH_RULE `64 * x - 64 = 64 * (x - 1)`; MOD_MULT] THEN
+    SIMP_TAC[DIV_MULT; ARITH_EQ];
+    ALL_TAC] THEN
+  REWRITE_TAC[ARITH_RULE `16 * (4 * x + 4) = 64 * x + 64`] THEN
+  ASM_ARITH_TAC);;
+
+(* WA <= byte_len_w (the masked length never exceeds the byte length).         *)
+let S309_VAL_WA_LE = prove
+ (`!(byte_len_w:int64).
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) <= val byte_len_w`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL[`word_sub (byte_len_w:int64) (word 1):int64`;
+                `word 18446744073709551552:int64`]
+        (CONJUNCT1 VAL_WORD_AND_LE)) THEN
+  SUBGOAL_THEN
+    `val (word_sub (byte_len_w:int64) (word 1)) = val byte_len_w - 1`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD_SUB_CASES; DIMINDEX_64; VAL_WORD;
+                ARITH_RULE `1 MOD 2 EXP 64 = 1`] THEN ASM_ARITH_TAC;
+    ASM_ARITH_TAC]);;
+
+(* Apex arith: given band tail length val(byte_len_w - WA) <= 16*N <= 64,       *)
+(* both the TRUNCATE bound val byte_len_w <= 16*(4K+4+N) and the COLLAPSE        *)
+(* overflow guard 16*(4K+4+N) < 2^64 hold.                                      *)
+let S309_APEX_ARITH = prove
+ (`!(byte_len_w:int64) (n:num).
+     128 < val byte_len_w /\ val byte_len_w < 2 EXP 63 /\
+     16 * n <= 64 /\
+     val (word_sub byte_len_w
+           (word_and (word_sub byte_len_w (word 1):int64)
+                     (word 18446744073709551552:int64))) <= 16 * n
+     ==> val byte_len_w <=
+         16 * (4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                          (word 18446744073709551552:int64)) - 64) DIV 64) + 4 + n) /\
+         16 * (4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                          (word 18446744073709551552:int64)) - 64) DIV 64) + 4 + n)
+         < 2 EXP 64`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(SPEC `byte_len_w:int64` S309_VAL_WA) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  MP_TAC(SPEC `byte_len_w:int64` S309_VAL_WA_LE) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  ABBREV_TAC `WA = word_and (word_sub byte_len_w (word 1):int64)
+                            (word 18446744073709551552:int64)` THEN
+  REPEAT DISCH_TAC THEN
+  SUBGOAL_THEN `val (word_sub byte_len_w (WA:int64)) = val byte_len_w - val WA`
+    ASSUME_TAC THENL
+   [ASM_SIMP_TAC[VAL_WORD_SUB_CASES]; ALL_TAC] THEN
+  REWRITE_TAC[ARITH_RULE
+    `16 * (4 * x + 4 + n) = (16 * (4 * x + 4)) + 16 * n`] THEN
+  CONJ_TAC THEN ASM_ARITH_TAC);;
+
+(* The GT_128 per-band whole-input window collapse (clean form).  Given the     *)
+(* spec bridge, the contiguity geometry (cptr_tail = cptr + 16*(4K+4)), the     *)
+(* count bound and overflow guard, and the three pinned ct regions (first-4     *)
+(* windows in ct_block_at form, 4K middle cells, N tail cells), conclude the    *)
+(* single whole-input byte_list_at window.  GT_128 analogue of s306_window_arm  *)
+(* (here the count is the symbolic 4K+4+N, folded by GT_128_CT_WINDOWS_STITCH + *)
+(* BYTE_LIST_AT_TRUNCATE).                                                      *)
+let GT_128_WHOLE_WINDOW = prove
+ (`!(pt_in:byte list) (ctr0:int128) (ks:int128 list) (spec_block:num->int128)
+     (cptr:int64) (cptr_tail:int64) (byte_len_w:int64) (K:num) (N:num) s.
+     (!k. spec_block k = aes_gcm_ct_block_at pt_in ctr0 ks k) /\
+     cptr_tail = word_add cptr (word (16 * (4 * K + 4))) /\
+     16 * (4 * K + 4 + N) < 2 EXP 64 /\
+     val byte_len_w <= 16 * (4 * K + 4 + N) /\
+     (!i. i < 4
+          ==> byte_list_at (int128_to_nist_bytes
+                              (aes_gcm_ct_block_at pt_in ctr0 ks i))
+                           (word_add cptr (word (16 * i))) (word 16) s) /\
+     (!j. j < 4 * K
+          ==> read (memory :> bytes128
+                (word_add (word_add cptr (word 64)) (word (16 * j)))) s =
+              word_bytereverse (spec_block (j + 4))) /\
+     (!j. j < N
+          ==> read (memory :> bytes128 (word_add cptr_tail (word (16 * j)))) s =
+              word_bytereverse (spec_block (j + (4 * K + 4))))
+     ==> byte_list_at (aes_gcm_ct_bytes pt_in ctr0 ks (4 * K + 4 + N))
+                      cptr byte_len_w s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[aes_gcm_ct_bytes] THEN
+  SUBGOAL_THEN `aes_gcm_ct_block_at pt_in ctr0 ks = spec_block`
+    SUBST1_TAC THENL
+   [REWRITE_TAC[FUN_EQ_THM] THEN GEN_TAC THEN
+    CONV_TAC SYM_CONV THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  MATCH_MP_TAC BYTE_LIST_AT_TRUNCATE THEN
+  EXISTS_TAC `word (16 * (4 * K + 4 + N)):int64` THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+    ASM_SIMP_TAC[MOD_LT]; ALL_TAC] THEN
+  MP_TAC(ISPECL
+    [`spec_block:num->int128`; `cptr:int64`; `cptr_tail:int64`;
+     `K:num`; `N:num`; `s:armstate`] GT_128_CT_WINDOWS_STITCH) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN MATCH_MP_TAC THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  ASM_REWRITE_TAC[] THEN
+  FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]);;
+
+(* The GT_128 per-band whole-input window collapse, RAW form — takes the facts  *)
+(* EXACTLY as PRESENT_CTS_MEM_TAIL's PRE/POST deliver them (4 SEPARATE first-4   *)
+(* windows i=0..3, the raw geometry cptr_tail = cptr + word(val WA), the raw     *)
+(* band-guard bound val(byte_len_w - WA) <= 16*N), and yields the single whole-  *)
+(* input window.  Does all the K = (val WA-64) DIV 64 arith internally (via      *)
+(* S309_VAL_WA + S309_APEX_ARITH) so the apex per-band arm is one MATCH_MP_TAC.  *)
+let GT_128_WHOLE_WINDOW_RAW = prove
+ (`!(pt_in:byte list) (ctr0:int128) (ks:int128 list) (spec_block:num->int128)
+     (cptr:int64) (cptr_tail:int64) (byte_len_w:int64) (N:num) s.
+     (!k. spec_block k =
+          aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks k) /\
+     cptr_tail = word_add cptr
+                   (word (val (word_and (word_sub byte_len_w (word 1):int64)
+                                        (word 18446744073709551552:int64)))) /\
+     128 < val byte_len_w /\
+     val byte_len_w < 2 EXP 63 /\
+     16 * N <= 64 /\
+     val (word_sub byte_len_w
+           (word_and (word_sub byte_len_w (word 1):int64)
+                     (word 18446744073709551552:int64))) <= 16 * N /\
+     byte_list_at (int128_to_nist_bytes
+                     (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks 0))
+                  cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes
+                     (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks 1))
+                  (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes
+                     (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks 2))
+                  (word_add cptr (word 32)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes
+                     (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks 3))
+                  (word_add cptr (word 48)) (word 16) s /\
+     (!j. j < 4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                          (word 18446744073709551552:int64)) - 64) DIV 64)
+          ==> read (memory :> bytes128
+                (word_add (word_add cptr (word 64)) (word (16 * j)))) s =
+              word_bytereverse (spec_block (j + 4))) /\
+     (!j. j < N
+          ==> read (memory :> bytes128 (word_add cptr_tail (word (16 * j)))) s =
+              word_bytereverse
+                (spec_block
+                   (j + (4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                                (word 18446744073709551552:int64)) - 64) DIV 64) + 4))))
+     ==> byte_list_at
+           (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks
+              (4 * ((val (word_and (word_sub byte_len_w (word 1):int64)
+                          (word 18446744073709551552:int64)) - 64) DIV 64) + 4 + N))
+           cptr byte_len_w s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ABBREV_TAC `K = (val (word_and (word_sub byte_len_w (word 1):int64)
+                        (word 18446744073709551552:int64)) - 64) DIV 64` THEN
+  MP_TAC(SPEC `byte_len_w:int64` S309_VAL_WA) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN DISCH_TAC THEN
+  MP_TAC(SPECL [`byte_len_w:int64`; `N:num`] S309_APEX_ARITH) THEN
+  ANTS_TAC THENL [ASM_REWRITE_TAC[]; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN STRIP_TAC THEN
+  MATCH_MP_TAC GT_128_WHOLE_WINDOW THEN
+  MAP_EVERY EXISTS_TAC [`spec_block:num->int128`; `cptr_tail:int64`] THEN
+  ASM_REWRITE_TAC[] THEN
+  X_GEN_TAC `i:num` THEN
+  REWRITE_TAC[ARITH_RULE `i < 4 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3`] THEN
+  STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+  CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN
+  ASM_REWRITE_TAC[WORD_ADD_0]);;
