@@ -132945,6 +132945,68 @@ let READ_BYTES128_SPEC_PINNED_AS_BYTE_LIST_AT = prove
   MATCH_MP_TAC READ_BYTES128_AS_BYTE_LIST_AT THEN
   ASM_REWRITE_TAC[]);;
 
+(* ========================================================================= *)
+(* Phase 11b G1 (s308) — GT_128 general-n whole-input ciphertext window stitch.*)
+(*                                                                            *)
+(* The GT_128 band emits 4*K+4+N ciphertext blocks: the first 4 (per-block    *)
+(* byte_list_at windows at cptr+16i), the 4*K MIDDLE cells at cptr+64+16j      *)
+(* (j<4*K, block j+4), and the N geometric TAIL cells at cptr_tail+16j         *)
+(* (j<N, block j+4*K+4), where cptr_tail = cptr+16*(4*K+4) so all 4*K+4+N      *)
+(* blocks are contiguous at cptr+16i.  This folds the three regions into one  *)
+(* whole-input block-window via BYTE_LIST_AT_BLOCKS_COLLAPSE (general n) — the *)
+(* GT_128 analogue of the fixed COLLAPSE_{1..8} bridges (the block count is    *)
+(* the symbolic 4*K+4+N, not a literal).  Each cell is pinned to spec via      *)
+(* READ_BYTES128_SPEC_PINNED_AS_BYTE_LIST_AT (bytereverse involution).         *)
+(* ========================================================================= *)
+let GT_128_CT_WINDOWS_STITCH = prove
+ (`!(spec_block:num->int128) (cptr:int64) (cptr_tail:int64) (K:num) (N:num) s.
+     cptr_tail = word_add cptr (word(16*(4*K+4))) /\
+     16*(4*K+4+N) < 2 EXP 64 /\
+     (!i. i < 4
+          ==> byte_list_at (int128_to_nist_bytes (spec_block i))
+                           (word_add cptr (word(16*i))) (word 16) s) /\
+     (!j. j < 4*K
+          ==> read (memory :> bytes128
+                (word_add (word_add cptr (word 64)) (word(16*j)))) s =
+              word_bytereverse (spec_block (j + 4))) /\
+     (!j. j < N
+          ==> read (memory :> bytes128 (word_add cptr_tail (word(16*j)))) s =
+              word_bytereverse (spec_block (j + (4*K+4))))
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq spec_block (4*K+4+N)))
+                      cptr (word(16*(4*K+4+N))) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MATCH_MP_TAC BYTE_LIST_AT_BLOCKS_COLLAPSE THEN
+  ASM_REWRITE_TAC[] THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  ASM_CASES_TAC `i < 4` THENL
+   [ASM_SIMP_TAC[];
+    ALL_TAC] THEN
+  ASM_CASES_TAC `i < 4*K+4` THENL
+   [SUBGOAL_THEN `?j. i = j + 4 /\ j < 4*K`
+      (CHOOSE_THEN (CONJUNCTS_THEN2 SUBST_ALL_TAC ASSUME_TAC)) THENL
+     [EXISTS_TAC `i - 4` THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    MATCH_MP_TAC READ_BYTES128_SPEC_PINNED_AS_BYTE_LIST_AT THEN
+    EXISTS_TAC `word_bytereverse (spec_block (j+4)):int128` THEN
+    REWRITE_TAC[WORD_RULE
+      `word_add (cptr:int64) (word(16*(j+4))) =
+       word_add (word_add cptr (word 64)) (word(16*j))`] THEN
+    ASM_SIMP_TAC[WORD_BYTEREVERSE_BYTEREVERSE];
+    ALL_TAC] THEN
+  SUBGOAL_THEN `?j. i = j + (4*K+4) /\ j < N`
+    (CHOOSE_THEN (CONJUNCTS_THEN2 SUBST_ALL_TAC ASSUME_TAC)) THENL
+   [EXISTS_TAC `i - (4*K+4)` THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  MATCH_MP_TAC READ_BYTES128_SPEC_PINNED_AS_BYTE_LIST_AT THEN
+  EXISTS_TAC `word_bytereverse (spec_block (j+(4*K+4))):int128` THEN
+  CONJ_TAC THENL
+   [REWRITE_TAC[WORD_RULE
+      `word_add (cptr:int64) (word(16*(j+(4*K+4)))) =
+       word_add (word_add cptr (word(16*(4*K+4)))) (word(16*j))`] THEN
+    FIRST_ASSUM(fun th -> let c = concl th in
+      if is_eq c && (let l = lhs c in is_var l && fst(dest_var l) = "cptr_tail")
+      then REWRITE_TAC[SYM th] else NO_TAC) THEN
+    ASM_SIMP_TAC[];
+    REWRITE_TAC[WORD_BYTEREVERSE_BYTEREVERSE]]);;
+
 (* THE per-cell composite (the B2/B3 workhorse): given a ciphertext memory cell *)
 (* in the kernel's NATIVE AES-tower emit form (the @11730 / @18823 body shape — *)
 (* `word_xor (aese (aes_arm_round^9 <native counter>) rk9) <pt-xor-rk10>`), the *)
