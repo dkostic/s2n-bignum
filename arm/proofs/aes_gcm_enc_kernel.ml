@@ -149129,3 +149129,90 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_GT_128_PRESENT_CTS_COLLAPSED_CORRECT = prove
   TRY(FIRST_ASSUM ACCEPT_TAC) THEN
   REWRITE_TAC[aes_gcm_ct_bytes] THEN
   MATCH_MP_TAC BYTE_LIST_AT_BLOCKS_COLLAPSE_4 THEN ASM_REWRITE_TAC[]);;
+
+(* ========================================================================= *)
+(* Phase 11b G1 (s306): debt-1 Part B STEP 4 — whole-input ciphertext         *)
+(* COLLAPSE for the (64,128] band (5..8 blocks).                              *)
+(*                                                                            *)
+(* The (64,128] band emits N+4 ciphertext blocks (N=1..4 by sub-band): the    *)
+(* first 4 are the unconditional per-block windows in the _CTS_MEM POST, and  *)
+(* blocks 4..4+N-1 are the band-guarded tail cells `read(bytes128(cptr+64+    *)
+(* 16j)) = wbr(spec_block(j+4))`.  These COLLAPSE_{5,6,7,8} bridges fold all   *)
+(* 5..8 per-block windows into one whole-input block-window, the (64,128]      *)
+(* analogue of BYTE_LIST_AT_BLOCKS_COLLAPSE_{1,2,3,4} for the LE_64 band.      *)
+(* Proof is uniform: MP the keystone BYTE_LIST_AT_BLOCKS_COLLAPSE, discharge   *)
+(* `16*n < 2 EXP 64` by ARITH, expand `i < n`, reduce per-block addresses.     *)
+(* ========================================================================= *)
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_5 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 2)) (word_add cptr (word 32)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 3)) (word_add cptr (word 48)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 4)) (word_add cptr (word 64)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 5)) cptr (word 80) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `5`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 5 = 80`] THEN DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 5 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
+
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_6 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 2)) (word_add cptr (word 32)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 3)) (word_add cptr (word 48)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 4)) (word_add cptr (word 64)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 5)) (word_add cptr (word 80)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 6)) cptr (word 96) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `6`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 6 = 96`] THEN DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 6 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
+
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_7 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 2)) (word_add cptr (word 32)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 3)) (word_add cptr (word 48)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 4)) (word_add cptr (word 64)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 5)) (word_add cptr (word 80)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 6)) (word_add cptr (word 96)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 7)) cptr (word 112) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `7`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 7 = 112`] THEN DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 7 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
+
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_8 = prove
+ (`!(blk:num->int128) (cptr:int64) s.
+     byte_list_at (int128_to_nist_bytes (blk 0)) cptr (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 1)) (word_add cptr (word 16)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 2)) (word_add cptr (word 32)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 3)) (word_add cptr (word 48)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 4)) (word_add cptr (word 64)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 5)) (word_add cptr (word 80)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 6)) (word_add cptr (word 96)) (word 16) s /\
+     byte_list_at (int128_to_nist_bytes (blk 7)) (word_add cptr (word 112)) (word 16) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk 8)) cptr (word 128) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPECL [`blk:num->int128`; `cptr:int64`; `8`] BYTE_LIST_AT_BLOCKS_COLLAPSE) THEN
+  REWRITE_TAC[ARITH_RULE `16 * 8 = 128`] THEN DISCH_THEN MATCH_MP_TAC THEN
+  CONJ_TAC THENL
+   [ARITH_TAC;
+    REWRITE_TAC[ARITH_RULE `i < 8 <=> i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6 \/ i = 7`] THEN
+    GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
+    CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
