@@ -72,6 +72,19 @@
 (*     AES-192/256 + decrypt are deferred to follow-on work.                  *)
 (* ========================================================================= *)
 
+(* Load the standard ARM proof preamble FIRST. The aes_gcm needs-closure pulls *)
+(* in common/aes.ml and common/misc.ml (via the fips197 / ghash branches), but *)
+(* those files assume base.ml's preamble is already present: aes.ml uses       *)
+(* WORD_RED_CONV / WORD_JOIN_CONV (Library/words.ml) and misc.ml uses SPEC1_TAC *)
+(* (common/for_hollight.ml), yet neither declares the dependency. base.ml loads *)
+(* Library/words.ml, common/for_hollight.ml and common/misc.ml in the right     *)
+(* order (base.ml:22/31/33), so requiring it here resolves all of them at once. *)
+(* The cold/interpreted gate already loads base.ml first, so this is a no-op    *)
+(* there (everything "already loaded"); it only matters for the standalone      *)
+(* .native build-proof.sh entry, which otherwise has no base preamble. This is  *)
+(* the canonical idiom: 325 ARM proof files (incl. the sibling                  *)
+(* arm/proofs/utils/aes_xts_common.ml) declare `needs "arm/proofs/base.ml"`.    *)
+needs "arm/proofs/base.ml";;
 needs "arm/proofs/aes_gcm_enc_kernel.ml";;
 
 (* ------------------------------------------------------------------------- *)
