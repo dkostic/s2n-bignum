@@ -132929,6 +132929,73 @@ let BYTE_LIST_AT_BLOCKS_COLLAPSE_PARTIAL = prove
     CONJ_TAC THENL [ASM_ARITH_TAC; ASM_REWRITE_TAC[]];
     REWRITE_TAC[aes_gcm_bytes_of_blocks; APPEND_NIL] THEN ASM_REWRITE_TAC[]]);;
 
+(* ========================================================================= *)
+(* s334 (proven 0-hyp on s290, s332) — 3 SUBROUTINE_GEN building blocks.        *)
+(* Threading helpers for the LE_64 `_GEN` epilogue partial-window plumbing      *)
+(* (route A): frame-preserve a byte_list_at window across an epilogue, expand   *)
+(* a <=16-byte window into per-byte guarded reads, and thread a folded window   *)
+(* through an ensures at the ENSURES level (mirror ENSURES_THREAD_RO_WINDOW).   *)
+(* All deps present: byte_list_at @132670; EVENTUALLY_MONO/RIGHT_IMP_FORALL_THM *)
+(* used @kernel:9022.                                                           *)
+(* ========================================================================= *)
+let BYTE_LIST_AT_FRAME = prove
+ (`!(m:byte list) (p:int64) (len:int64) (s:armstate) (s2:armstate).
+     (!i. i < val len
+          ==> read (memory :> bytes8 (word_add p (word i))) s2 =
+              read (memory :> bytes8 (word_add p (word i))) s) /\
+     byte_list_at m p len s
+     ==> byte_list_at m p len s2`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[byte_list_at] THEN
+  STRIP_TAC THEN X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  ASM_SIMP_TAC[]);;
+
+let BYTE_LIST_AT_LE16_EXPAND = prove
+ (`!(m:byte list) (p:int64) (r:int64) (s:armstate).
+     val r <= 16
+     ==> (byte_list_at m p r s <=>
+          (0 < val r ==> read (memory :> bytes8 (word_add p (word 0))) s = EL 0 m) /\
+          (1 < val r ==> read (memory :> bytes8 (word_add p (word 1))) s = EL 1 m) /\
+          (2 < val r ==> read (memory :> bytes8 (word_add p (word 2))) s = EL 2 m) /\
+          (3 < val r ==> read (memory :> bytes8 (word_add p (word 3))) s = EL 3 m) /\
+          (4 < val r ==> read (memory :> bytes8 (word_add p (word 4))) s = EL 4 m) /\
+          (5 < val r ==> read (memory :> bytes8 (word_add p (word 5))) s = EL 5 m) /\
+          (6 < val r ==> read (memory :> bytes8 (word_add p (word 6))) s = EL 6 m) /\
+          (7 < val r ==> read (memory :> bytes8 (word_add p (word 7))) s = EL 7 m) /\
+          (8 < val r ==> read (memory :> bytes8 (word_add p (word 8))) s = EL 8 m) /\
+          (9 < val r ==> read (memory :> bytes8 (word_add p (word 9))) s = EL 9 m) /\
+          (10 < val r ==> read (memory :> bytes8 (word_add p (word 10))) s = EL 10 m) /\
+          (11 < val r ==> read (memory :> bytes8 (word_add p (word 11))) s = EL 11 m) /\
+          (12 < val r ==> read (memory :> bytes8 (word_add p (word 12))) s = EL 12 m) /\
+          (13 < val r ==> read (memory :> bytes8 (word_add p (word 13))) s = EL 13 m) /\
+          (14 < val r ==> read (memory :> bytes8 (word_add p (word 14))) s = EL 14 m) /\
+          (15 < val r ==> read (memory :> bytes8 (word_add p (word 15))) s = EL 15 m))`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN REWRITE_TAC[byte_list_at] THEN
+  EQ_TAC THENL
+   [DISCH_TAC THEN REPEAT CONJ_TAC THEN DISCH_TAC THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+    STRIP_TAC THEN X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+    SUBGOAL_THEN `i < 16` ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+    FIRST_X_ASSUM(fun bound ->
+      REPEAT_TCL DISJ_CASES_THEN SUBST_ALL_TAC
+       (MATCH_MP (ARITH_RULE
+         `i < 16 ==> i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6 \/ i = 7 \/ i = 8 \/ i = 9 \/ i = 10 \/ i = 11 \/ i = 12 \/ i = 13 \/ i = 14 \/ i = 15`) bound)) THEN
+    FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC]);;
+
+let ENSURES_THREAD_CT_WINDOW = prove
+ (`!(m:byte list) (m_p:int64) (len:int64) step (P:armstate->bool) Q R.
+    (!s s2. R s s2
+            ==> (!i. i < val len
+                     ==> read (memory :> bytes8 (word_add m_p (word i))) s2 =
+                         read (memory :> bytes8 (word_add m_p (word i))) s)) /\
+    ensures step (\s. byte_list_at m m_p len s /\ P s) Q R
+    ==> ensures step (\s. byte_list_at m m_p len s /\ P s)
+                     (\s. byte_list_at m m_p len s /\ Q s) R`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[byte_list_at; ensures] THEN STRIP_TAC THEN
+  GEN_TAC THEN DISCH_THEN(CONJUNCTS_THEN2 ASSUME_TAC ASSUME_TAC) THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `s:armstate`) THEN ASM_REWRITE_TAC[] THEN
+  MATCH_MP_TAC(REWRITE_RULE[RIGHT_IMP_FORALL_THM] EVENTUALLY_MONO) THEN
+  ASM_MESON_TAC[]);;
+
 (* Cosmetic whole-input ciphertext byte spec (DEBT 1 Part A public POST).      *)
 (* `aes_gcm_ct_bytes pt_in ctr0 ks n` = the first n spec ciphertext blocks     *)
 (* flattened to NIST bytes.  Lets the collapsed public POST read as a single   *)
