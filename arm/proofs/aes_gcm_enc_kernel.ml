@@ -132892,6 +132892,43 @@ let BYTE_LIST_AT_BLOCKS_COLLAPSE_4 = prove
     GEN_TAC THEN STRIP_TAC THEN ASM_REWRITE_TAC[] THEN
     CONV_TAC(DEPTH_CONV NUM_MULT_CONV) THEN ASM_REWRITE_TAC[WORD_ADD_0]]);;
 
+(* ========================================================================= *)
+(* Phase 11 (s330) — OPTION 1 SPINE GEN: partial-final-block COLLAPSE.         *)
+(* Collapses m full 16-byte ct windows + one final r-byte (r<=16) window into  *)
+(* a single `byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk (m+1)))    *)
+(* cptr (word (16*m+r)) s` window — the non-block-aligned analogue of          *)
+(* BYTE_LIST_AT_BLOCKS_COLLAPSE_4.  Used by the LE_64 `_GEN` COLLAPSED sibling. *)
+(* ========================================================================= *)
+let BYTE_LIST_AT_BLOCKS_COLLAPSE_PARTIAL = prove
+ (`!(blk:num->int128) (cptr:int64) (m:num) (r:num) s.
+     16 * m + r < 2 EXP 64 /\ r <= 16 /\
+     (!i. i < m
+          ==> byte_list_at (int128_to_nist_bytes (blk i))
+                           (word_add cptr (word (16 * i))) (word 16) s) /\
+     byte_list_at (int128_to_nist_bytes (blk m))
+                  (word_add cptr (word (16 * m))) (word r) s
+     ==> byte_list_at (aes_gcm_bytes_of_blocks (list_of_seq blk (m+1)))
+                      cptr (word (16 * m + r)) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[GSYM ADD1; list_of_seq; AES_GCM_BYTES_OF_BLOCKS_APPEND] THEN
+  MATCH_MP_TAC BYTE_LIST_AT_APPEND THEN
+  MAP_EVERY EXISTS_TAC [`word (16 * m):int64`; `word r:int64`] THEN
+  REPEAT CONJ_TAC THENL
+   [REWRITE_TAC[LENGTH_AES_GCM_BYTES_OF_BLOCKS; LENGTH_LIST_OF_SEQ] THEN
+    REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN CONV_TAC SYM_CONV THEN
+    MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC;
+    REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN
+    SUBGOAL_THEN `(16 * m) MOD 2 EXP 64 = 16 * m` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `(r:num) MOD 2 EXP 64 = r` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    SUBGOAL_THEN `(16 * m + r) MOD 2 EXP 64 = 16 * m + r` SUBST1_TAC THENL
+     [MATCH_MP_TAC MOD_LT THEN ASM_ARITH_TAC; ALL_TAC] THEN
+    REFL_TAC;
+    MATCH_MP_TAC BYTE_LIST_AT_BLOCKS_COLLAPSE THEN
+    CONJ_TAC THENL [ASM_ARITH_TAC; ASM_REWRITE_TAC[]];
+    REWRITE_TAC[aes_gcm_bytes_of_blocks; APPEND_NIL] THEN ASM_REWRITE_TAC[]]);;
+
 (* Cosmetic whole-input ciphertext byte spec (DEBT 1 Part A public POST).      *)
 (* `aes_gcm_ct_bytes pt_in ctr0 ks n` = the first n spec ciphertext blocks     *)
 (* flattened to NIST bytes.  Lets the collapsed public POST read as a single   *)
@@ -133378,6 +133415,105 @@ let EMIT_GHASH_ELT_AS_CT_BLOCK_AT = prove
   MATCH_MP_TAC PT_BLOCK_AT_FROM_BYTES64_PAIR THEN
   MAP_EVERY EXISTS_TAC [`ptr0:int64`; `n:num`; `s:armstate`] THEN
   ASM_REWRITE_TAC[]);;
+
+(* ========================================================================= *)
+(* Phase 11 (s329) — OPTION 1 SPINE GEN: partial-final-block ct-pinning bridge.*)
+(* PRESENT_CT_BLOCK_AT_PARTIAL is the r<=16 analogue of PRESENT_CT_BLOCK_AT:   *)
+(* pins an r-byte tail ciphertext window to the spec block, keyed on the       *)
+(* first r observed plaintext bytes (16*k+j < LENGTH pt_in).  Prerequisite of  *)
+(* the LE_64 `_GEN` re-proof (non-block-aligned byte_len). Helper tower first. *)
+(* ========================================================================= *)
+let EL_INT128_TO_NIST_BYTES = prove
+ (`!(w:int128) (jj:num). jj < 16 ==> EL jj (int128_to_nist_bytes w) = word_subword w (8*(15-jj),8)`,
+  GEN_TAC THEN REWRITE_TAC[int128_to_nist_bytes] THEN
+  CONV_TAC EXPAND_CASES_CONV THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN CONV_TAC NUM_REDUCE_CONV);;
+let EL_NIST_OF_NIST_BYTES_TO_INT128 = prove
+ (`!(bs:byte list) (jj:num). jj < 16 ==> EL jj (int128_to_nist_bytes (nist_bytes_to_int128 bs)) = EL jj bs`,
+  GEN_TAC THEN REWRITE_TAC[int128_to_nist_bytes; nist_bytes_to_int128] THEN
+  CONV_TAC EXPAND_CASES_CONV THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN
+  CONV_TAC NUM_REDUCE_CONV THEN REPEAT CONJ_TAC THEN BITBLAST_TAC);;
+let EL_INT128_TO_NIST_BYTES_XOR = prove
+ (`!(a:int128) (b:int128) (jj:num). jj < 16
+     ==> EL jj (int128_to_nist_bytes (word_xor a b)) =
+         word_xor (EL jj (int128_to_nist_bytes a)) (EL jj (int128_to_nist_bytes b))`,
+  REPEAT STRIP_TAC THEN ASM_SIMP_TAC[EL_INT128_TO_NIST_BYTES; WORD_SUBWORD_XOR]);;
+let EL_IOTA16 = prove
+ (`!(jj:num). jj < 16 ==> EL jj [0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15] = jj`,
+  CONV_TAC EXPAND_CASES_CONV THEN CONV_TAC(DEPTH_CONV EL_CONV) THEN CONV_TAC NUM_REDUCE_CONV);;
+let EL_AES_GCM_BLOCK_AT_PARTIAL_BYTE = prove
+ (`!(pt_in:byte list) (k:num) (jj:num).
+     jj < 16 /\ 16*k+jj < LENGTH pt_in
+     ==> EL jj (int128_to_nist_bytes (aes_gcm_block_at pt_in k)) = EL (16*k+jj) pt_in`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[aes_gcm_block_at] THEN
+  ASM_SIMP_TAC[EL_NIST_OF_NIST_BYTES_TO_INT128] THEN
+  SUBGOAL_THEN `jj < LENGTH [0;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15]` ASSUME_TAC THENL
+   [REWRITE_TAC[LENGTH] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_SIMP_TAC[EL_MAP] THEN BETA_TAC THEN ASM_SIMP_TAC[EL_IOTA16] THEN
+  REWRITE_TAC[ARITH_RULE `k*16+jj = 16*k+jj`] THEN
+  COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC]);;
+let WORD_BYTEREVERSE_AS_AES_GCM_BLOCK_AT_PARTIAL_BYTE = prove
+ (`!(W:int128) (bs:byte list) (k:num) (r:num) (jj:num).
+     16*k+r = LENGTH bs /\ r <= 16 /\ jj < r /\
+     (!m. m < r ==> EL m (int128_to_nist_bytes (word_bytereverse W)) = EL (16*k+m) bs)
+     ==> EL jj (int128_to_nist_bytes (word_bytereverse W)) =
+         EL jj (int128_to_nist_bytes (aes_gcm_block_at bs k))`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN `jj < 16 /\ 16*k+jj < LENGTH(bs:byte list)` STRIP_ASSUME_TAC THENL
+   [ASM_ARITH_TAC; ALL_TAC] THEN
+  ASM_SIMP_TAC[EL_AES_GCM_BLOCK_AT_PARTIAL_BYTE] THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `jj:num`) THEN ASM_REWRITE_TAC[]);;
+
+let PRESENT_CT_BLOCK_AT_PARTIAL = prove
+ (`!(cptr:int64) (ptr0:int64) (b_lo:int64) (b_hi:int64)
+     (ctr0:int128) (ks:int128 list) (pt_in:byte list)
+     (k:num) (r:num) (len:int64) (s:armstate).
+     read (memory :> bytes128 (word_add cptr (word (16*k)))) s =
+       word_xor (word_insert (word_zx b_lo :int128) (64,64) b_hi)
+                (word_bytereverse (aes128_cipher (aes_gcm_ctr_at ctr0 k) ks)) /\
+     read (memory :> bytes64 (word_add ptr0 (word (16*k)))) s = b_lo /\
+     read (memory :> bytes64 (word_add ptr0 (word (16*k+8)))) s = b_hi /\
+     16*k+r = LENGTH pt_in /\ 0 < r /\ r <= 16 /\
+     16*k+r <= val len /\
+     byte_list_at pt_in ptr0 len s
+     ==> byte_list_at
+           (int128_to_nist_bytes (aes_gcm_ct_block_at pt_in ctr0 ks k))
+           (word_add cptr (word (16*k))) (word r) s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  REWRITE_TAC[byte_list_at] THEN
+  SUBGOAL_THEN `val(word r:int64) = r` SUBST1_TAC THENL
+   [MATCH_MP_TAC VAL_WORD_EQ THEN REWRITE_TAC[DIMINDEX_64] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  X_GEN_TAC `i:num` THEN DISCH_TAC THEN
+  SUBGOAL_THEN `i < 16` ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  MP_TAC(ISPECL [`word_add cptr (word (16*k)):int64`; `b_lo:int64`; `b_hi:int64`;
+                 `aes128_cipher (aes_gcm_ctr_at ctr0 k) ks :int128`; `s:armstate`]
+          READ_BYTES128_EMIT_AS_NIST_BYTE_LIST) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN(fun th -> MP_TAC(SPEC `i:num` th)) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN SUBST1_TAC THEN
+  REWRITE_TAC[aes_gcm_ct_block_at; aes_gcm_ks_block_at] THEN
+  ASM_SIMP_TAC[EL_INT128_TO_NIST_BYTES_XOR] THEN
+  AP_THM_TAC THEN AP_TERM_TAC THEN
+  SUBGOAL_THEN
+   `read (memory :> bytes128 (word_add ptr0 (word (16*k)))) s =
+    word_insert (word_zx (b_lo:int64) :int128) (64,64) (b_hi:int64)`
+   ASSUME_TAC THENL
+   [MATCH_MP_TAC READ_BYTES128_FROM_BYTES64_PAIR THEN ASM_REWRITE_TAC[] THEN
+    ASM_REWRITE_TAC[WORD_RULE
+     `word_add (word_add ptr0 (word (16*k))) (word 8) = word_add ptr0 (word (16*k+8))`];
+    ALL_TAC] THEN
+  MATCH_MP_TAC WORD_BYTEREVERSE_AS_AES_GCM_BLOCK_AT_PARTIAL_BYTE THEN
+  EXISTS_TAC `r:num` THEN ASM_REWRITE_TAC[] THEN
+  X_GEN_TAC `m:num` THEN DISCH_TAC THEN
+  SUBGOAL_THEN `m < 16` ASSUME_TAC THENL [ASM_ARITH_TAC; ALL_TAC] THEN
+  FIRST_ASSUM(fun th ->
+    MP_TAC(MATCH_MP READ_BYTES128_AS_NIST_BYTE_LIST th)) THEN
+  DISCH_THEN(fun th -> MP_TAC(SPEC `m:num` th)) THEN
+  ASM_REWRITE_TAC[] THEN
+  DISCH_THEN(SUBST1_TAC o SYM) THEN
+  ASM_REWRITE_TAC[WORD_RULE
+   `word_add (word_add ptr0 (word (16*k))) (word m) = word_add ptr0 (word (16*k+m))`] THEN
+  UNDISCH_TAC `byte_list_at pt_in ptr0 len s` THEN REWRITE_TAC[byte_list_at] THEN
+  DISCH_THEN(fun th -> MP_TAC(SPEC `16*k+m` th)) THEN
+  ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN ACCEPT_TAC]);;
 
 (* ========================================================================= *)
 (* Phase 11b (s211) — per-block ciphertext-EMIT -> byte_list_at conversion.   *)
