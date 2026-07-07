@@ -121,6 +121,35 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_SUBROUTINE_CORRECT =
   AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_OR_64_TO_128_OR_GT_128_SUBROUTINE_CTS_COLLAPSED_MEM_CORRECT;;
 
 (* ------------------------------------------------------------------------- *)
+(* AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_SUBROUTINE_CORRECT — public       *)
+(* re-export of the Option-1 spine-generalized ("_GEN") functional theorem    *)
+(* AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_OR_64_TO_128_OR_GT_128_SUBROUTINE_       *)
+(* CTS_COLLAPSED_MEM_GEN_CORRECT (the 3-way merge _GEN in                      *)
+(* aes_gcm_enc_kernel.ml, committed session 340).                             *)
+(*                                                                           *)
+(* This is the STRONGER, non-vacuous companion to the =64 functional export   *)
+(* above. It carries `LENGTH pt_in = val byte_len_w` (the TRUE input length,   *)
+(* not the fixed `= 64`), so the pinned whole-input ciphertext                 *)
+(*   `byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks N)      *)
+(*      cptr (word_ushr bit_len 3) s`                                          *)
+(* is over the REAL plaintext across the full 3-way byte-length disjunction,   *)
+(* removing the =64-scope zero-tail near-vacuity that the s324 well-posedness  *)
+(* study surfaced for the (64,128] and >128 bands (see the =64 export's        *)
+(* window-derivability note below). The =64 export is retained additively so   *)
+(* no downstream consumer of the original name breaks.                         *)
+(*                                                                           *)
+(* Proof status: all 3 band arms (LE_64 / 64_TO_128 / GT_128 SUBROUTINE_CTS_  *)
+(* COLLAPSED[_MEM]_GEN_CORRECT) are 0-hyp fragment-cold-green; the 3-way merge *)
+(* is 0-hyp fragment-cold-green @k96fcf600 (merge=0 widthweaken=0).           *)
+(*                                                                           *)
+(* Name ends in `_SUBROUTINE_CORRECT` for the collect-specs.sh /              *)
+(* count-proofs.sh regex (as with the =64 export).                            *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_SUBROUTINE_CORRECT =
+  AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_OR_64_TO_128_OR_GT_128_SUBROUTINE_CTS_COLLAPSED_MEM_GEN_CORRECT;;
+
+(* ------------------------------------------------------------------------- *)
 (* Caller-obligation summary (forwarded from SUBROUTINE_CORRECT's PRE).      *)
 (*                                                                           *)
 (* Callers must establish, in addition to the standard arg-passing and       *)
