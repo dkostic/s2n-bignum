@@ -163316,3 +163316,216 @@ let CT_COLLAPSE_64_128_N5 = prove
   EMIT_BLOCK_SUBST_TAC `bt0_lo:int64` `bt0_hi:int64` `4` THEN
   REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
   REWRITE_TAC[LIST_OF_SEQ_5; MAP; APPEND]);;
+
+(* ------------------------------------------------------------------------- *)
+(* s344 (cont.): full (64,128] band collapse (all 4 sub-bands N=5/6/7/8).     *)
+(*                                                                            *)
+(* Generalizes CT_COLLAPSE_64_128_N5 to the whole (64,128] band: the messy    *)
+(* POST is 4 counter conjuncts (pinned aes_gcm_ctr_at 5/6/7/8), 4 tag         *)
+(* conjuncts (nested nist_ghash over MAP ct_block_at [0;1;2;3] + tail emits   *)
+(* for blocks 4..N-1), and 4 ct-window conjuncts (aes_gcm_ct_bytes .. N),     *)
+(* each guarded by the (word_sub byte_len_w 64) sub-band.  We show they       *)
+(* COLLAPSE to ONE counter + ONE flat nist_ghash + ONE ct-window at           *)
+(* num_blocks — pure PRESENTATION over the merge theorem's own vocabulary.    *)
+(* Recipe: per sub-band, pin num_blocks = N (NB_64_128), MP the active        *)
+(* guarded counter/tag/window (GRAB), then refold tail emits into             *)
+(* aes_gcm_ct_block_at (EMIT_BLOCK_SUBST_TAC) + GSYM NIST_GHASH_APPEND flatten *)
+(* + list_of_seq algebra.  Counter + window match directly after num_blocks.  *)
+(* ------------------------------------------------------------------------- *)
+
+let LIST_OF_SEQ_6 = prove
+ (`!(f:num->A). list_of_seq f 6 = [f 0; f 1; f 2; f 3; f 4; f 5]`,
+  REWRITE_TAC[num_CONV `6`;num_CONV `5`;num_CONV `4`;num_CONV `3`;num_CONV `2`;
+              num_CONV `1`; list_of_seq; APPEND]);;
+let LIST_OF_SEQ_7 = prove
+ (`!(f:num->A). list_of_seq f 7 = [f 0; f 1; f 2; f 3; f 4; f 5; f 6]`,
+  REWRITE_TAC[num_CONV `7`;num_CONV `6`;num_CONV `5`;num_CONV `4`;num_CONV `3`;
+              num_CONV `2`;num_CONV `1`; list_of_seq; APPEND]);;
+let LIST_OF_SEQ_8 = prove
+ (`!(f:num->A). list_of_seq f 8 = [f 0; f 1; f 2; f 3; f 4; f 5; f 6; f 7]`,
+  REWRITE_TAC[num_CONV `8`;num_CONV `7`;num_CONV `6`;num_CONV `5`;num_CONV `4`;
+              num_CONV `3`;num_CONV `2`;num_CONV `1`; list_of_seq; APPEND]);;
+
+(* num_blocks per (64,128] sub-band: N = 5/6/7/8 keyed on (word_sub byte_len_w 64). *)
+let NB_64_128 = prove
+ (`(!w:int64. 64 < val w /\ val w <= 128 /\ val w < 2 EXP 63 /\
+              val (word_sub w (word 64)) <= 16 ==> aes_gcm_num_blocks (val w) = 5) /\
+   (!w:int64. 64 < val w /\ val w <= 128 /\ val w < 2 EXP 63 /\
+              16 < val (word_sub w (word 64)) /\ val (word_sub w (word 64)) <= 32
+              ==> aes_gcm_num_blocks (val w) = 6) /\
+   (!w:int64. 64 < val w /\ val w <= 128 /\ val w < 2 EXP 63 /\
+              32 < val (word_sub w (word 64)) /\ val (word_sub w (word 64)) <= 48
+              ==> aes_gcm_num_blocks (val w) = 7) /\
+   (!w:int64. 64 < val w /\ val w <= 128 /\ val w < 2 EXP 63 /\
+              48 < val (word_sub w (word 64)) ==> aes_gcm_num_blocks (val w) = 8)`,
+  REWRITE_TAC[aes_gcm_num_blocks] THEN REPEAT CONJ_TAC THEN GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPEC `w:int64` VAL_WORD_SUB_64) THEN
+  (ANTS_TAC THENL [ASM_ARITH_TAC; ALL_TAC]) THEN DISCH_TAC THENL
+   [MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `val (w:int64) - 65`;
+    MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `val (w:int64) - 81`;
+    MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `val (w:int64) - 97`;
+    MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `val (w:int64) - 113`] THEN
+  ASM_ARITH_TAC);;
+
+let CT_BANDS_COLLAPSE_64_128 = prove
+ (`!(pt_in:byte list) (ctr0:int128) (ks:int128 list) (h:int128)
+     (initial_tag:int128) (cptr:int64) (xiptr:int64) (ivec_ptr:int64)
+     (byte_len_w:int64)
+     (bt0_lo:int64) (bt0_hi:int64) (bt1_lo:int64) (bt1_hi:int64)
+     (bt2_lo:int64) (bt2_hi:int64) (bt3_lo:int64) (bt3_hi:int64) (s:armstate).
+     word_bytereverse (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi) =
+       aes_gcm_block_at pt_in 4 /\
+     word_bytereverse (word_insert (word_zx (bt1_lo:int64) :int128) (64,64) bt1_hi) =
+       aes_gcm_block_at pt_in 5 /\
+     word_bytereverse (word_insert (word_zx (bt2_lo:int64) :int128) (64,64) bt2_hi) =
+       aes_gcm_block_at pt_in 6 /\
+     word_bytereverse (word_insert (word_zx (bt3_lo:int64) :int128) (64,64) bt3_hi) =
+       aes_gcm_block_at pt_in 7 /\
+     64 < val byte_len_w /\ val byte_len_w <= 128 /\ val byte_len_w < 2 EXP 63 /\
+     (val (word_sub byte_len_w (word 64)) <= 16
+      ==> read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+            word_subword (word_zx (word_bytereverse
+               (word_subword (aes_gcm_ctr_at (word_bytereverse ctr0) 5) (0,32):int32)):int64) (0,32):int32) /\
+     (16 < val (word_sub byte_len_w (word 64)) /\ val (word_sub byte_len_w (word 64)) <= 32
+      ==> read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+            word_subword (word_zx (word_bytereverse
+               (word_subword (aes_gcm_ctr_at (word_bytereverse ctr0) 6) (0,32):int32)):int64) (0,32):int32) /\
+     (32 < val (word_sub byte_len_w (word 64)) /\ val (word_sub byte_len_w (word 64)) <= 48
+      ==> read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+            word_subword (word_zx (word_bytereverse
+               (word_subword (aes_gcm_ctr_at (word_bytereverse ctr0) 7) (0,32):int32)):int64) (0,32):int32) /\
+     (48 < val (word_sub byte_len_w (word 64))
+      ==> read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+            word_subword (word_zx (word_bytereverse
+               (word_subword (aes_gcm_ctr_at (word_bytereverse ctr0) 8) (0,32):int32)):int64) (0,32):int32) /\
+     (val (word_sub byte_len_w (word 64)) <= 16
+      ==> read (memory :> bytes128 xiptr) s =
+            word_bytereverse
+              (nist_ghash h (nist_ghash h (word_bytereverse initial_tag)
+                   (MAP (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) [0;1;2;3]))
+                 [word_bytereverse
+                   (word_xor (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 4) ks)))])) /\
+     (16 < val (word_sub byte_len_w (word 64)) /\ val (word_sub byte_len_w (word 64)) <= 32
+      ==> read (memory :> bytes128 xiptr) s =
+            word_bytereverse
+              (nist_ghash h (nist_ghash h (word_bytereverse initial_tag)
+                   (MAP (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) [0;1;2;3]))
+                 [word_bytereverse
+                   (word_xor (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 4) ks)));
+                  word_bytereverse
+                   (word_xor (word_insert (word_zx (bt1_lo:int64) :int128) (64,64) bt1_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 5) ks)))])) /\
+     (32 < val (word_sub byte_len_w (word 64)) /\ val (word_sub byte_len_w (word 64)) <= 48
+      ==> read (memory :> bytes128 xiptr) s =
+            word_bytereverse
+              (nist_ghash h (nist_ghash h (word_bytereverse initial_tag)
+                   (MAP (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) [0;1;2;3]))
+                 [word_bytereverse
+                   (word_xor (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 4) ks)));
+                  word_bytereverse
+                   (word_xor (word_insert (word_zx (bt1_lo:int64) :int128) (64,64) bt1_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 5) ks)));
+                  word_bytereverse
+                   (word_xor (word_insert (word_zx (bt2_lo:int64) :int128) (64,64) bt2_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 6) ks)))])) /\
+     (48 < val (word_sub byte_len_w (word 64))
+      ==> read (memory :> bytes128 xiptr) s =
+            word_bytereverse
+              (nist_ghash h (nist_ghash h (word_bytereverse initial_tag)
+                   (MAP (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) [0;1;2;3]))
+                 [word_bytereverse
+                   (word_xor (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 4) ks)));
+                  word_bytereverse
+                   (word_xor (word_insert (word_zx (bt1_lo:int64) :int128) (64,64) bt1_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 5) ks)));
+                  word_bytereverse
+                   (word_xor (word_insert (word_zx (bt2_lo:int64) :int128) (64,64) bt2_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 6) ks)));
+                  word_bytereverse
+                   (word_xor (word_insert (word_zx (bt3_lo:int64) :int128) (64,64) bt3_hi)
+                             (word_bytereverse
+                                (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 7) ks)))])) /\
+     (val (word_sub byte_len_w (word 64)) <= 16
+      ==> byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 5) cptr byte_len_w s) /\
+     (16 < val (word_sub byte_len_w (word 64)) /\ val (word_sub byte_len_w (word 64)) <= 32
+      ==> byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 6) cptr byte_len_w s) /\
+     (32 < val (word_sub byte_len_w (word 64)) /\ val (word_sub byte_len_w (word 64)) <= 48
+      ==> byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 7) cptr byte_len_w s) /\
+     (48 < val (word_sub byte_len_w (word 64))
+      ==> byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 8) cptr byte_len_w s)
+     ==>
+     read (memory :> bytes32 (word_add ivec_ptr (word 12))) s =
+       word_subword (word_zx (word_bytereverse
+          (word_subword (aes_gcm_ctr_at (word_bytereverse ctr0)
+             (aes_gcm_num_blocks (val byte_len_w))) (0,32):int32)):int64) (0,32):int32 /\
+     read (memory :> bytes128 xiptr) s =
+       word_bytereverse
+         (nist_ghash h (word_bytereverse initial_tag)
+            (list_of_seq (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks)
+                         (aes_gcm_num_blocks (val byte_len_w)))) /\
+     byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks
+                     (aes_gcm_num_blocks (val byte_len_w))) cptr byte_len_w s`,
+  (let GRAB gtm =
+     FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) && aconv (lhand(concl th)) gtm)) THEN
+     ANTS_TAC THENL [W_GUARD_ARITH; ALL_TAC] THEN STRIP_TAC in
+   let g5 = `val (word_sub (byte_len_w:int64) (word 64)) <= 16` in
+   let g6 = `16 < val (word_sub (byte_len_w:int64) (word 64)) /\ val (word_sub (byte_len_w:int64) (word 64)) <= 32` in
+   let g7 = `32 < val (word_sub (byte_len_w:int64) (word 64)) /\ val (word_sub (byte_len_w:int64) (word 64)) <= 48` in
+   let g8 = `48 < val (word_sub (byte_len_w:int64) (word 64))` in
+   REPEAT GEN_TAC THEN STRIP_TAC THEN
+  ASM_CASES_TAC `val (word_sub (byte_len_w:int64) (word 64)) <= 16` THENL
+   [(* N=5 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (byte_len_w:int64)) = 5` SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT1 NB_64_128) THEN W_GUARD_ARITH; ALL_TAC] THEN
+    GRAB g5 THEN GRAB g5 THEN GRAB g5 THEN
+    ASM_REWRITE_TAC[] THEN
+    EMIT_BLOCK_SUBST_TAC `bt0_lo:int64` `bt0_hi:int64` `4` THEN
+    REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
+    REWRITE_TAC[LIST_OF_SEQ_5; MAP; APPEND];
+    ALL_TAC] THEN
+  ASM_CASES_TAC `val (word_sub (byte_len_w:int64) (word 64)) <= 32` THENL
+   [(* N=6 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (byte_len_w:int64)) = 6` SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT1(CONJUNCT2 NB_64_128)) THEN W_GUARD_ARITH; ALL_TAC] THEN
+    GRAB g6 THEN GRAB g6 THEN GRAB g6 THEN
+    ASM_REWRITE_TAC[] THEN
+    EMIT_BLOCK_SUBST_TAC `bt0_lo:int64` `bt0_hi:int64` `4` THEN
+    EMIT_BLOCK_SUBST_TAC `bt1_lo:int64` `bt1_hi:int64` `5` THEN
+    REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
+    REWRITE_TAC[LIST_OF_SEQ_6; MAP; APPEND];
+    ALL_TAC] THEN
+  ASM_CASES_TAC `val (word_sub (byte_len_w:int64) (word 64)) <= 48` THENL
+   [(* N=7 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (byte_len_w:int64)) = 7` SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT1(CONJUNCT2(CONJUNCT2 NB_64_128))) THEN W_GUARD_ARITH; ALL_TAC] THEN
+    GRAB g7 THEN GRAB g7 THEN GRAB g7 THEN
+    ASM_REWRITE_TAC[] THEN
+    EMIT_BLOCK_SUBST_TAC `bt0_lo:int64` `bt0_hi:int64` `4` THEN
+    EMIT_BLOCK_SUBST_TAC `bt1_lo:int64` `bt1_hi:int64` `5` THEN
+    EMIT_BLOCK_SUBST_TAC `bt2_lo:int64` `bt2_hi:int64` `6` THEN
+    REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
+    REWRITE_TAC[LIST_OF_SEQ_7; MAP; APPEND];
+    (* N=8 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (byte_len_w:int64)) = 8` SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT2(CONJUNCT2(CONJUNCT2 NB_64_128))) THEN W_GUARD_ARITH; ALL_TAC] THEN
+    GRAB g8 THEN GRAB g8 THEN GRAB g8 THEN
+    ASM_REWRITE_TAC[] THEN
+    EMIT_BLOCK_SUBST_TAC `bt0_lo:int64` `bt0_hi:int64` `4` THEN
+    EMIT_BLOCK_SUBST_TAC `bt1_lo:int64` `bt1_hi:int64` `5` THEN
+    EMIT_BLOCK_SUBST_TAC `bt2_lo:int64` `bt2_hi:int64` `6` THEN
+    EMIT_BLOCK_SUBST_TAC `bt3_lo:int64` `bt3_hi:int64` `7` THEN
+    REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
+    REWRITE_TAC[LIST_OF_SEQ_8; MAP; APPEND]]));;
