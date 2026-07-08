@@ -162951,3 +162951,289 @@ let AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_OR_64_TO_128_OR_GT_128_SUBROUTINE_CTS_COLL
     TRY(SUBGOAL_THEN `F` CONTR_TAC THEN GUARD_ARITH)]))
 ;;
 
+(* ========================================================================= *)
+(* Phase 11 (s343) — CLEAN PUBLIC STATEMENT, presentation layer.              *)
+(*                                                                            *)
+(* The committed merge theorem                                               *)
+(*   AES_GCM_ENC_KERNEL_..._SUBROUTINE_CTS_COLLAPSED_MEM_GEN_CORRECT (@161959)*)
+(* has a ~787-line statement whose POST is a 3-way byte-length band split,    *)
+(* each band further guarded by per-16-byte sub-band implications, each       *)
+(* pinning its own ciphertext window + GHASH tag + ivec+12 counter.           *)
+(*                                                                            *)
+(* These lemmas prove that the per-band / per-sub-band POST components        *)
+(* COLLAPSE to a single length-parameterized clean form — a PURE PRESENTATION *)
+(* rewrite over the merge theorem's own vocabulary (no symbolic re-execution, *)
+(* no re-proof, no weakening).  The clean public theorem is then derived by   *)
+(* MP-ing the merge theorem through these collapse lemmas.                    *)
+(*                                                                            *)
+(* CT_BANDS_COLLAPSE_LE (this file): the LE band (1 <= byte_len <= 64) — its  *)
+(* 4 sub-band-guarded ct-windows + tags imply the single                     *)
+(*   byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks          *)
+(*                  (aes_gcm_num_blocks (val byte_len_w))) cptr byte_len_w s   *)
+(* and ONE flat nist_ghash over list_of_seq (aes_gcm_ct_block_at ..)          *)
+(* (aes_gcm_num_blocks (val byte_len_w)).  Confirms the LE band split is       *)
+(* presentational.                                                            *)
+(* ========================================================================= *)
+
+(* ========================================================================= *)
+(* s343: CT_BANDS_COLLAPSE — LE band (decisive falsifiable experiment).       *)
+(*                                                                            *)
+(* GOAL: the messy LE-band POST is 4 sub-band-guarded cases, each pinning     *)
+(*   - a ct window byte_list_at (aes_gcm_ct_bytes .. N) cptr byte_len_w s     *)
+(*     (N = 1/2/3/4 literal per sub-band), and                               *)
+(*   - a tag read = word_bytereverse (nist_ghash h it [emit_0;..;emit_{N-1}]) *)
+(* We show these IMPLY the single clean (num_blocks-parameterized) form,      *)
+(* purely by case-split + the num_blocks arithmetic + refolding the literal   *)
+(* emit list into list_of_seq (aes_gcm_ct_block_at ..) via the emit bridge.   *)
+(* This is a PURE PRESENTATION lemma over the merge theorem's vocabulary.     *)
+(* ========================================================================= *)
+
+(* Building block (a): emit-halves (spec-cipher form) -> aes_gcm_ct_block_at. *)
+let EMIT_HALVES_SPEC_CIPHER_AS_CT_BLOCK_AT = prove
+ (`!(b_lo:int64) (b_hi:int64) (ctr0:int128) (ks:int128 list)
+     (pt_in:byte list) (i:num).
+     word_bytereverse (word_insert (word_zx b_lo :int128) (64,64) b_hi) =
+       aes_gcm_block_at pt_in i
+     ==> word_bytereverse
+           (word_xor (word_insert (word_zx b_lo :int128) (64,64) b_hi)
+                     (word_bytereverse
+                        (aes128_cipher (aes_gcm_ctr_at ctr0 i) ks)))
+         = aes_gcm_ct_block_at pt_in ctr0 ks i`,
+  REPEAT GEN_TAC THEN DISCH_TAC THEN
+  REWRITE_TAC[WORD_BYTEREVERSE_XOR_INSERT_BYTEREVERSE;
+              aes_gcm_ct_block_at; aes_gcm_ks_block_at] THEN
+  ASM_REWRITE_TAC[]);;
+
+(* Building block (b): num_blocks per sub-band arithmetic. *)
+let NUM_BLOCKS_LE_BANDS = prove
+ (`(!v. 1 <= v /\ v <= 16 ==> aes_gcm_num_blocks v = 1) /\
+   (!v. 16 < v /\ v <= 32 ==> aes_gcm_num_blocks v = 2) /\
+   (!v. 32 < v /\ v <= 48 ==> aes_gcm_num_blocks v = 3) /\
+   (!v. 48 < v /\ v <= 64 ==> aes_gcm_num_blocks v = 4)`,
+  REWRITE_TAC[aes_gcm_num_blocks] THEN REPEAT CONJ_TAC THEN GEN_TAC THEN STRIP_TAC THENL
+   [MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `v - 1`;
+    MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `v - 17`;
+    MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `v - 33`;
+    MATCH_MP_TAC DIV_UNIQ THEN EXISTS_TAC `v - 49`] THEN
+  ASM_ARITH_TAC);;
+
+(* list_of_seq expansions for N=1,2,3 (N=4 is LIST_OF_SEQ_4 in-file). *)
+let LIST_OF_SEQ_1 = prove
+ (`!(f:num->A). list_of_seq f 1 = [f 0]`,
+  REWRITE_TAC[num_CONV `1`; list_of_seq; APPEND]);;
+let LIST_OF_SEQ_2 = prove
+ (`!(f:num->A). list_of_seq f 2 = [f 0; f 1]`,
+  REWRITE_TAC[num_CONV `2`; num_CONV `1`; list_of_seq; APPEND]);;
+let LIST_OF_SEQ_3 = prove
+ (`!(f:num->A). list_of_seq f 3 = [f 0; f 1; f 2]`,
+  REWRITE_TAC[num_CONV `3`; num_CONV `2`; num_CONV `1`; list_of_seq; APPEND]);;
+
+(* The LE-band POST collapse lemma. Mirrors the messy LE conjunct EXACTLY on
+   the LHS; concludes the single clean num_blocks-parameterized ct+tag on the
+   RHS. Proof = case-split on the 4 sub-bands; in each: rewrite num_blocks to
+   the literal N, expand list_of_seq to the literal N-element list, refold each
+   emit element into aes_gcm_ct_block_at via EMIT_HALVES_SPEC_CIPHER_AS_CT_BLOCK_AT
+   (applied by explicit ISPECL+MP — MATCH_MP_TAC can't do the ctr0/word_bytereverse
+   HO unification).  The ct window is already aes_gcm_ct_bytes .. N so it matches
+   after num_blocks.  Pure PRESENTATION over the merge theorem's own vocabulary. *)
+
+(* Per-block emit->ct_block rewrite, discharged from the block-fact hyps.  Given
+   index k, rewrites the k-th emit element to aes_gcm_ct_block_at .. k in the
+   goal, using EMIT_HALVES_SPEC_CIPHER_AS_CT_BLOCK_AT specialized at
+   (word_bytereverse ctr0). *)
+(* Rewrite (goal + asms) with the k-th emit->ct_block equation.  We build the
+   equation theorem by ISPECL + discharging its single block-fact antecedent
+   from the assumptions, then use it as a rewrite.  No SUBGOAL_THEN (so it adds
+   no branch to the enclosing THENL). *)
+let EMIT_BLOCK_SUBST_TAC blo bhi k =
+  fun (asl,w) ->
+    let bf = ISPECL [blo; bhi; `word_bytereverse (ctr0:int128)`;
+                     `ks:int128 list`; `pt_in:byte list`; k]
+               EMIT_HALVES_SPEC_CIPHER_AS_CT_BLOCK_AT in
+    (* bf : blockfact ==> emit = ct_block.  Discharge blockfact from asms. *)
+    let eqth = MP bf (find (fun (_,th) -> aconv (concl th) (lhand(concl bf))) asl |> snd) in
+    (RULE_ASSUM_TAC(REWRITE_RULE[eqth]) THEN REWRITE_TAC[eqth]) (asl,w);;
+
+(* Scoped arith: MP only the small, arith-shaped assumptions (mentioning val or
+   numeric comparisons) before ARITH_TAC, so the `ks = MAP..` / block-fact / read
+   hyps never reach ARITH_RULE (which chokes on them).  Mirrors the merge proof's
+   GUARD_ARITH. *)
+let LE_GUARD_ARITH : tactic =
+  (* Allowlist: keep only assumptions that are pure `num` (in)equalities whose
+     only non-arith subterm is `val (word_ushr bit_len 3)` / `val byte_len_w`.
+     Everything else (ks=, block-facts, reads, byte_list_at) is dropped so
+     ARITH_RULE never sees a non-arithmetic term. *)
+  let allowed = ["<=";"<";">";">=";"=";"+";"-";"*";"DIV";"MOD";"val";"word_ushr";
+                 "word_sub";"word_and";"word";"NUMERAL";"BIT0";"BIT1";"_0";
+                 "/\\";"\\/";"~";"T";"F"] in
+  let arith_ok tm =
+    forall (fun t -> mem (fst(dest_const t)) allowed)
+           (find_terms is_const tm) in
+  let ok (_,th) = arith_ok (concl th) in
+  fun (asl,w) ->
+    (MAP_EVERY (fun (_,th) -> MP_TAC th) (filter ok asl) THEN ARITH_TAC) (asl,w);;
+
+let CT_BANDS_COLLAPSE_LE = prove
+ (`!(pt_in:byte list) (ctr0:int128) (ks:int128 list) (h:int128)
+     (initial_tag:int128) (cptr:int64) (xiptr:int64) (byte_len_w:int64)
+     (bit_len:int64) (lk_lo:int64) (lk_hi:int64)
+     (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+     (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+     (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+     (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64) (s:armstate).
+     ks = MAP word_bytereverse
+            [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9; word_join lk_hi lk_lo] /\
+     word_bytereverse (word_insert (word_zx (b0_lo:int64) :int128) (64,64) b0_hi) =
+       aes_gcm_block_at pt_in 0 /\
+     word_bytereverse (word_insert (word_zx (b1_lo:int64) :int128) (64,64) b1_hi) =
+       aes_gcm_block_at pt_in 1 /\
+     word_bytereverse (word_insert (word_zx (b2_lo:int64) :int128) (64,64) b2_hi) =
+       aes_gcm_block_at pt_in 2 /\
+     word_bytereverse (word_insert (word_zx (b3_lo:int64) :int128) (64,64) b3_hi) =
+       aes_gcm_block_at pt_in 3 /\
+     1 <= val byte_len_w /\ val byte_len_w <= 64 /\
+     (val (word_ushr (bit_len:int64) 3) <= 16
+      ==>
+      byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 1)
+                   cptr (word_ushr (bit_len:int64) 3) s /\
+      read (memory :> bytes128 xiptr) s =
+        word_bytereverse
+          (nist_ghash h (word_bytereverse initial_tag)
+             [word_bytereverse
+               (word_xor (word_insert (word_zx b0_lo :int128) (64,64) b0_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0) ks)))])) /\
+     (16 < val (word_ushr (bit_len:int64) 3) /\ val (word_ushr (bit_len:int64) 3) <= 32
+      ==>
+      byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 2)
+                   cptr (word_ushr (bit_len:int64) 3) s /\
+      read (memory :> bytes128 xiptr) s =
+        word_bytereverse
+          (nist_ghash h (word_bytereverse initial_tag)
+             [word_bytereverse
+               (word_xor (word_insert (word_zx b0_lo :int128) (64,64) b0_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0) ks)));
+              word_bytereverse
+               (word_xor (word_insert (word_zx b1_lo :int128) (64,64) b1_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 1) ks)))])) /\
+     (32 < val (word_ushr (bit_len:int64) 3) /\ val (word_ushr (bit_len:int64) 3) <= 48
+      ==>
+      byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 3)
+                   cptr (word_ushr (bit_len:int64) 3) s /\
+      read (memory :> bytes128 xiptr) s =
+        word_bytereverse
+          (nist_ghash h (word_bytereverse initial_tag)
+             [word_bytereverse
+               (word_xor (word_insert (word_zx b0_lo :int128) (64,64) b0_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0) ks)));
+              word_bytereverse
+               (word_xor (word_insert (word_zx b1_lo :int128) (64,64) b1_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 1) ks)));
+              word_bytereverse
+               (word_xor (word_insert (word_zx b2_lo :int128) (64,64) b2_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 2) ks)))])) /\
+     (48 < val (word_ushr (bit_len:int64) 3)
+      ==>
+      byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 4)
+                   cptr (word_ushr (bit_len:int64) 3) s /\
+      read (memory :> bytes128 xiptr) s =
+        word_bytereverse
+          (nist_ghash h (word_bytereverse initial_tag)
+             [word_bytereverse
+               (word_xor (word_insert (word_zx b0_lo :int128) (64,64) b0_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 0) ks)));
+              word_bytereverse
+               (word_xor (word_insert (word_zx b1_lo :int128) (64,64) b1_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 1) ks)));
+              word_bytereverse
+               (word_xor (word_insert (word_zx b2_lo :int128) (64,64) b2_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 2) ks)));
+              word_bytereverse
+               (word_xor (word_insert (word_zx b3_lo :int128) (64,64) b3_hi)
+                         (word_bytereverse
+                            (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 3) ks)))]))
+     /\ word_ushr (bit_len:int64) 3 = byte_len_w
+     ==>
+     byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks
+                     (aes_gcm_num_blocks (val byte_len_w)))
+                  cptr byte_len_w s /\
+     read (memory :> bytes128 xiptr) s =
+       word_bytereverse
+         (nist_ghash h (word_bytereverse initial_tag)
+            (list_of_seq
+               (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks)
+               (aes_gcm_num_blocks (val byte_len_w))))`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  (* eliminate byte_len_w := word_ushr bit_len 3 (the specific eqn, not ks= etc.) *)
+  FIRST_X_ASSUM(fun th ->
+     if concl th = `word_ushr (bit_len:int64) 3 = byte_len_w`
+     then SUBST_ALL_TAC(SYM th) else failwith "wrong eqn") THEN
+  (* drop the `ks = MAP word_bytereverse [..]` defining hyp so ASM_REWRITE_TAC does
+     NOT unfold `ks` in the goal — the clean POST and the emit bridge both keep `ks`
+     opaque, and unfolding would break the emit->ct_block rewrite matching. *)
+  FIRST_X_ASSUM(K ALL_TAC o check (fun th ->
+     is_eq(concl th) && is_var(lhand(concl th)) &&
+     fst(dest_var(lhand(concl th))) = "ks")) THEN
+  ASM_CASES_TAC `val (word_ushr (bit_len:int64) 3) <= 16` THENL
+   [(* N=1 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (word_ushr (bit_len:int64) 3)) = 1`
+      SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT1 NUM_BLOCKS_LE_BANDS) THEN LE_GUARD_ARITH; ALL_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) &&
+       (lhand(concl th) = `val (word_ushr (bit_len:int64) 3) <= 16`))) THEN
+    ASM_REWRITE_TAC[] THEN STRIP_TAC THEN
+    ASM_REWRITE_TAC[LIST_OF_SEQ_1] THEN
+    EMIT_BLOCK_SUBST_TAC `b0_lo:int64` `b0_hi:int64` `0` THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  ASM_CASES_TAC `val (word_ushr (bit_len:int64) 3) <= 32` THENL
+   [(* N=2 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (word_ushr (bit_len:int64) 3)) = 2`
+      SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT1(CONJUNCT2 NUM_BLOCKS_LE_BANDS)) THEN LE_GUARD_ARITH; ALL_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) &&
+       (lhand(concl th) =
+        `16 < val (word_ushr (bit_len:int64) 3) /\ val (word_ushr (bit_len:int64) 3) <= 32`))) THEN
+    ANTS_TAC THENL [LE_GUARD_ARITH; ALL_TAC] THEN STRIP_TAC THEN
+    ASM_REWRITE_TAC[LIST_OF_SEQ_2] THEN
+    EMIT_BLOCK_SUBST_TAC `b0_lo:int64` `b0_hi:int64` `0` THEN
+    EMIT_BLOCK_SUBST_TAC `b1_lo:int64` `b1_hi:int64` `1` THEN
+    ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  ASM_CASES_TAC `val (word_ushr (bit_len:int64) 3) <= 48` THENL
+   [(* N=3 *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (word_ushr (bit_len:int64) 3)) = 3`
+      SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT1(CONJUNCT2(CONJUNCT2 NUM_BLOCKS_LE_BANDS))) THEN
+      LE_GUARD_ARITH; ALL_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) &&
+       (lhand(concl th) =
+        `32 < val (word_ushr (bit_len:int64) 3) /\ val (word_ushr (bit_len:int64) 3) <= 48`))) THEN
+    ANTS_TAC THENL [LE_GUARD_ARITH; ALL_TAC] THEN STRIP_TAC THEN
+    ASM_REWRITE_TAC[LIST_OF_SEQ_3] THEN
+    EMIT_BLOCK_SUBST_TAC `b0_lo:int64` `b0_hi:int64` `0` THEN
+    EMIT_BLOCK_SUBST_TAC `b1_lo:int64` `b1_hi:int64` `1` THEN
+    EMIT_BLOCK_SUBST_TAC `b2_lo:int64` `b2_hi:int64` `2` THEN
+    ASM_REWRITE_TAC[];
+    (* N=4 (the residual ~(val<=48) branch) *)
+    SUBGOAL_THEN `aes_gcm_num_blocks (val (word_ushr (bit_len:int64) 3)) = 4`
+      SUBST1_TAC THENL
+     [MATCH_MP_TAC(CONJUNCT2(CONJUNCT2(CONJUNCT2 NUM_BLOCKS_LE_BANDS))) THEN
+      LE_GUARD_ARITH; ALL_TAC] THEN
+    FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) &&
+       (lhand(concl th) = `48 < val (word_ushr (bit_len:int64) 3)`))) THEN
+    ANTS_TAC THENL [LE_GUARD_ARITH; ALL_TAC] THEN STRIP_TAC THEN
+    ASM_REWRITE_TAC[LIST_OF_SEQ_4] THEN
+    EMIT_BLOCK_SUBST_TAC `b0_lo:int64` `b0_hi:int64` `0` THEN
+    EMIT_BLOCK_SUBST_TAC `b1_lo:int64` `b1_hi:int64` `1` THEN
+    EMIT_BLOCK_SUBST_TAC `b2_lo:int64` `b2_hi:int64` `2` THEN
+    EMIT_BLOCK_SUBST_TAC `b3_lo:int64` `b3_hi:int64` `3` THEN
+    ASM_REWRITE_TAC[]]);;
