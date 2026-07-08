@@ -163237,3 +163237,82 @@ let CT_BANDS_COLLAPSE_LE = prove
     EMIT_BLOCK_SUBST_TAC `b2_lo:int64` `b2_hi:int64` `2` THEN
     EMIT_BLOCK_SUBST_TAC `b3_lo:int64` `b3_hi:int64` `3` THEN
     ASM_REWRITE_TAC[]]);;
+
+(* ------------------------------------------------------------------------- *)
+(* s343 (cont.): wider-band collapse recipe, validated on the (64,128] N=5    *)
+(* sub-band (CT_COLLAPSE_64_128_N5).  Confirms the wider bands are ALSO        *)
+(* presentational: the nested tag                                             *)
+(*   nist_ghash h (nist_ghash h it (MAP ct_block_at [0;1;2;3])) [tail_emit]    *)
+(* FLATTENS via GSYM NIST_GHASH_APPEND + tail-emit refold + list_of_seq        *)
+(* algebra to ONE nist_ghash over list_of_seq ct_block_at (num_blocks) — the  *)
+(* GHASH block count (4+1=5) EQUALS the ct-window block count (num_blocks=5),  *)
+(* refuting the "tag is band-intrinsic" falsifier for (64,128].  ct-window is  *)
+(* already the collapsed aes_gcm_ct_bytes .. N form (N = num_blocks by         *)
+(* VAL_WORD_SUB_64 + DIV arithmetic).                                          *)
+(* ------------------------------------------------------------------------- *)
+(* Proof-of-concept: the (64,128] N=5 sub-band ct+tag+counter collapse to the
+   clean num_blocks form. Validates the full wider-band recipe:
+   ct-window (already collapsed, N=5=num_blocks) + tail-emit refold + GSYM
+   NIST_GHASH_APPEND flatten + FLATTEN list algebra + counter. *)
+
+let VAL_WORD_SUB_64 = prove
+ (`!(byte_len_w:int64). 64 <= val byte_len_w /\ val byte_len_w < 2 EXP 63
+     ==> val (word_sub byte_len_w (word 64)) = val byte_len_w - 64`,
+  REPEAT STRIP_TAC THEN REWRITE_TAC[VAL_WORD_SUB_CASES] THEN
+  SUBGOAL_THEN `val (word 64:int64) = 64` SUBST1_TAC THENL
+   [REWRITE_TAC[VAL_WORD; DIMINDEX_64] THEN ARITH_TAC; ALL_TAC] THEN
+  COND_CASES_TAC THENL [REFL_TAC; ASM_ARITH_TAC]);;
+
+let LIST_OF_SEQ_5 = prove
+ (`!(f:num->A). list_of_seq f 5 = [f 0; f 1; f 2; f 3; f 4]`,
+  REWRITE_TAC[num_CONV `5`;num_CONV `4`;num_CONV `3`;num_CONV `2`;num_CONV `1`;
+              list_of_seq; APPEND]);;
+
+let W_GUARD_ARITH : tactic =
+  let allowed = ["<=";"<";">";">=";"=";"+";"-";"*";"DIV";"MOD";"val";"word_ushr";
+                 "word_sub";"word_and";"word";"NUMERAL";"BIT0";"BIT1";"_0";
+                 "/\\";"\\/";"~";"T";"F";"EXP"] in
+  let arith_ok tm =
+    forall (fun t -> mem (fst(dest_const t)) allowed) (find_terms is_const tm) in
+  fun (asl,w) ->
+    (MAP_EVERY (fun (_,th) -> MP_TAC th) (filter (fun (_,th) -> arith_ok(concl th)) asl)
+     THEN ARITH_TAC) (asl,w);;
+
+(* N=5 sub-band: byte_len in (64,80]. Given the messy (64,128]&(<=16 tail) POST
+   conjuncts (counter5, tag5 with first-4 inner ghash + block-4 tail, ct-window 5)
+   and the block-facts for blocks 0..4, derive the clean num_blocks=5 form. *)
+let CT_COLLAPSE_64_128_N5 = prove
+ (`!(pt_in:byte list) (ctr0:int128) (ks:int128 list) (h:int128)
+     (initial_tag:int128) (cptr:int64) (xiptr:int64) (byte_len_w:int64)
+     (ivec_ptr:int64) (bt0_lo:int64) (bt0_hi:int64) (s:armstate).
+     word_bytereverse (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi) =
+       aes_gcm_block_at pt_in 4 /\
+     64 < val byte_len_w /\ val byte_len_w <= 128 /\ val byte_len_w < 2 EXP 63 /\
+     val (word_sub byte_len_w (word 64)) <= 16 /\
+     read (memory :> bytes128 xiptr) s =
+       word_bytereverse
+         (nist_ghash h (nist_ghash h (word_bytereverse initial_tag)
+              (MAP (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) [0;1;2;3]))
+            [word_bytereverse
+              (word_xor (word_insert (word_zx (bt0_lo:int64) :int128) (64,64) bt0_hi)
+                        (word_bytereverse
+                           (aes128_cipher (aes_gcm_ctr_at (word_bytereverse ctr0) 4) ks)))]) /\
+     byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks 5) cptr byte_len_w s
+     ==>
+     read (memory :> bytes128 xiptr) s =
+       word_bytereverse
+         (nist_ghash h (word_bytereverse initial_tag)
+            (list_of_seq (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks)
+                         (aes_gcm_num_blocks (val byte_len_w)))) /\
+     byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks
+                     (aes_gcm_num_blocks (val byte_len_w))) cptr byte_len_w s`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MP_TAC(ISPEC `byte_len_w:int64` VAL_WORD_SUB_64) THEN
+  ANTS_TAC THENL [W_GUARD_ARITH; ALL_TAC] THEN DISCH_TAC THEN
+  SUBGOAL_THEN `aes_gcm_num_blocks (val (byte_len_w:int64)) = 5` SUBST1_TAC THENL
+   [REWRITE_TAC[aes_gcm_num_blocks] THEN MATCH_MP_TAC DIV_UNIQ THEN
+    EXISTS_TAC `val (byte_len_w:int64) - 65` THEN W_GUARD_ARITH; ALL_TAC] THEN
+  ASM_REWRITE_TAC[] THEN
+  EMIT_BLOCK_SUBST_TAC `bt0_lo:int64` `bt0_hi:int64` `4` THEN
+  REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
+  REWRITE_TAC[LIST_OF_SEQ_5; MAP; APPEND]);;
