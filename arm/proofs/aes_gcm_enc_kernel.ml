@@ -163893,3 +163893,34 @@ let CT_BANDS_COLLAPSE_GT_128 = prove
        REWRITE_TAC[GSYM NIST_GHASH_APPEND] THEN
        REWRITE_TAC[LOS_TAIL4];
        FIRST_ASSUM ACCEPT_TAC ]]));;
+
+(* ------------------------------------------------------------------------- *)
+(* s344 (cont.): PRE item 1 — gcm_set_key_schedule predicate.                 *)
+(*                                                                            *)
+(* The 13 key-schedule reads the merge PRE exposes as a flat conjunction,     *)
+(* packaged as ONE predicate (mirrors XTS set_key_schedule @aes_xts_common:22 *)
+(* but for AES-128: rk0..rk8 @0..128 / rk9 @144 all bytes128, lk_lo @160 /    *)
+(* lk_hi @168 bytes64, word 10 @240 bytes32).  Presentation-only: the clean   *)
+(* public PRE will use this predicate; a REWRITE[gcm_set_key_schedule] bridges *)
+(* it to the merge PRE's flat key reads at assembly time.  New define lands at *)
+(* kernel tail (after the baked prefix) so it needs no whole-kernel re-cold.   *)
+(* ------------------------------------------------------------------------- *)
+
+let gcm_set_key_schedule = new_definition
+  `gcm_set_key_schedule (s:armstate) (key_ptr:int64)
+     (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+     (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128) (rk9:int128)
+     (lk_lo:int64) (lk_hi:int64) : bool =
+     (read (memory :> bytes128 key_ptr) s = rk0 /\
+      read (memory :> bytes128 (word_add key_ptr (word 16))) s = rk1 /\
+      read (memory :> bytes128 (word_add key_ptr (word 32))) s = rk2 /\
+      read (memory :> bytes128 (word_add key_ptr (word 48))) s = rk3 /\
+      read (memory :> bytes128 (word_add key_ptr (word 64))) s = rk4 /\
+      read (memory :> bytes128 (word_add key_ptr (word 80))) s = rk5 /\
+      read (memory :> bytes128 (word_add key_ptr (word 96))) s = rk6 /\
+      read (memory :> bytes128 (word_add key_ptr (word 112))) s = rk7 /\
+      read (memory :> bytes128 (word_add key_ptr (word 128))) s = rk8 /\
+      read (memory :> bytes128 (word_add key_ptr (word 144))) s = rk9 /\
+      read (memory :> bytes64 (word_add key_ptr (word 160))) s = lk_lo /\
+      read (memory :> bytes64 (word_add key_ptr (word 168))) s = lk_hi /\
+      read (memory :> bytes32 (word_add key_ptr (word 240))) s = (word 10:32 word))`;;
