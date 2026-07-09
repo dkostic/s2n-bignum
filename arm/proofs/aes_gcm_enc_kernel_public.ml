@@ -150,6 +150,38 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_SUBROUTINE_CORRECT =
   AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_OR_64_TO_128_OR_GT_128_SUBROUTINE_CTS_COLLAPSED_MEM_GEN_CORRECT;;
 
 (* ------------------------------------------------------------------------- *)
+(* AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN_SUBROUTINE_CORRECT — the    *)
+(* PREFERRED, XTS-shaped public functional theorem (session 345).            *)
+(*                                                                           *)
+(* Same PRE as the _GEN export above (byte-identical — no weakening of the    *)
+(* caller obligation), but its POST is collapsed from the merge theorem's     *)
+(* ~600-line 3-way byte-length band split (each band further split into       *)
+(* per-16-byte sub-bands) down to a single, readable pair:                    *)
+(*                                                                           *)
+(*   byte_list_at (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0) ks          *)
+(*                  (aes_gcm_num_blocks (val byte_len_w))) cptr byte_len_w s   *)
+(*   /\                                                                       *)
+(*   read (memory :> bytes128 xiptr) s =                                      *)
+(*     word_bytereverse (nist_ghash h (word_bytereverse initial_tag)          *)
+(*        (list_of_seq (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0) ks) *)
+(*                     (aes_gcm_num_blocks (val byte_len_w))))                 *)
+(*                                                                           *)
+(* i.e. ONE whole-input ciphertext window + ONE flat GHASH tag over the       *)
+(* real number of blocks, matching the shape of AES_XTS_ENCRYPT_SUBROUTINE_   *)
+(* CORRECT.  Derived purely by MP-ing the _GEN merge theorem through the      *)
+(* s343/s344 collapse lemmas CT_BANDS_COLLAPSE_{LE,64_128,GT_128} — no        *)
+(* symbolic re-execution, no re-proof (see aes_gcm_enc_kernel.ml, s345).      *)
+(* The ivec+12 keystream counter (an internal detail, not part of the         *)
+(* ciphertext/tag contract) is dropped from this POST.                        *)
+(*                                                                           *)
+(* Name ends in `_SUBROUTINE_CORRECT` for the collect-specs.sh /              *)
+(* count-proofs.sh regex.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN_SUBROUTINE_CORRECT =
+  AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN_SUBROUTINE_CORRECT;;
+
+(* ------------------------------------------------------------------------- *)
 (* Caller-obligation summary (forwarded from SUBROUTINE_CORRECT's PRE).      *)
 (*                                                                           *)
 (* Callers must establish, in addition to the standard arg-passing and       *)
