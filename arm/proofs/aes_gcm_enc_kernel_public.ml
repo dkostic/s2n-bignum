@@ -213,6 +213,38 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN2_SUBROUTINE_CORRECT =
   AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN2_SUBROUTINE_CORRECT;;
 
 (* ------------------------------------------------------------------------- *)
+(* AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN3_SUBROUTINE_CORRECT — the   *)
+(* MOST XTS-shaped public functional theorem to date (session 347).          *)
+(*                                                                           *)
+(* Identical ensures state-PRE, POST and MAYCHANGE to the _CLEAN2_ export     *)
+(* above (verified aconv), but its PRECONDITION folds the nonoverlapping      *)
+(* boilerplate to XTS shape by a pure presentation layer (derived from the    *)
+(* _CLEAN2_ theorem by reducing the ensures conclusion to it via MATCH_MP_TAC *)
+(* and discharging its flat nonoverlapping antecedent — NO symbolic           *)
+(* re-execution, NO re-proof, and NO weakening: the clean3 PRE provably       *)
+(* implies the clean2 PRE by construction).                                   *)
+(*                                                                           *)
+(* Phase-B PRE cleanup (human-directed 2nd cleanup pass, session 347):        *)
+(*   - the 45 flat nonoverlapping clauses are folded into ONE                 *)
+(*       PAIRWISE nonoverlapping [8 maximal regions]                          *)
+(*     (like XTS) — the cptr / ptr0 buffer widths are the true 4-block-tail   *)
+(*     extent A + 64, A = val(word_and (word_sub byte_len_w 1) 0xFF..C0) —    *)
+(*     plus 5 residual intra-cptr adjacency facts (two sub-regions of the     *)
+(*     SAME cptr output buffer, which PAIRWISE-over-maximal cannot express).  *)
+(*     Net: ~45 nonoverlapping lines -> 6.                                    *)
+(*                                                                           *)
+(* The residual PRE bloat (the symbolic plaintext-window ghost reads) is the  *)
+(* subject of the deferred Phase C (plaintext-window existential hoist, which *)
+(* carries an intrinsic 16*num_blocks block-rounded caller obligation).       *)
+(*                                                                           *)
+(* Name ends in `_SUBROUTINE_CORRECT` for the collect-specs.sh /              *)
+(* count-proofs.sh regex.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN3_SUBROUTINE_CORRECT =
+  AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN3_SUBROUTINE_CORRECT;;
+
+(* ------------------------------------------------------------------------- *)
 (* Caller-obligation summary (forwarded from SUBROUTINE_CORRECT's PRE).      *)
 (*                                                                           *)
 (* Callers must establish, in addition to the standard arg-passing and       *)
