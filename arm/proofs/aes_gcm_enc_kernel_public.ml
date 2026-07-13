@@ -182,6 +182,37 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN_SUBROUTINE_CORRECT =
   AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN_SUBROUTINE_CORRECT;;
 
 (* ------------------------------------------------------------------------- *)
+(* AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN2_SUBROUTINE_CORRECT — the   *)
+(* PREFERRED, XTS-shaped public functional theorem (session 346).            *)
+(*                                                                           *)
+(* Identical POST and MAYCHANGE to the _CLEAN_ export above (verified aconv), *)
+(* but its PRECONDITION is brought closer to XTS shape by a pure presentation *)
+(* layer (derived from the _CLEAN_ theorem via ENSURES_PRECONDITION_THM +     *)
+(* witness instantiation — NO symbolic re-execution, NO re-proof, and NO      *)
+(* weakening: the clean2 PRE provably implies the clean PRE).                 *)
+(*                                                                           *)
+(* Phase-A PRE cleanups (human-directed 2nd cleanup pass, session 346):       *)
+(*   - the 13 flat AES-128 key-schedule memory reads are folded into the      *)
+(*     single state predicate gcm_set_key_schedule;                          *)
+(*   - the 3-way byte-length band disjunction                                 *)
+(*       (1<=v<=64) \/ (64<v<=128) \/ (128<v)                                *)
+(*     is replaced by the single equivalent bound  1 <= val byte_len_w;      *)
+(*   - the two dead outer ghost vars ks and spec_block (0 occurrences in the  *)
+(*     POST / MAYCHANGE) are dropped from the universally-quantified prefix   *)
+(*     (51 -> 49 vars).                                                      *)
+(*                                                                           *)
+(* The residual PRE bloat (the ~45 flat nonoverlapping clauses and the        *)
+(* symbolic plaintext-window ghost reads) is the subject of the deferred      *)
+(* Phase B (PAIRWISE fold) / Phase C (plaintext-window existential hoist).    *)
+(*                                                                           *)
+(* Name ends in `_SUBROUTINE_CORRECT` for the collect-specs.sh /              *)
+(* count-proofs.sh regex.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN2_SUBROUTINE_CORRECT =
+  AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN2_SUBROUTINE_CORRECT;;
+
+(* ------------------------------------------------------------------------- *)
 (* Caller-obligation summary (forwarded from SUBROUTINE_CORRECT's PRE).      *)
 (*                                                                           *)
 (* Callers must establish, in addition to the standard arg-passing and       *)
