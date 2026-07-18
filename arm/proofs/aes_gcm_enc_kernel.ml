@@ -164789,3 +164789,223 @@ let ENSURES_EXIST_HPURE_PRECONDITION = prove
   DISCH_THEN(X_CHOOSE_THEN `g:A` STRIP_ASSUME_TAC) THEN
   FIRST_X_ASSUM(MP_TAC o SPEC `g:A`) THEN ASM_REWRITE_TAC[] THEN
   DISCH_THEN MATCH_MP_TAC THEN ASM_REWRITE_TAC[]);;
+
+(* ========================================================================= *)
+(* Phase 11 (s350) - LE-BAND VACUITY FIX (human-directed correctness repair).*)
+(*                                                                            *)
+(* s349 proved (0-hyp) that the SHIPPED merge/_GEN/CLEAN{,2,3} public         *)
+(* functional theorem is VACUOUS in the LE band (1<=byte_len<=64) for nonzero *)
+(* plaintext: the band-merge (@161959) added tail "first-blocks" reads bt0..3 *)
+(* at ptr0_tail which, in the LE band, ALIAS the head reads b0..3 (mask=0 =>  *)
+(* ptr0_tail=ptr0) and whose block-facts pin the >=4 padding blocks to zero,  *)
+(* forcing the whole <=64B plaintext to zero.  The human directed the fix:    *)
+(* re-base the LE arm on the CLEAN, non-vacuous LE-body theorem @143659       *)
+(* (AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_SUBROUTINE_CTS_COLLAPSED_GEN_CORRECT),  *)
+(* whose PRE carries ONLY b0..b3 raw reads + byte_list_at at the TRUE byte_len *)
+(* width (NO bt*/ptr0_tail/aliasing), and reconcile its 4-way band-guarded    *)
+(* POST to the flat CLEAN shape via CT_BANDS_COLLAPSE_LE (@163076).           *)
+(*                                                                            *)
+(* This LE arm carries the flat CLEAN POST (one byte_list_at aes_gcm_ct_bytes *)
+(* window at true byte_len width + one flat nist_ghash tag), matching the     *)
+(* CLEAN/CLEAN3 public shape, and is NON-VACUOUS (witness lemma below).  The  *)
+(* four head block-facts (blocks 0..3) are added to the PRE (needed by        *)
+(* CT_BANDS_COLLAPSE_LE); they pin each head block to an INDEPENDENT register *)
+(* pair (no aliasing), so they do NOT force pt_in = 0 (contrast the shipped   *)
+(* merge).  Presentation-only over already-cold deps: additive EOF append.    *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_LE_ARM_SUBROUTINE_CORRECT = prove
+ (`!pc (ptr0:int64) (bit_len:int64) (cptr:int64) (xiptr:int64)
+       (ivec_ptr:int64) (key_ptr:int64) (htable_ptr:int64)
+       (stackpointer:int64)
+       (lk_lo:int64) (lk_hi:int64) (rk9:int128)
+       (ctr_lo:int64) (ctr_hi:int64) (ctr0:int128)
+       (rk0:int128) (rk1:int128) (rk2:int128) (rk3:int128) (rk4:int128)
+       (rk5:int128) (rk6:int128) (rk7:int128) (rk8:int128)
+       (h:int128) (q6_pre:int128) (q7_pre:int128) (initial_tag:int128)
+       (pt_in:byte list)
+       (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+       (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64)
+       (returnaddress:int64) (byte_len_w:int64).
+    aligned 16 stackpointer /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc)
+                   (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (htable_ptr, 96) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (ptr0, 64) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (cptr, 64) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (xiptr, 16) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc) (key_ptr, 256) /\
+    nonoverlapping (word pc, LENGTH aes_gcm_enc_kernel_mc)
+                   (word_add ivec_ptr (word 12), 4) /\
+    nonoverlapping (key_ptr, 256) (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (ivec_ptr, 16) (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (htable_ptr, 96) (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (ptr0, 64) (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (cptr, 64) (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (xiptr, 16) (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (word_add ivec_ptr (word 12), 4)
+                   (word_sub stackpointer (word 128), 128) /\
+    nonoverlapping (cptr, 64) (xiptr, 16) /\
+    nonoverlapping (cptr, 64) (word_add ivec_ptr (word 12), 4) /\
+    nonoverlapping (xiptr, 16) (word_add ivec_ptr (word 12), 4) /\
+    nonoverlapping (ptr0, 64) (cptr, 64) /\
+    nonoverlapping (ptr0, 64) (xiptr, 16) /\
+    nonoverlapping (ptr0, 64) (word_add ivec_ptr (word 12), 4) /\
+    LENGTH pt_in = val (word_ushr bit_len 3) /\
+    1 <= val (word_ushr bit_len 3) /\ val (word_ushr bit_len 3) <= 64 /\
+    word_ushr bit_len 3 = byte_len_w /\
+    word_bytereverse (word_insert (word_zx (b0_lo:int64) :int128) (64,64) b0_hi) =
+      aes_gcm_block_at pt_in 0 /\
+    word_bytereverse (word_insert (word_zx (b1_lo:int64) :int128) (64,64) b1_hi) =
+      aes_gcm_block_at pt_in 1 /\
+    word_bytereverse (word_insert (word_zx (b2_lo:int64) :int128) (64,64) b2_hi) =
+      aes_gcm_block_at pt_in 2 /\
+    word_bytereverse (word_insert (word_zx (b3_lo:int64) :int128) (64,64) b3_hi) =
+      aes_gcm_block_at pt_in 3
+    ==> ensures arm
+         (\s. aligned_bytes_loaded s (word pc) aes_gcm_enc_kernel_mc /\
+              read PC s = word pc /\
+              read SP s = stackpointer /\
+              read X30 s = returnaddress /\
+              C_ARGUMENTS [ptr0; bit_len; cptr; xiptr; ivec_ptr; key_ptr; htable_ptr] s /\
+              read Q6 s = q6_pre /\
+              read Q7 s = q7_pre /\
+              read (memory :> bytes32 (word_add key_ptr (word 240))) s = (word 10:32 word) /\
+              read (memory :> bytes64 (word_add key_ptr (word 160))) s = lk_lo /\
+              read (memory :> bytes64 (word_add key_ptr (word 168))) s = lk_hi /\
+              read (memory :> bytes128 (word_add key_ptr (word 144))) s = rk9 /\
+              read (memory :> bytes64 ivec_ptr) s = ctr_lo /\
+              read (memory :> bytes64 (word_add ivec_ptr (word 8))) s = ctr_hi /\
+              read (memory :> bytes128 ivec_ptr) s = ctr0 /\
+              read (memory :> bytes128 key_ptr) s = rk0 /\
+              read (memory :> bytes128 (word_add key_ptr (word 16))) s = rk1 /\
+              read (memory :> bytes128 (word_add key_ptr (word 32))) s = rk2 /\
+              read (memory :> bytes128 (word_add key_ptr (word 48))) s = rk3 /\
+              read (memory :> bytes128 (word_add key_ptr (word 64))) s = rk4 /\
+              read (memory :> bytes128 (word_add key_ptr (word 80))) s = rk5 /\
+              read (memory :> bytes128 (word_add key_ptr (word 96))) s = rk6 /\
+              read (memory :> bytes128 (word_add key_ptr (word 112))) s = rk7 /\
+              read (memory :> bytes128 (word_add key_ptr (word 128))) s = rk8 /\
+              read (memory :> bytes128 xiptr) s = initial_tag /\
+              read (memory :> bytes128 htable_ptr) s =
+                byteswap128 (h_power (ghash_twist h) 0) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 32))) s =
+                byteswap128 (h_power (ghash_twist h) 1) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 48))) s =
+                byteswap128 (h_power (ghash_twist h) 2) /\
+              read (memory :> bytes128 (word_add htable_ptr (word 80))) s =
+                byteswap128 (h_power (ghash_twist h) 3) /\
+              read (memory :> bytes64 ptr0) s = b0_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 8))) s = b0_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 16))) s = b1_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 24))) s = b1_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 32))) s = b2_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 40))) s = b2_hi /\
+              read (memory :> bytes64 (word_add ptr0 (word 48))) s = b3_lo /\
+              read (memory :> bytes64 (word_add ptr0 (word 56))) s = b3_hi /\
+              byte_list_at pt_in ptr0 (word_ushr bit_len 3) s)
+         (\s. read PC s = returnaddress /\
+              byte_list_at
+                (aes_gcm_ct_bytes pt_in (word_bytereverse ctr0)
+                   (MAP word_bytereverse
+                      [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                       word_join lk_hi lk_lo])
+                   (aes_gcm_num_blocks (val byte_len_w)))
+                cptr byte_len_w s /\
+              read (memory :> bytes128 xiptr) s =
+                word_bytereverse
+                  (nist_ghash h (word_bytereverse initial_tag)
+                     (list_of_seq
+                        (aes_gcm_ct_block_at pt_in (word_bytereverse ctr0)
+                           (MAP word_bytereverse
+                              [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9;
+                               word_join lk_hi lk_lo]))
+                        (aes_gcm_num_blocks (val byte_len_w)))))
+         (MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI ,,
+          MAYCHANGE [memory :> bytes128 cptr] ,,
+          MAYCHANGE [memory :> bytes128 (word_add cptr (word 16))] ,,
+          MAYCHANGE [memory :> bytes128 (word_add cptr (word 32))] ,,
+          MAYCHANGE [memory :> bytes128 (word_add cptr (word 48))] ,,
+          MAYCHANGE [memory :> bytes128 xiptr] ,,
+          MAYCHANGE [memory :> bytes32 (word_add ivec_ptr (word 12))] ,,
+          MAYCHANGE [memory :> bytes(word_sub stackpointer (word 128), 128)])`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  MATCH_MP_TAC ENSURES_POSTCONDITION_THM THEN
+  EXISTS_TAC
+   (el 2 (snd(strip_comb(rand(snd(strip_forall(concl
+      AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_SUBROUTINE_CTS_COLLAPSED_GEN_CORRECT))))))) THEN
+  CONJ_TAC THENL
+   [(* branch 1: leBodyPOST s ==> flatPOST s, via CT_BANDS_COLLAPSE_LE *)
+    X_GEN_TAC `s:armstate` THEN CONV_TAC(LAND_CONV BETA_CONV) THEN
+    CONV_TAC(RAND_CONV BETA_CONV) THEN STRIP_TAC THEN
+    CONJ_TAC THENL [FIRST_ASSUM ACCEPT_TAC; ALL_TAC] THEN
+    MP_TAC(ISPECL
+     [`pt_in:byte list`;`ctr0:int128`;
+      `MAP word_bytereverse [rk0;rk1;rk2;rk3;rk4;rk5;rk6;rk7;rk8;rk9; word_join (lk_hi:int64) (lk_lo:int64)] : int128 list`;
+      `h:int128`;`initial_tag:int128`;`cptr:int64`;`xiptr:int64`;`byte_len_w:int64`;`bit_len:int64`;
+      `lk_lo:int64`;`lk_hi:int64`;`rk0:int128`;`rk1:int128`;`rk2:int128`;`rk3:int128`;`rk4:int128`;
+      `rk5:int128`;`rk6:int128`;`rk7:int128`;`rk8:int128`;`rk9:int128`;
+      `b0_lo:int64`;`b0_hi:int64`;`b1_lo:int64`;`b1_hi:int64`;`b2_lo:int64`;`b2_hi:int64`;
+      `b3_lo:int64`;`b3_hi:int64`;`s:armstate`] CT_BANDS_COLLAPSE_LE) THEN
+    ANTS_TAC THENL
+     [FIRST_X_ASSUM(fun th ->
+        if concl th = `word_ushr (bit_len:int64) 3 = byte_len_w`
+        then SUBST_ALL_TAC(SYM th) else failwith "byte_len_w eqn") THEN
+      REWRITE_TAC[] THEN REPEAT CONJ_TAC THEN
+      (FIRST_ASSUM ACCEPT_TAC ORELSE REFL_TAC ORELSE ASM_REWRITE_TAC[]);
+      DISCH_THEN(fun th -> REWRITE_TAC[th])];
+    (* branch 2: ensures P leBodyPOST C  = @143659 with antecedent discharged *)
+    MP_TAC(SPECL
+     [`pc:num`;`ptr0:int64`;`bit_len:int64`;`cptr:int64`;`xiptr:int64`;
+      `ivec_ptr:int64`;`key_ptr:int64`;`htable_ptr:int64`;`stackpointer:int64`;
+      `lk_lo:int64`;`lk_hi:int64`;`rk9:int128`;`ctr_lo:int64`;`ctr_hi:int64`;`ctr0:int128`;
+      `rk0:int128`;`rk1:int128`;`rk2:int128`;`rk3:int128`;`rk4:int128`;
+      `rk5:int128`;`rk6:int128`;`rk7:int128`;`rk8:int128`;
+      `h:int128`;`q6_pre:int128`;`q7_pre:int128`;`initial_tag:int128`;`pt_in:byte list`;
+      `b0_lo:int64`;`b0_hi:int64`;`b1_lo:int64`;`b1_hi:int64`;
+      `b2_lo:int64`;`b2_hi:int64`;`b3_lo:int64`;`b3_hi:int64`;`returnaddress:int64`]
+     AES_GCM_ENC_KERNEL_BYTE_LEN_LE_64_SUBROUTINE_CTS_COLLAPSED_GEN_CORRECT) THEN
+    ANTS_TAC THENL [ASM_REWRITE_TAC[]; DISCH_THEN(fun th -> ACCEPT_TAC th)]]);;
+
+
+(* MANDATORY non-vacuity witness (s350, human requirement): the repaired LE-arm
+   PRE (see AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_LE_ARM_SUBROUTINE_CORRECT)
+   admits a CONCRETE NONZERO <=64-byte plaintext.  This is the direct negation of
+   s349's S349_LE_BAND_FORCES_ZERO_PLAINTEXT (which showed the SHIPPED merge/CLEAN
+   LE arm forced pt_in = all-zero): here pt_in = [word 1] (LENGTH 1, byte 0 = 1 =/=
+   word 0) satisfies the length bound, the byte-length band, and the four head
+   block-facts (blocks 0..3), with the block-fact register halves solved by the
+   byte-reverse/insert round-trip.  So the fixed LE contract is NON-vacuous — we did
+   not trade one vacuity for another. *)
+let AES_GCM_ENC_KERNEL_FIXED_LE_ARM_PRE_NONVACUOUS = prove
+ (`?(pt_in:byte list) (b0_lo:int64) (b0_hi:int64) (b1_lo:int64) (b1_hi:int64)
+      (b2_lo:int64) (b2_hi:int64) (b3_lo:int64) (b3_hi:int64) (bit_len:int64).
+     1 <= val (word_ushr bit_len 3) /\ val (word_ushr bit_len 3) <= 64 /\
+     LENGTH pt_in = val (word_ushr bit_len 3) /\
+     ~(!i. i < LENGTH pt_in ==> EL i pt_in = word 0) /\
+     word_bytereverse (word_insert (word_zx b0_lo :int128) (64,64) b0_hi) =
+       aes_gcm_block_at pt_in 0 /\
+     word_bytereverse (word_insert (word_zx b1_lo :int128) (64,64) b1_hi) =
+       aes_gcm_block_at pt_in 1 /\
+     word_bytereverse (word_insert (word_zx b2_lo :int128) (64,64) b2_hi) =
+       aes_gcm_block_at pt_in 2 /\
+     word_bytereverse (word_insert (word_zx b3_lo :int128) (64,64) b3_hi) =
+       aes_gcm_block_at pt_in 3`,
+  EXISTS_TAC `[word 1]:byte list` THEN
+  MAP_EVERY (fun k ->
+    EXISTS_TAC (subst[mk_small_numeral k,`k:num`]
+       `word_subword (word_bytereverse (aes_gcm_block_at [word 1:byte] k)) (0,64):int64`) THEN
+    EXISTS_TAC (subst[mk_small_numeral k,`k:num`]
+       `word_subword (word_bytereverse (aes_gcm_block_at [word 1:byte] k)) (64,64):int64`))
+    [0;1;2;3] THEN
+  EXISTS_TAC `word 8:int64` THEN
+  REWRITE_TAC[] THEN REPEAT CONJ_TAC THENL
+   [CONV_TAC(DEPTH_CONV WORD_RED_CONV) THEN CONV_TAC NUM_REDUCE_CONV;
+    CONV_TAC(DEPTH_CONV WORD_RED_CONV) THEN CONV_TAC NUM_REDUCE_CONV;
+    REWRITE_TAC[LENGTH] THEN CONV_TAC(DEPTH_CONV WORD_RED_CONV) THEN CONV_TAC NUM_REDUCE_CONV;
+    REWRITE_TAC[NOT_FORALL_THM; NOT_IMP] THEN EXISTS_TAC `0` THEN
+    REWRITE_TAC[LENGTH; EL; HD] THEN CONV_TAC NUM_REDUCE_CONV THEN CONV_TAC WORD_BLAST;
+    CONV_TAC WORD_BLAST;
+    CONV_TAC WORD_BLAST;
+    CONV_TAC WORD_BLAST;
+    CONV_TAC WORD_BLAST]);;
