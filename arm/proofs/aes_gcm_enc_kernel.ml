@@ -164755,3 +164755,37 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN3_SUBROUTINE_CORRECT = prove
    TRY (ASM_REWRITE_TAC[] THEN NONOVERLAPPING_TAC) THEN
    TRY NONOVERLAPPING_TAC THEN
    TRY (ASM_REWRITE_TAC[])));;
+
+(* ========================================================================= *)
+(* Phase 11 (s348) — PRE-cleanup Phase C FOUNDATION: existential-hoist lemma. *)
+(*                                                                            *)
+(* The reusable step for collapsing CLEAN3's plaintext ghost-read family      *)
+(* (the b*/bt*/pt_half outer-forall params + their `= aes_gcm_block_at pt_in  *)
+(* idx` facts) into an existential INSIDE the ensures state-predicate, so     *)
+(* that each ghost can then be witnessed by an s-dependent read and           *)
+(* discharged from a single input window.  This is sound precisely because    *)
+(* the ghost cluster g is ABSENT from the POST (Q) and MAYCHANGE (C).         *)
+(*                                                                            *)
+(* Shape mirrors ENSURES_EXIST_PRECONDITION (@ this file, s054) but with an   *)
+(* explicit pure-guard `Hpure g` (CLEAN3's block-equality facts), matching    *)
+(* the `!g. Hpure g ==> ensures step (\s. Pstate g s) Q C` form of a          *)
+(* MATCH_MP_TAC against the (guard-hoisted) CLEAN3 theorem.                    *)
+(*                                                                            *)
+(* NB (s348 finding, see session-348-summary.md): a *complete* one-window     *)
+(* CLEAN4 derived FROM CLEAN3 is NOT achievable for non-64-aligned byte_len — *)
+(* CLEAN3 pins up to 3 PURE-PADDING tail blocks (indices beyond num_blocks)   *)
+(* whose aes_gcm_block_at value is a pt-independent zero constant, forcing     *)
+(* the caller's tail memory to zero; no byte_list_at pt_in window can imply    *)
+(* that.  This lemma is the (option-agnostic) hoist foundation; the final     *)
+(* CLEAN4 statement shape is a pending fidelity decision.                     *)
+(* ------------------------------------------------------------------------- *)
+
+let ENSURES_EXIST_HPURE_PRECONDITION = prove
+ (`!step (Hpure:A->bool) (Pstate:A->armstate->bool) Q C.
+     (!g. Hpure g ==> ensures step (\s. Pstate g s) Q C)
+     ==> ensures step (\s. ?g. Hpure g /\ Pstate g s) Q C`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[ensures] THEN
+  STRIP_TAC THEN GEN_TAC THEN
+  DISCH_THEN(X_CHOOSE_THEN `g:A` STRIP_ASSUME_TAC) THEN
+  FIRST_X_ASSUM(MP_TAC o SPEC `g:A`) THEN ASM_REWRITE_TAC[] THEN
+  DISCH_THEN MATCH_MP_TAC THEN ASM_REWRITE_TAC[]);;
