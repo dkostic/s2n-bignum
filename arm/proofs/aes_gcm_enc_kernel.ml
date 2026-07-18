@@ -165183,3 +165183,86 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_WIDE_ARM_SUBROUTINE_CORRECT =
   REPEAT GEN_TAC THEN STRIP_TAC THEN
   MATCH_MP_TAC AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN3_SUBROUTINE_CORRECT THEN
   ASM_REWRITE_TAC[] THEN ASM_ARITH_TAC);;
+
+
+(* ========================================================================= *)
+(* Phase 11 (s350) - LE-band vacuity fix, 3-WAY BAND-SPLIT public theorem.    *)
+(*                                                                            *)
+(* The gap-repaired public functional theorem.  It is a genuine band split:  *)
+(*   - in the LE band (1 <= val byte_len_w <= 64) the PRE is the CLEAN,       *)
+(*     NON-VACUOUS LE-arm PRE (see FIXED_LE_ARM above: only b0..b3 + a        *)
+(*     byte_list_at window at the TRUE byte_len width + the four head         *)
+(*     block-facts, NO aliasing bt*/ptr0_tail), so nonzero <=64B plaintexts   *)
+(*     ARE admitted (witness FIXED_LE_ARM_PRE_NONVACUOUS);                    *)
+(*   - in the wider band (64 < val byte_len_w) the PRE is CLEAN3's PRE        *)
+(*     (WIDE arm), which is non-vacuous there.                                *)
+(* The shared flat POST (one aes_gcm_ct_bytes window + one flat nist_ghash)   *)
+(* and a band-uniform frame (the append of the two arms' frames) are          *)
+(* identical to CLEAN3's presentation.  Each arm is discharged from its       *)
+(* committed 0-hyp theorem; the union widens the frame via                    *)
+(* ENSURES_FRAME_SUBSUMED and strengthens the band-guarded PRE to each arm's  *)
+(* PRE via ENSURES_PRECONDITION_THM.  No re-execution, no weakening beyond    *)
+(* the (sound) frame widening.                                                *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_SUBROUTINE_CORRECT =
+  let LE = AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_LE_ARM_SUBROUTINE_CORRECT in
+  let WD = AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_WIDE_ARM_SUBROUTINE_CORRECT in
+  let ens_of th = snd(dest_imp(snd(strip_forall(concl th)))) in
+  let le_ante = fst(dest_imp(snd(strip_forall(concl LE)))) in
+  let wd_ante = fst(dest_imp(snd(strip_forall(concl WD)))) in
+  let ehead, a_wd = strip_comb(ens_of WD) in
+  let a_le = snd(strip_comb(ens_of LE)) in
+  let armstep = el 0 a_wd in
+  let leP = el 1 a_le and leQ = el 2 a_le and leC = el 3 a_le in
+  let wdP = el 1 a_wd and wdC = el 3 a_wd in
+  let le_g = `1 <= val (byte_len_w:int64) /\ val byte_len_w <= 64` in
+  let wd_g = `64 < val (byte_len_w:int64)` in
+  let sv = `s:armstate` in
+  let uP = mk_abs(sv, mk_conj(mk_imp(le_g, mk_comb(leP,sv)),
+                              mk_imp(wd_g, mk_comb(wdP,sv)))) in
+  let uC = mk_binop
+    `(,,):(armstate->armstate->bool)->(armstate->armstate->bool)->
+          (armstate->armstate->bool)` leC wdC in
+  let uEns = list_mk_comb(ehead, [armstep; uP; leQ; uC]) in
+  let uAnte = list_mk_conj
+    [`word_ushr (bit_len:int64) 3 = byte_len_w`;
+     `1 <= val (byte_len_w:int64)`;
+     mk_imp(le_g, le_ante);
+     mk_imp(wd_g, wd_ante)] in
+  let uStmt = list_mk_forall(fst(strip_forall(concl WD)), mk_imp(uAnte, uEns)) in
+  prove
+   (uStmt,
+    let le_args = fst(strip_forall(concl LE)) in
+    let wd_args = fst(strip_forall(concl WD)) in
+    REPEAT GEN_TAC THEN STRIP_TAC THEN
+    ASM_CASES_TAC `val (byte_len_w:int64) <= 64` THENL
+     [MATCH_MP_TAC ENSURES_FRAME_SUBSUMED THEN EXISTS_TAC leC THEN
+      CONJ_TAC THENL
+       [REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+        SUBSUMED_MAYCHANGE_TAC; ALL_TAC] THEN
+      MATCH_MP_TAC ENSURES_PRECONDITION_THM THEN EXISTS_TAC leP THEN CONJ_TAC THENL
+       [GEN_TAC THEN BETA_TAC THEN STRIP_TAC THEN
+        FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[]; ALL_TAC] THEN
+      MP_TAC(SPECL le_args LE) THEN
+      ANTS_TAC THENL
+       [FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) &&
+           aconv (fst(dest_imp(concl th)))
+                 `1 <= val (byte_len_w:int64) /\ val byte_len_w <= 64`)) THEN
+        ANTS_TAC THENL [ASM_REWRITE_TAC[];
+                        DISCH_THEN(fun th -> ASM_REWRITE_TAC[th])];
+        DISCH_THEN ACCEPT_TAC];
+      MATCH_MP_TAC ENSURES_FRAME_SUBSUMED THEN EXISTS_TAC wdC THEN
+      CONJ_TAC THENL
+       [REWRITE_TAC[MAYCHANGE_REGS_AND_FLAGS_PERMITTED_BY_ABI] THEN
+        SUBSUMED_MAYCHANGE_TAC; ALL_TAC] THEN
+      MATCH_MP_TAC ENSURES_PRECONDITION_THM THEN EXISTS_TAC wdP THEN CONJ_TAC THENL
+       [GEN_TAC THEN BETA_TAC THEN STRIP_TAC THEN
+        FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC; ALL_TAC] THEN
+      MP_TAC(SPECL wd_args WD) THEN
+      ANTS_TAC THENL
+       [FIRST_X_ASSUM(MP_TAC o check (fun th -> is_imp(concl th) &&
+           aconv (fst(dest_imp(concl th))) `64 < val (byte_len_w:int64)`)) THEN
+        ANTS_TAC THENL [ASM_ARITH_TAC;
+                        DISCH_THEN(fun th -> ASM_REWRITE_TAC[th])];
+        DISCH_THEN ACCEPT_TAC]]);;
