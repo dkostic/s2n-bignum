@@ -165802,3 +165802,33 @@ let ENSURES_EXIST_HPURE_17_PRECONDITION = prove
      `g8:int64`;`g9:int64`;`g10:int64`;`g11:int64`;`g12:int64`;`g13:int64`;`g14:int64`;`g15:int64`;
      `gf:num->int64`]) THEN
   ASM_REWRITE_TAC[] THEN DISCH_THEN MATCH_MP_TAC THEN ASM_REWRITE_TAC[]);;
+
+
+(* Phase 11 (s351) - WIDE band length bound: byte_len <= A + 64 (A = the DIV-64  *)
+(* masked value), from the FIXED WIDE arm's `val(word_sub byte_len_w A_word) <=   *)
+(* 64` guard.  Discharges the `LENGTH pt_in <= W` (W = A+64) antecedent of         *)
+(* WIDE_PT_HALF_PIECEWISE_GEN / WIDE_J2_FROM_WINDOW in the WIDE-arm collapse.      *)
+let WIDE_LEN_LE_A_PLUS_64 = prove
+ (`!(byte_len_w:int64).
+     64 < val byte_len_w /\ val byte_len_w < 2 EXP 63 /\
+     val (word_sub byte_len_w
+            (word_and (word_sub byte_len_w (word 1):int64)
+                      (word 18446744073709551552:int64))) <= 64
+     ==> val byte_len_w <=
+         val (word_and (word_sub byte_len_w (word 1):int64)
+                       (word 18446744073709551552:int64)) + 64`,
+  REPEAT STRIP_TAC THEN
+  SUBGOAL_THEN
+   `val (word_and (word_sub byte_len_w (word 1):int64)
+                  (word 18446744073709551552:int64)) <= val(byte_len_w:int64)`
+   ASSUME_TAC THENL
+   [W(MP_TAC o PART_MATCH lhand VAL_WORD_AND_LE_MIN o
+       lhand o snd) THEN
+    MATCH_MP_TAC(ARITH_RULE `a <= b ==> x <= a ==> x <= b`) THEN
+    MP_TAC(ISPECL [`byte_len_w:int64`; `word 1:int64`] VAL_WORD_SUB_CASES) THEN
+    REWRITE_TAC[VAL_WORD_1] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  MP_TAC(ISPECL [`byte_len_w:int64`;
+                 `word_and (word_sub byte_len_w (word 1):int64)
+                           (word 18446744073709551552:int64)`] VAL_WORD_SUB_CASES) THEN
+  ASM_ARITH_TAC);;
