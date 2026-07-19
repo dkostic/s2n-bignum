@@ -165615,3 +165615,107 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_LE_ARM_WIN_SUBROUTINE_CORRECT
         `byte_len_w:int64`]
      AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_LE_ARM_SUBROUTINE_CORRECT) THEN
     ANTS_TAC THENL [ASM_REWRITE_TAC[]; DISCH_THEN ACCEPT_TAC]]);;
+
+
+(* ========================================================================= *)
+(* Phase 11 (s351) - WIDE-arm window-collapse HELPERS (reusable).             *)
+(*                                                                            *)
+(* The FIXED WIDE arm (byte_len > 64) carries an UNBOUNDED per-block          *)
+(* plaintext identity `!j2. word_bytereverse(word_insert (pt_half 2j2)        *)
+(* (pt_half 2j2+1)) = aes_gcm_block_at pt_in j2`, keyed on the ghost function *)
+(* pt_half (only pinned to memory for j < 8L+8).  These helpers let the WIDE  *)
+(* arm's ghost-read family collapse to ONE window + over-read-zero:           *)
+(*                                                                            *)
+(*  - WORD_BYTEREVERSE_INSERT_SUBWORD_ID: reassembling the low/high 64-bit    *)
+(*    subwords of word_bytereverse(x) via word_insert, then byte-reversing,   *)
+(*    recovers x (WORD_BLAST).  This is what makes the OUT-OF-WINDOW pt_half   *)
+(*    witness (:= subwords of word_bytereverse(spec block)) satisfy !j2 for   *)
+(*    padding/beyond-window blocks with NO memory constraint.                 *)
+(*  - WIDE_J2_FROM_WINDOW: the IN-WINDOW block identity — from one input      *)
+(*    window `byte_list_at`-style + over-read-zero (to W), every block j2 with *)
+(*    16j2+16 <= W has the two 64-bit reads reassembling to aes_gcm_block_at  *)
+(*    pt_in j2 (uniform full/partial/padding, via LE_BLOCK_FACT_FROM_WINDOW). *)
+(*  - WIDE_PT_HALF_PIECEWISE: packages a PIECEWISE pt_half witness (reads in  *)
+(*    the window, involution subwords beyond) that satisfies BOTH the pt_half *)
+(*    window fact AND the unbounded !j2 — from a single window + over-read.    *)
+(* ------------------------------------------------------------------------- *)
+
+let WORD_BYTEREVERSE_INSERT_SUBWORD_ID = prove
+ (`!(x:int128).
+     word_bytereverse
+       (word_insert (word_zx (word_subword (word_bytereverse x) (0,64) :int64) :int128)
+                    (64,64)
+                    (word_subword (word_bytereverse x) (64,64) :int64)) = x`,
+  GEN_TAC THEN CONV_TAC WORD_BLAST);;
+
+let WIDE_J2_FROM_WINDOW = prove
+ (`!(pt_in:byte list) (ptr0:int64) (W:num) (s:armstate).
+     LENGTH pt_in <= W /\ W < 2 EXP 64 /\
+     (!k. k < LENGTH pt_in
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = EL k pt_in) /\
+     (!k. LENGTH pt_in <= k /\ k < W
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = word 0)
+     ==> !j2. 16*j2+16 <= W
+              ==> word_bytereverse
+                    (word_insert
+                       (word_zx (read (memory :> bytes64 (word_add ptr0 (word (16*j2)))) s) :int128)
+                       (64,64)
+                       (read (memory :> bytes64 (word_add ptr0 (word (16*j2+8)))) s)) =
+                  aes_gcm_block_at pt_in j2`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN X_GEN_TAC `j2:num` THEN DISCH_TAC THEN
+  MP_TAC(ISPECL
+   [`ptr0:int64`;
+    `read (memory :> bytes64 (word_add ptr0 (word (16*j2)))) s`;
+    `read (memory :> bytes64 (word_add ptr0 (word (16*j2+8)))) s`;
+    `pt_in:byte list`; `j2:num`; `word (LENGTH(pt_in:byte list)) :int64`; `s:armstate`]
+    LE_BLOCK_FACT_FROM_WINDOW) THEN
+  SUBGOAL_THEN `val (word (LENGTH(pt_in:byte list)) :int64) = LENGTH pt_in` SUBST1_TAC THENL
+   [MATCH_MP_TAC VAL_WORD_EQ THEN REWRITE_TAC[DIMINDEX_64] THEN ASM_ARITH_TAC; ALL_TAC] THEN
+  ANTS_TAC THENL
+   [REPEAT CONJ_TAC THENL
+     [REFL_TAC; REFL_TAC; REFL_TAC;
+      X_GEN_TAC `k:num` THEN DISCH_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_REWRITE_TAC[];
+      X_GEN_TAC `k:num` THEN STRIP_TAC THEN FIRST_X_ASSUM MATCH_MP_TAC THEN ASM_ARITH_TAC];
+    DISCH_THEN ACCEPT_TAC]);;
+
+let WIDE_PT_HALF_PIECEWISE = prove
+ (`!(pt_in:byte list) (ptr0:int64) (B:num) (W:num) (s:armstate).
+     LENGTH pt_in <= W /\ W < 2 EXP 64 /\ W = 8 * B /\ EVEN B /\
+     (!k. k < LENGTH pt_in
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = EL k pt_in) /\
+     (!k. LENGTH pt_in <= k /\ k < W
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = word 0)
+     ==> ?pt_half:num->int64.
+           (!j. j < B
+                ==> read (memory :> bytes64 (word_add ptr0 (word(8*j)))) s = pt_half j) /\
+           (!j2. word_bytereverse
+                   (word_insert (word_zx (pt_half (2*j2)) :int128) (64,64)
+                                (pt_half (2*j2+1))) =
+                 aes_gcm_block_at pt_in j2)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  FIRST_X_ASSUM(X_CHOOSE_THEN `bm:num` SUBST_ALL_TAC o REWRITE_RULE[EVEN_EXISTS] o
+    check (fun th -> concl th = `EVEN B`)) THEN
+  EXISTS_TAC
+   `\j. if j < 2*bm
+        then read (memory :> bytes64 (word_add ptr0 (word(8*j)))) s
+        else (if EVEN j
+              then word_subword (word_bytereverse (aes_gcm_block_at pt_in (j DIV 2))) (0,64):int64
+              else word_subword (word_bytereverse (aes_gcm_block_at pt_in (j DIV 2))) (64,64):int64)` THEN
+  CONJ_TAC THENL
+   [X_GEN_TAC `j:num` THEN DISCH_TAC THEN BETA_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  X_GEN_TAC `j2:num` THEN BETA_TAC THEN
+  REWRITE_TAC[ARITH_RULE `2*j2+1 < 2*bm <=> j2 < bm`;
+              ARITH_RULE `2*j2 < 2*bm <=> j2 < bm`] THEN
+  ASM_CASES_TAC `j2 < bm:num` THENL
+   [ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[ARITH_RULE `8*(2*j2) = 16*j2`; ARITH_RULE `8*(2*j2+1) = 16*j2+8`] THEN
+    MP_TAC(ISPECL [`pt_in:byte list`;`ptr0:int64`;`8 * 2 * bm`;`s:armstate`] WIDE_J2_FROM_WINDOW) THEN
+    ANTS_TAC THENL
+     [ASM_REWRITE_TAC[] THEN CONJ_TAC THENL [ASM_ARITH_TAC; ASM_MESON_TAC[]];
+      DISCH_THEN(MP_TAC o SPEC `j2:num`) THEN
+      ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN ACCEPT_TAC]];
+    ASM_REWRITE_TAC[EVEN_DOUBLE; EVEN_ADD; ARITH; ARITH_RULE `(2*j2) DIV 2 = j2`;
+                    ARITH_RULE `(2*j2+1) DIV 2 = j2`] THEN
+    REWRITE_TAC[GSYM NOT_EVEN] THEN REWRITE_TAC[EVEN_DOUBLE] THEN
+    CONV_TAC WORD_BLAST]);;
