@@ -295,3 +295,43 @@ let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_CLEAN3_SUBROUTINE_CORRECT =
 
 let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_SUBROUTINE_CORRECT =
   AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_SUBROUTINE_CORRECT;;
+
+
+(* ========================================================================= *)
+(* AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_WIN_SUBROUTINE_CORRECT —    *)
+(* THE PREFERRED public functional export (session 352).                     *)
+(*                                                                           *)
+(* This is the fully window-collapsed, XTS-shaped functional theorem and     *)
+(* should be preferred by callers over ALL exports above (the _FIXED_ /      *)
+(* _CLEAN3_/_CLEAN2_/_CLEAN_/_GEN_ theorems).  It carries the same repaired,  *)
+(* non-vacuous 3-way band-split semantics as the session-350 _FIXED_ export  *)
+(* but with the PRECONDITION brought to XTS shape in BOTH bands:             *)
+(*                                                                           *)
+(*   - the per-block plaintext ghost-read family that cluttered the _FIXED_  *)
+(*     arms (16 raw `read (memory :> bytes64 ...) s` halves + up to 9        *)
+(*     `word_bytereverse (word_insert b_k) = aes_gcm_block_at pt_in idx`     *)
+(*     facts + the `!j2 pt_half` quantified identity) is REPLACED, in each   *)
+(*     band, by ONE input window `byte_list_at pt_in ptr0 byte_len_w s` at    *)
+(*     the TRUE byte-length width, plus a single explicit over-read-zero      *)
+(*     obligation for the [byte_len, W) tail (W = 64 in the LE band,          *)
+(*     W = aa+64 in the wider band, aa = the DIV-64 masked full-block         *)
+(*     length).  The over-read residue is INTRINSIC — this GCM kernel reads   *)
+(*     past byte_len up to a full 16B/64B block boundary (unlike XTS's        *)
+(*     exact-len read), so the caller must guarantee those padding bytes are  *)
+(*     zero.  This is a faithful statement of the kernel's real memory        *)
+(*     behaviour, not a weakening: the collapsed PRE ==> the _FIXED_ arm PRE  *)
+(*     (every dropped block-fact is re-derived from the window).             *)
+(*                                                                           *)
+(* The theorem STATEMENT is written LITERALLY (an explicit `!...` term), so   *)
+(* it is directly human-readable — unlike the session-350 _FIXED_ union,     *)
+(* whose statement was assembled by OCaml term-surgery.                      *)
+(*                                                                           *)
+(* Non-vacuity of the collapsed LE band is witnessed by                      *)
+(* AES_GCM_ENC_KERNEL_FIXED_LE_ARM_WIN_PRE_NONVACUOUS (nonzero <=64B pt).     *)
+(*                                                                           *)
+(* Name ends in `_SUBROUTINE_CORRECT` for the collect-specs.sh /             *)
+(* count-proofs.sh regex.                                                     *)
+(* ------------------------------------------------------------------------- *)
+
+let AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_WIN_SUBROUTINE_CORRECT =
+  AES_GCM_ENC_KERNEL_AES128_FUNCTIONAL_GEN_FIXED_WIN_SUBROUTINE_CORRECT;;
