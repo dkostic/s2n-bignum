@@ -165719,3 +165719,86 @@ let WIDE_PT_HALF_PIECEWISE = prove
                     ARITH_RULE `(2*j2+1) DIV 2 = j2`] THEN
     REWRITE_TAC[GSYM NOT_EVEN] THEN REWRITE_TAC[EVEN_DOUBLE] THEN
     CONV_TAC WORD_BLAST]);;
+
+
+(* ========================================================================= *)
+(* Phase 11 (s351) - WIDE-arm window-collapse: GEN piecewise + 17-var hoist.  *)
+(*                                                                            *)
+(* WIDE_PT_HALF_PIECEWISE_GEN decouples the pt_half window count B (bytes     *)
+(* [0,8B) pinned to memory, = the FIXED WIDE arm's `!j<8L+8` window) from the *)
+(* data window W >= 8*B used to derive the in-window !j2 blocks — needed       *)
+(* because the WIDE arm's bt* tail blocks live in [A, A+64) beyond the         *)
+(* pt_half window (8B = A) but within the full data window (W = A+64).         *)
+(*                                                                            *)
+(* ENSURES_EXIST_HPURE_17_PRECONDITION: the 17-ghost existential hoist        *)
+(* (16 int64 b0_lo..bt3_hi + 1 num->int64 pt_half) for the WIDE arm's         *)
+(* collapse (mirrors ENSURES_EXIST_HPURE_8_PRECONDITION).                     *)
+(* ------------------------------------------------------------------------- *)
+
+let WIDE_PT_HALF_PIECEWISE_GEN = prove
+ (`!(pt_in:byte list) (ptr0:int64) (B:num) (W:num) (s:armstate).
+     LENGTH pt_in <= W /\ W < 2 EXP 64 /\ 8 * B <= W /\ EVEN B /\
+     (!k. k < LENGTH pt_in
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = EL k pt_in) /\
+     (!k. LENGTH pt_in <= k /\ k < W
+          ==> read (memory :> bytes8 (word_add ptr0 (word k))) s = word 0)
+     ==> ?pt_half:num->int64.
+           (!j. j < B
+                ==> read (memory :> bytes64 (word_add ptr0 (word(8*j)))) s = pt_half j) /\
+           (!j2. word_bytereverse
+                   (word_insert (word_zx (pt_half (2*j2)) :int128) (64,64)
+                                (pt_half (2*j2+1))) =
+                 aes_gcm_block_at pt_in j2)`,
+  REPEAT GEN_TAC THEN STRIP_TAC THEN
+  FIRST_X_ASSUM(X_CHOOSE_THEN `bm:num` SUBST_ALL_TAC o REWRITE_RULE[EVEN_EXISTS] o
+    check (fun th -> concl th = `EVEN B`)) THEN
+  EXISTS_TAC
+   `\j. if j < 2*bm
+        then read (memory :> bytes64 (word_add ptr0 (word(8*j)))) s
+        else (if EVEN j
+              then word_subword (word_bytereverse (aes_gcm_block_at pt_in (j DIV 2))) (0,64):int64
+              else word_subword (word_bytereverse (aes_gcm_block_at pt_in (j DIV 2))) (64,64):int64)` THEN
+  CONJ_TAC THENL
+   [X_GEN_TAC `j:num` THEN DISCH_TAC THEN BETA_TAC THEN ASM_REWRITE_TAC[];
+    ALL_TAC] THEN
+  X_GEN_TAC `j2:num` THEN BETA_TAC THEN
+  REWRITE_TAC[ARITH_RULE `2*j2+1 < 2*bm <=> j2 < bm`;
+              ARITH_RULE `2*j2 < 2*bm <=> j2 < bm`] THEN
+  ASM_CASES_TAC `j2 < bm:num` THENL
+   [ASM_REWRITE_TAC[] THEN
+    REWRITE_TAC[ARITH_RULE `8*(2*j2) = 16*j2`; ARITH_RULE `8*(2*j2+1) = 16*j2+8`] THEN
+    MP_TAC(ISPECL [`pt_in:byte list`;`ptr0:int64`;`W:num`;`s:armstate`] WIDE_J2_FROM_WINDOW) THEN
+    ANTS_TAC THENL
+     [ASM_REWRITE_TAC[];
+      DISCH_THEN(MP_TAC o SPEC `j2:num`) THEN
+      ANTS_TAC THENL [ASM_ARITH_TAC; DISCH_THEN ACCEPT_TAC]];
+    ASM_REWRITE_TAC[EVEN_DOUBLE; EVEN_ADD; ARITH; ARITH_RULE `(2*j2) DIV 2 = j2`;
+                    ARITH_RULE `(2*j2+1) DIV 2 = j2`] THEN
+    REWRITE_TAC[GSYM NOT_EVEN] THEN REWRITE_TAC[EVEN_DOUBLE] THEN
+    CONV_TAC WORD_BLAST]);;
+
+let ENSURES_EXIST_HPURE_17_PRECONDITION = prove
+ (`!step
+     (Hpure:int64->int64->int64->int64->int64->int64->int64->int64->
+            int64->int64->int64->int64->int64->int64->int64->int64->
+            (num->int64)->bool)
+     (Pstate:int64->int64->int64->int64->int64->int64->int64->int64->
+             int64->int64->int64->int64->int64->int64->int64->int64->
+             (num->int64)->armstate->bool)
+     Q C.
+     (!g0 g1 g2 g3 g4 g5 g6 g7 g8 g9 g10 g11 g12 g13 g14 g15 gf.
+        Hpure g0 g1 g2 g3 g4 g5 g6 g7 g8 g9 g10 g11 g12 g13 g14 g15 gf
+        ==> ensures step
+              (\s. Pstate g0 g1 g2 g3 g4 g5 g6 g7 g8 g9 g10 g11 g12 g13 g14 g15 gf s) Q C)
+     ==> ensures step
+           (\s. ?g0 g1 g2 g3 g4 g5 g6 g7 g8 g9 g10 g11 g12 g13 g14 g15 gf.
+                  Hpure g0 g1 g2 g3 g4 g5 g6 g7 g8 g9 g10 g11 g12 g13 g14 g15 gf /\
+                  Pstate g0 g1 g2 g3 g4 g5 g6 g7 g8 g9 g10 g11 g12 g13 g14 g15 gf s) Q C`,
+  REPEAT GEN_TAC THEN REWRITE_TAC[ensures] THEN
+  STRIP_TAC THEN GEN_TAC THEN
+  DISCH_THEN(REPEAT_TCL CHOOSE_THEN STRIP_ASSUME_TAC) THEN
+  FIRST_X_ASSUM(MP_TAC o SPECL
+    [`g0:int64`;`g1:int64`;`g2:int64`;`g3:int64`;`g4:int64`;`g5:int64`;`g6:int64`;`g7:int64`;
+     `g8:int64`;`g9:int64`;`g10:int64`;`g11:int64`;`g12:int64`;`g13:int64`;`g14:int64`;`g15:int64`;
+     `gf:num->int64`]) THEN
+  ASM_REWRITE_TAC[] THEN DISCH_THEN MATCH_MP_TAC THEN ASM_REWRITE_TAC[]);;
